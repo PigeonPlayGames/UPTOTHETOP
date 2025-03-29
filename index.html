@@ -47,6 +47,21 @@
             <button class="submit-btn">Login</button>
         </div>
     </div>
+    <div>
+        <section id="comments">
+    <h2>Leave a Comment</h2>
+    <form id="commentForm">
+        <input type="text" id="username" placeholder="Your Name" required />
+        <textarea id="commentText" placeholder="Your Comment" required></textarea>
+        <button type="submit">Post Comment</button>
+    </form>
+
+    <div id="commentList">
+        <!-- Comments will be displayed here -->
+    </div>
+</section>
+
+    </div>
     <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
 
