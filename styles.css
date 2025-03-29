@@ -83,3 +83,43 @@ header {
     cursor: pointer;
     font-size: 20px;
 }
+
+#comments {
+    padding: 40px;
+    background-color: #1e1e1e;
+    margin-top: 40px;
+    border-radius: 10px;
+}
+
+#commentForm input, #commentForm textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: none;
+    border-radius: 5px;
+}
+
+#commentForm button {
+    background-color: #ff6600;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#commentForm button:hover {
+    background-color: #ff5500;
+}
+
+#commentList .comment {
+    background: #2a2a2a;
+    margin: 10px 0;
+    padding: 15px;
+    border-radius: 5px;
+}
+
+#commentList .comment strong {
+    color: #ff6600;
+}
+
