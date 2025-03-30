@@ -13,42 +13,67 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 // 🔹 Handle UI updates when user logs in/out
-auth.onAuthStateChanged((user) => {
+auth.onAuthStateChanged(async (user) => {
     if (user) {
         document.getElementById("login-btn").style.display = "none";
         document.getElementById("logout-btn").style.display = "inline-block";
+
+        // Get the user's username from Firestore
+        const userDoc = await db.collection("users").doc(user.uid).get();
+        if (userDoc.exists) {
+            document.getElementById("welcome-user").textContent = `Welcome, ${userDoc.data().username}!`;
+        }
     } else {
         document.getElementById("login-btn").style.display = "inline-block";
         document.getElementById("logout-btn").style.display = "none";
+        document.getElementById("welcome-user").textContent = "";
     }
 });
 
-// 🔹 Handle Login
-document.getElementById("login-form").addEventListener("submit", (e) => {
+// 🔹 Handle Signup (Username-Based)
+document.getElementById("signup-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
+    const username = document.getElementById("signup-username").value;
+    const password = document.getElementById("signup-password").value;
+    
+    if (!username || username.includes("@")) {
+        alert("Invalid username! Please do not use '@'.");
+        return;
+    }
 
-    auth.signInWithEmailAndPassword(email, password)
+    const fakeEmail = `${username}@uptothetop.com`;
+
+    auth.createUserWithEmailAndPassword(fakeEmail, password)
+        .then((userCredential) => {
+            const user = userCredential.user;
+            return db.collection("users").doc(user.uid).set({ username: username });
+        })
         .then(() => {
-            alert("Login successful!");
-            closeModal();
+            alert("Sign-up successful!");
+            closeSignupModal();
         })
         .catch((error) => {
             alert(error.message);
         });
 });
 
-// 🔹 Handle Signup
-document.getElementById("signup-form").addEventListener("submit", (e) => {
+// 🔹 Handle Login (Username-Based)
+document.getElementById("login-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const email = document.getElementById("signup-email").value;
-    const password = document.getElementById("signup-password").value;
+    const username = document.getElementById("login-username").value;
+    const password = document.getElementById("login-password").value;
+    
+    if (!username || username.includes("@")) {
+        alert("Invalid username! Please do not use '@'.");
+        return;
+    }
 
-    auth.createUserWithEmailAndPassword(email, password)
+    const fakeEmail = `${username}@uptothetop.com`;
+
+    auth.signInWithEmailAndPassword(fakeEmail, password)
         .then(() => {
-            alert("Sign-up successful!");
-            closeSignupModal();
+            alert("Login successful!");
+            closeModal();
         })
         .catch((error) => {
             alert(error.message);
@@ -66,7 +91,6 @@ function logout() {
 
 // 🔹 Comment System
 const commentForm = document.getElementById("commentForm");
-const usernameInput = document.getElementById("username");
 const commentTextInput = document.getElementById("commentText");
 const commentList = document.getElementById("commentList");
 
@@ -80,7 +104,10 @@ commentForm.addEventListener("submit", async (e) => {
         return;
     }
 
-    const username = user.email; // Use logged-in user's email as username
+    // Get the username from Firestore
+    const userDoc = await db.collection("users").doc(user.uid).get();
+    const username = userDoc.exists ? userDoc.data().username : "Anonymous";
+
     const commentText = commentTextInput.value;
 
     try {
@@ -91,7 +118,6 @@ commentForm.addEventListener("submit", async (e) => {
             likes: 0
         });
 
-        usernameInput.value = "";
         commentTextInput.value = "";
     } catch (error) {
         console.error("Error adding comment: ", error);
