@@ -22,25 +22,25 @@ const commentList = document.getElementById("commentList");
 commentForm.addEventListener("submit", async (e) => {
     e.preventDefault();  // Prevent form from refreshing the page
 
-    // Get the username and comment
     const username = usernameInput.value;
     const commentText = commentTextInput.value;
 
-    // Save the comment to Firestore
     try {
         await db.collection("comments").add({
             username: username,
             comment: commentText,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(), // Adds timestamp
+            likes: 0 // Initializes likes to 0
         });
 
-        // Clear the form after submitting
+        // Clear form
         usernameInput.value = "";
         commentTextInput.value = "";
     } catch (error) {
         console.error("Error adding comment: ", error);
     }
 });
+
 
 // Fetch and display comments from Firestore
 const loadComments = () => {
