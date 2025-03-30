@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Page</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
+    <script>
+        // Your Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
+            authDomain: "up-to-battle.firebaseapp.com",
+            projectId: "up-to-battle",
+            storageBucket: "up-to-battle.firebasestorage.app",
+            messagingSenderId: "328069667156",
+            appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
+        };
+        firebase.initializeApp(firebaseConfig);
+    </script>
+</head>
+<body>
+    <h2>Login Page</h2>
+
+    <h3>Sign Up</h3>
+    <form id="signupForm">
+        <input type="email" id="signupEmail" placeholder="Email" required>
+        <input type="password" id="signupPassword" placeholder="Password" required>
+        <button type="submit">Sign Up</button>
+    </form>
+
+    <h3>Login</h3>
+    <form id="loginForm">
+        <input type="email" id="loginEmail" placeholder="Email" required>
+        <input type="password" id="loginPassword" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+
+    <p id="userStatus">Not logged in</p>
+    <button id="logoutButton" style="display:none;">Logout</button>
+
+    <script src="login.js"></script>
+</body>
+</html>
