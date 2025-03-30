@@ -1,29 +1,41 @@
-// Firebase Configuration
+// 🔥 Firebase Configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
+    apiKey: "AIzaSyBtkOSM4meTdLdWbOfW53rM75lnYreSZo",
     authDomain: "up-to-battle.firebaseapp.com",
     projectId: "up-to-battle",
     storageBucket: "up-to-battle.appspot.com",
     messagingSenderId: "328069667156",
     appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
-firebase.initializeApp(firebaseConfig);
 
+// 🔹 Initialize Firebase
+firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// 🔹 Handle UI updates when user logs in/out
+// 🔹 Enable Session Persistence (Keeps user logged in)
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .then(() => {
+        console.log("Persistence enabled: User stays logged in.");
+    })
+    .catch((error) => {
+        console.error("Error enabling persistence:", error);
+    });
+
+// 🔹 Handle UI Updates When User Logs In/Out
 auth.onAuthStateChanged((user) => {
     if (user) {
         document.getElementById("login-btn").style.display = "none";
         document.getElementById("logout-btn").style.display = "inline-block";
+        document.getElementById("welcome-user").innerText = `Welcome, ${user.email}!`;
     } else {
         document.getElementById("login-btn").style.display = "inline-block";
         document.getElementById("logout-btn").style.display = "none";
+        document.getElementById("welcome-user").innerText = "";
     }
 });
 
-// 🔹 Handle Login
+// 🔹 Handle User Login
 document.getElementById("login-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const email = document.getElementById("email").value;
@@ -35,11 +47,12 @@ document.getElementById("login-form").addEventListener("submit", (e) => {
             closeModal();
         })
         .catch((error) => {
+            console.error("Login Error:", error.code, error.message);
             alert(error.message);
         });
 });
 
-// 🔹 Handle Signup
+// 🔹 Handle User Signup
 document.getElementById("signup-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const email = document.getElementById("signup-email").value;
@@ -51,36 +64,37 @@ document.getElementById("signup-form").addEventListener("submit", (e) => {
             closeSignupModal();
         })
         .catch((error) => {
+            console.error("Signup Error:", error.code, error.message);
             alert(error.message);
         });
 });
 
-// 🔹 Handle Logout
+// 🔹 Handle User Logout
 function logout() {
     auth.signOut().then(() => {
-        alert("Logged out!");
+        alert("Logged out successfully!");
     }).catch((error) => {
+        console.error("Logout Error:", error);
         alert(error.message);
     });
 }
 
 // 🔹 Comment System
 const commentForm = document.getElementById("commentForm");
-const usernameInput = document.getElementById("username");
 const commentTextInput = document.getElementById("commentText");
 const commentList = document.getElementById("commentList");
 
-// Handle comment submission
+// Handle Comment Submission
 commentForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-
     const user = auth.currentUser;
+
     if (!user) {
         alert("You must be logged in to comment!");
         return;
     }
 
-    const username = user.email; // Use logged-in user's email as username
+    const username = user.email; // Use email as username
     const commentText = commentTextInput.value;
 
     try {
@@ -91,19 +105,18 @@ commentForm.addEventListener("submit", async (e) => {
             likes: 0
         });
 
-        usernameInput.value = "";
-        commentTextInput.value = "";
+        commentTextInput.value = ""; // Clear input after submitting
     } catch (error) {
-        console.error("Error adding comment: ", error);
+        console.error("Error adding comment:", error);
     }
 });
 
-// Load comments
+// Load Comments from Firestore
 const loadComments = () => {
     db.collection("comments")
         .orderBy("timestamp", "desc")
         .onSnapshot((snapshot) => {
-            commentList.innerHTML = "";
+            commentList.innerHTML = "";  // Clear comment list
 
             snapshot.forEach(doc => {
                 const commentData = doc.data();
@@ -128,12 +141,13 @@ const loadComments = () => {
         });
 };
 
+// Load Comments on Page Load
 loadComments();
 
 // Handle Likes
 const likeComment = async (commentId) => {
     const commentRef = db.collection("comments").doc(commentId);
-    
+
     try {
         await db.runTransaction(async (transaction) => {
             const doc = await transaction.get(commentRef);
@@ -145,7 +159,7 @@ const likeComment = async (commentId) => {
             document.getElementById(`likes-${commentId}`).textContent = newLikes;
         });
     } catch (error) {
-        console.error("Error liking comment: ", error);
+        console.error("Error liking comment:", error);
     }
 };
 
