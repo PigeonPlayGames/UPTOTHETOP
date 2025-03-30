@@ -1,12 +1,14 @@
 // 🔥 Firebase Configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyBtkOSM4meTdLdWbOfW53rM75lnYreSZo",
+    apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
     authDomain: "up-to-battle.firebaseapp.com",
     projectId: "up-to-battle",
     storageBucket: "up-to-battle.appspot.com",
     messagingSenderId: "328069667156",
     appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
+firebase.initializeApp(firebaseConfig);
+
 
 // 🔹 Initialize Firebase
 firebase.initializeApp(firebaseConfig);
