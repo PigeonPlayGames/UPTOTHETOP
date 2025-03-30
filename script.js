@@ -20,7 +20,7 @@ const commentList = document.getElementById("commentList");
 
 // Handle comment form submission
 commentForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+    e.preventDefault();  // Prevent form from refreshing the page
 
     const username = usernameInput.value;
     const commentText = commentTextInput.value;
@@ -29,11 +29,11 @@ commentForm.addEventListener("submit", async (e) => {
         await db.collection("comments").add({
             username: username,
             comment: commentText,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            likes: 0,
-            likedBy: []  // Initialize likedBy as an empty array
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(), // Adds timestamp
+            likes: 0 // Initializes likes to 0
         });
 
+        // Clear form
         usernameInput.value = "";
         commentTextInput.value = "";
     } catch (error) {
@@ -77,12 +77,6 @@ const loadComments = () => {
 loadComments();
 
 const likeComment = async (commentId) => {
-    const userId = firebase.auth().currentUser?.uid;  // Get logged-in user ID
-    if (!userId) {
-        alert("You must be logged in to like a comment!");
-        return;
-    }
-
     const commentRef = db.collection("comments").doc(commentId);
 
     try {
@@ -90,27 +84,14 @@ const likeComment = async (commentId) => {
             const doc = await transaction.get(commentRef);
             if (!doc.exists) return;
 
-            let commentData = doc.data();
-            let likedBy = commentData.likedBy || []; // Get existing likedBy array
+            const newLikes = (doc.data().likes || 0) + 1;
+            transaction.update(commentRef, { likes: newLikes });
 
-            if (likedBy.includes(userId)) {
-                alert("You have already liked this comment!");
-                return;
-            }
-
-            likedBy.push(userId);  // Add user ID to likedBy array
-
-            transaction.update(commentRef, { 
-                likes: (commentData.likes || 0) + 1,
-                likedBy: likedBy  // Update the array in Firestore
-            });
-
-            // Update the UI optimistically
-            document.getElementById(`likes-${commentId}`).textContent = (commentData.likes || 0) + 1;
+            // Update the like count in the UI
+            document.getElementById(`likes-${commentId}`).textContent = newLikes;
         });
     } catch (error) {
         console.error("Error liking comment: ", error);
     }
 };
-
 
