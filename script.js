@@ -45,15 +45,16 @@ commentForm.addEventListener("submit", async (e) => {
 // Fetch and display comments from Firestore
 const loadComments = () => {
     db.collection("comments")
-        .orderBy("timestamp", "desc")  // Order by timestamp (newest first)
+        .orderBy("timestamp", "desc")
         .onSnapshot((snapshot) => {
-            commentList.innerHTML = "";  // Clear the comment list
+            commentList.innerHTML = "";  // Clear comment list
 
             snapshot.forEach(doc => {
                 const commentData = doc.data();
+                const commentId = doc.id;  // Get the document ID
                 const timestamp = commentData.timestamp 
-                    ? new Date(commentData.timestamp.toDate()).toLocaleString()  // Convert Firestore timestamp
-                    : "Just now"; // Fallback if timestamp is missing
+                    ? new Date(commentData.timestamp.toDate()).toLocaleString()
+                    : "Just now";
                 
                 const commentElement = document.createElement("div");
                 commentElement.classList.add("comment");
@@ -61,8 +62,9 @@ const loadComments = () => {
                 commentElement.innerHTML = `
                     <strong>${commentData.username}</strong>
                     <p>${commentData.comment}</p>
-                    <small>${timestamp}</small>  <!-- Show timestamp -->
-                    <p>👍 Likes: ${commentData.likes || 0}</p>  <!-- Show likes -->
+                    <small>${timestamp}</small>
+                    <p>👍 Likes: <span id="likes-${commentId}">${commentData.likes || 0}</span></p>
+                    <button onclick="likeComment('${commentId}')">Like</button>  <!-- Like button -->
                 `;
 
                 commentList.appendChild(commentElement);
@@ -70,6 +72,27 @@ const loadComments = () => {
         });
 };
 
+
 // Load comments on page load
 loadComments();
+
+const likeComment = async (commentId) => {
+    const commentRef = db.collection("comments").doc(commentId);
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const doc = await transaction.get(commentRef);
+            if (!doc.exists) return;
+
+            const newLikes = (doc.data().likes || 0) + 1;
+            transaction.update(commentRef, { likes: newLikes });
+
+            // Update the like count in the UI
+            document.getElementById(`likes-${commentId}`).textContent = newLikes;
+        });
+    } catch (error) {
+        console.error("Error liking comment: ", error);
+    }
+};
+
 
