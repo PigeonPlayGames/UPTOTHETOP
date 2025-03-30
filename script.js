@@ -51,12 +51,18 @@ const loadComments = () => {
 
             snapshot.forEach(doc => {
                 const commentData = doc.data();
+                const timestamp = commentData.timestamp 
+                    ? new Date(commentData.timestamp.toDate()).toLocaleString()  // Convert Firestore timestamp
+                    : "Just now"; // Fallback if timestamp is missing
+                
                 const commentElement = document.createElement("div");
                 commentElement.classList.add("comment");
 
                 commentElement.innerHTML = `
                     <strong>${commentData.username}</strong>
                     <p>${commentData.comment}</p>
+                    <small>${timestamp}</small>  <!-- Show timestamp -->
+                    <p>👍 Likes: ${commentData.likes || 0}</p>  <!-- Show likes -->
                 `;
 
                 commentList.appendChild(commentElement);
