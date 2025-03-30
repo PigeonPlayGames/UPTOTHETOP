@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     <script defer src="script.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+    <script src="login.js" defer></script>  <!-- Added login.js -->
 </head>
 <body>
     <header>
@@ -17,7 +21,10 @@
                 <li><a href="#games">Games</a></li>
                 <li><a href="#about">About</a></li>
                 <li><a href="#contact">Contact</a></li>
-                <li><button class="login-btn" onclick="openModal()">Login</button></li>
+                <li>
+                    <button class="login-btn" onclick="openModal()">Login</button>
+                    <button id="logoutButton" style="display:none;" onclick="logout()">Logout</button>
+                </li>
             </ul>
         </nav>
     </header>
@@ -32,38 +39,35 @@
         <h2>Featured Games</h2>
         <div class="game-container">
             <div class="game-card">
-            <a href="ants.html" class="play-button">Game 1</a></div>
+                <a href="ants.html" class="play-button">Game 1</a>
+            </div>
             <div class="game-card">Game 2</div>
             <div class="game-card">Game 3</div>
         </div>
     </section>
-     <div id="login-modal" class="modal">
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
         <div class="modal-content">
             <span class="close-btn" onclick="closeModal()">&times;</span>
             <h2>Login</h2>
-            <input type="text" placeholder="Username" />
-            <input type="password" placeholder="Password" />
-            <button class="submit-btn">Login</button>
+            <form id="modalLoginForm">
+                <input type="email" id="modalEmail" placeholder="Email" required>
+                <input type="password" id="modalPassword" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
         </div>
     </div>
-    <div>
-        <section id="comments">
-    <h2>Leave a Comment</h2>
-    <form id="commentForm">
-        <input type="text" id="username" placeholder="Your Name" required />
-        <textarea id="commentText" placeholder="Your Comment" required></textarea>
-        <button type="submit">Post Comment</button>
-    </form>
 
-    <div id="commentList">
-        <!-- Comments will be displayed here -->
-    </div>
-</section>
+    <section id="comments">
+        <h2>Leave a Comment</h2>
+        <form id="commentForm">
+            <input type="text" id="username" placeholder="Your Name" required />
+            <textarea id="commentText" placeholder="Your Comment" required></textarea>
+            <button type="submit">Post Comment</button>
+        </form>
+        <div id="commentList"></div>
+    </section>
 
-    </div>
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
-
-    
 </body>
 </html>
