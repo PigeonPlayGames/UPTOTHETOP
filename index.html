@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UpToTheTop - Level Up Your Game</title>
+    <title>UpToTheTop - :)</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <script defer src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+    <script defer src="script.js"></script>
 </head>
 <body>
     <header>
@@ -16,9 +20,8 @@
                 <li><a href="#games">Games</a></li>
                 <li><a href="#about">About</a></li>
                 <li><a href="#contact">Contact</a></li>
-                <li><span id="welcome-user"></span></li>
-                <li><button id="login-btn" onclick="openModal()">Login</button></li>
-                <li><button id="logout-btn" onclick="logout()" style="display:none;">Logout</button></li>
+                <li><button id="login-btn" class="login-btn" onclick="openLoginModal()">Login</button></li>
+                <li><button id="logout-btn" class="logout-btn" onclick="logout()" style="display: none;">Logout</button></li>
             </ul>
         </nav>
     </header>
@@ -26,6 +29,7 @@
     <section class="hero">
         <h1>Level Up Your Gaming Experience</h1>
         <p>Discover, Play, and Compete</p>
+        <p id="welcome-user"></p> <!-- Welcome message for logged-in users -->
         <button class="cta-btn">Explore Now</button>
     </section>
 
@@ -38,33 +42,34 @@
         </div>
     </section>
 
-    <!-- Login & Signup Modal -->
+    <!-- 🔹 LOGIN MODAL -->
     <div id="login-modal" class="modal">
         <div class="modal-content">
-            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <span class="close-btn" onclick="closeLoginModal()">&times;</span>
             <h2>Login</h2>
             <form id="login-form">
-                <input type="text" id="login-username" placeholder="Username" required>
-                <input type="password" id="login-password" placeholder="Password" required>
+                <input type="text" id="login-username" placeholder="Username" required />
+                <input type="password" id="login-password" placeholder="Password" required />
                 <button type="submit">Login</button>
             </form>
-            <p>Don't have an account? <a href="#" onclick="showSignup()">Sign up</a></p>
+            <p>Don't have an account? <a href="#" onclick="openSignupModal()">Sign Up</a></p>
         </div>
     </div>
 
+    <!-- 🔹 SIGNUP MODAL -->
     <div id="signup-modal" class="modal">
         <div class="modal-content">
             <span class="close-btn" onclick="closeSignupModal()">&times;</span>
             <h2>Sign Up</h2>
             <form id="signup-form">
-                <input type="text" id="signup-username" placeholder="Username" required>
-                <input type="password" id="signup-password" placeholder="Password" required>
+                <input type="text" id="signup-username" placeholder="Choose a Username" required />
+                <input type="password" id="signup-password" placeholder="Choose a Password" required />
                 <button type="submit">Sign Up</button>
             </form>
         </div>
     </div>
 
-    <!-- Comments Section -->
+    <!-- 🔹 COMMENT SECTION -->
     <section id="comments">
         <h2>Leave a Comment</h2>
         <form id="commentForm">
@@ -76,12 +81,5 @@
         </div>
     </section>
 
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
-
-    <!-- Main Script -->
-    <script defer src="script.js"></script>
 </body>
 </html>
