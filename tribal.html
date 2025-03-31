@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Village Builder</title>
+    <title>Tribal Wars</title>
     <link rel="stylesheet" href="tribal.css">
 </head>
 <body>
     <!-- 🔹 Navbar -->
     <nav>
         <h2>Welcome, <span id="player-name">Loading...</span></h2>
-        <button id="homeBtn">Home</button>
         <button id="logoutBtn">Logout</button>
     </nav>
 
@@ -25,40 +24,41 @@
     <!-- 🔹 Village Section -->
     <section id="village">
         <h1>Your Village</h1>
-        <div class="building" id="headquarters">
+        <div class="building">
             <h3>Headquarters (Level <span id="hq-level">1</span>)</h3>
-            <button onclick="upgradeBuilding('hq')">Upgrade</button>
+            <button class="upgrade-btn" onclick="upgradeBuilding('hq')">Upgrade</button>
         </div>
-        <div class="building" id="lumber-mill">
+        <div class="building">
             <h3>Lumber Mill (Level <span id="lumber-level">1</span>)</h3>
-            <button onclick="upgradeBuilding('lumber')">Upgrade</button>
+            <button class="upgrade-btn" onclick="upgradeBuilding('lumber')">Upgrade</button>
         </div>
-        <div class="building" id="quarry">
+        <div class="building">
             <h3>Quarry (Level <span id="quarry-level">1</span>)</h3>
-            <button onclick="upgradeBuilding('quarry')">Upgrade</button>
+            <button class="upgrade-btn" onclick="upgradeBuilding('quarry')">Upgrade</button>
         </div>
-        <div class="building" id="iron-mine">
+        <div class="building">
             <h3>Iron Mine (Level <span id="iron-level">1</span>)</h3>
-            <button onclick="upgradeBuilding('iron')">Upgrade</button>
+            <button class="upgrade-btn" onclick="upgradeBuilding('iron')">Upgrade</button>
         </div>
     </section>
 
     <!-- 🔹 World Map -->
     <section id="world-map">
         <h2>World Map</h2>
-        <div id="map-container">
-            <!-- Villages will be dynamically added here -->
-        </div>
+        <div id="map-container"></div>
     </section>
 
     <!-- 🔹 Leaderboard -->
     <section id="leaderboard">
         <h2>Leaderboard</h2>
         <ul id="leaderboard-list">
-            <li>Loading...</li>
+            <li>Loading scores...</li>
         </ul>
     </section>
 
-    <script src="tribal.js"></script>
+    <!-- 🔹 Notifications -->
+    <div id="notification" class="hidden"></div>
+
+    <script type="module" src="tribal.js"></script>
 </body>
 </html>
