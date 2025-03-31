@@ -1,3 +1,9 @@
+// 🔹 Import Firebase Modules
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot } 
+  from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
 // 🔹 Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
@@ -7,10 +13,11 @@ const firebaseConfig = {
     messagingSenderId: "328069667156",
     appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
-firebase.initializeApp(firebaseConfig);
 
-const auth = firebase.auth();
-const db = firebase.firestore();
+// 🔹 Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 let currentUser = null;
 let currentScore = 0;
@@ -20,7 +27,7 @@ let gameInterval = null;
 let canvas, ctx;
 
 // 🔹 Check if user is logged in
-auth.onAuthStateChanged((user) => {
+onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUser = user;
         document.getElementById("player-email").innerText = user.email;
@@ -33,34 +40,31 @@ auth.onAuthStateChanged((user) => {
 });
 
 // 🔹 Load user's high score
-function loadHighScore() {
+async function loadHighScore() {
     if (!currentUser) return;
     
-    db.collection("scores").doc(currentUser.uid).get()
-        .then(doc => {
-            if (doc.exists) {
-                highScore = doc.data().score;
-                document.getElementById("highScore").innerText = highScore;
-            }
-        });
+    const userDoc = await getDoc(doc(db, "scores", currentUser.uid));
+    if (userDoc.exists()) {
+        highScore = userDoc.data().score;
+        document.getElementById("highScore").innerText = highScore;
+    }
 }
 
 // 🔹 Load the top 10 leaderboard scores
 function loadLeaderboard() {
-    db.collection("scores")
-        .orderBy("score", "desc")
-        .limit(10)
-        .onSnapshot(snapshot => {
-            const leaderboardList = document.getElementById("leaderboard-list");
-            leaderboardList.innerHTML = "";  
+    const leaderboardList = document.getElementById("leaderboard-list");
+    leaderboardList.innerHTML = "";  
 
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                const listItem = document.createElement("li");
-                listItem.innerText = `${data.username} - ${data.score}`;
-                leaderboardList.appendChild(listItem);
-            });
+    const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(10));
+    onSnapshot(q, (snapshot) => {
+        leaderboardList.innerHTML = ""; 
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const listItem = document.createElement("li");
+            listItem.innerText = `${data.username} - ${data.score}`;
+            leaderboardList.appendChild(listItem);
         });
+    });
 }
 
 // 🔹 Start game and scoring
@@ -117,19 +121,19 @@ function endGame() {
 }
 
 // 🔹 Save score to Firestore
-function saveScore() {
+async function saveScore() {
     if (!currentUser) return;
 
     if (currentScore > highScore) {
         highScore = currentScore;
         document.getElementById("highScore").innerText = highScore;
 
-        db.collection("scores").doc(currentUser.uid).set({
+        await setDoc(doc(db, "scores", currentUser.uid), {
             username: currentUser.email,
             score: highScore
-        }).then(() => {
-            loadLeaderboard();  // Refresh leaderboard
-        }).catch(error => console.error("Error saving score:", error));
+        });
+
+        loadLeaderboard();  // Refresh leaderboard
     }
 }
 
