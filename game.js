@@ -7,7 +7,6 @@ const firebaseConfig = {
     messagingSenderId: "328069667156",
     appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
-
 firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
@@ -16,17 +15,20 @@ const db = firebase.firestore();
 let currentUser = null;
 let currentScore = 0;
 let highScore = 0;
+let gameRunning = false;
+let gameInterval = null;
+let canvas, ctx;
 
 // 🔹 Check if user is logged in
 auth.onAuthStateChanged((user) => {
     if (user) {
         currentUser = user;
-        document.getElementById("player-email").innerText = user.email;  // Show logged-in email
+        document.getElementById("player-email").innerText = user.email;
         loadHighScore();
         loadLeaderboard();
     } else {
         alert("You must be logged in to play!");
-        window.location.href = "index.html"; // Redirect to homepage if not logged in
+        window.location.href = "index.html";
     }
 });
 
@@ -50,7 +52,7 @@ function loadLeaderboard() {
         .limit(10)
         .onSnapshot(snapshot => {
             const leaderboardList = document.getElementById("leaderboard-list");
-            leaderboardList.innerHTML = "";  // Clear existing list
+            leaderboardList.innerHTML = "";  
 
             snapshot.forEach(doc => {
                 const data = doc.data();
@@ -65,30 +67,38 @@ function loadLeaderboard() {
 document.getElementById("startGameBtn").addEventListener("click", startGame);
 
 function startGame() {
+    if (gameRunning) return; // Prevent multiple games
+
     currentScore = 0;
     updateScore();
+    gameRunning = true;
 
-    // Game rendering logic
-    const canvas = document.createElement("canvas");
+    // Remove existing canvas if it exists
+    if (canvas) {
+        canvas.remove();
+    }
+
+    // Create game canvas
+    canvas = document.createElement("canvas");
     canvas.id = "gameCanvas";
     canvas.width = 800;
     canvas.height = 500;
-    document.body.appendChild(canvas);
+    document.getElementById("game-container").appendChild(canvas);
 
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "blue";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx = canvas.getContext("2d");
 
-    // Simulating score increase
-    let gameInterval = setInterval(() => {
+    // Game loop
+    gameInterval = setInterval(() => {
         currentScore += 10;
         updateScore();
 
-        // Simulate game ending after some time
+        // Clear screen and draw moving box
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "red";
+        ctx.fillRect(currentScore % canvas.width, 200, 50, 50);
+
         if (currentScore >= 500) {
-            clearInterval(gameInterval);
-            saveScore();
-            alert("Game Over! Score saved.");
+            endGame();
         }
     }, 1000);
 }
@@ -96,6 +106,14 @@ function startGame() {
 // 🔹 Update score display
 function updateScore() {
     document.getElementById("score").innerText = currentScore;
+}
+
+// 🔹 Save score and end game
+function endGame() {
+    clearInterval(gameInterval);
+    gameRunning = false;
+    saveScore();
+    alert("Game Over! Score saved.");
 }
 
 // 🔹 Save score to Firestore
@@ -107,7 +125,7 @@ function saveScore() {
         document.getElementById("highScore").innerText = highScore;
 
         db.collection("scores").doc(currentUser.uid).set({
-            username: currentUser.email,  // Save email as username
+            username: currentUser.email,
             score: highScore
         }).then(() => {
             loadLeaderboard();  // Refresh leaderboard
@@ -117,5 +135,5 @@ function saveScore() {
 
 // 🔹 Home button event
 document.getElementById("homeBtn").addEventListener("click", () => {
-    window.location.href = "index.html"; // Go back home
+    window.location.href = "index.html";
 });
