@@ -3,43 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Page</title>
+    <title>Game</title>
+    
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
+
+    <!-- Styles -->
     <link rel="stylesheet" href="styles.css">
-
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
-
-    <script defer src="game.js"></script>
 </head>
 <body>
-    <header>
-        <nav>
-            <div class="logo">UpToTheTop</div>
-            <button id="homeBtn">🏠 Home</button>
-        </nav>
-    </header>
 
-    <main>
-        <h1>Welcome to the Game</h1>
-        <h2>Player: <span id="player-email">Loading...</span></h2>
+    <!-- Home Button -->
+    <button id="homeBtn">🏠 Home</button>
 
-        <div class="score-container">
-            <p>Current Score: <span id="score">0</span></p>
-            <p>High Score: <span id="highScore">0</span></p>
-        </div>
+    <h1>Welcome to the Game</h1>
 
-        <button id="startGameBtn">Start Game</button>
+    <!-- Display Player Info -->
+    <p>Player: <span id="player-email">Loading...</span></p>
+    <p>Current Score: <span id="score">0</span></p>
+    <p>High Score: <span id="highScore">0</span></p>
 
-        <section class="leaderboard">
-            <h3>🏆 Leaderboard - Top 10 Players</h3>
-            <ul id="leaderboard-list"></ul>
-        </section>
-    </main>
+    <!-- Start Game Button -->
+    <button id="startGameBtn">Start Game</button>
 
-    <footer>
-        <p>&copy; 2025 UpToTheTop. All rights reserved.</p>
-    </footer>
+    <!-- Leaderboard Section -->
+    <h2>🏆 Leaderboard - Top 10 Players</h2>
+    <ul id="leaderboard-list"></ul>
+
+    <!-- 🔹 FIX: Added game-container so game.js doesn't throw an error -->
+    <div id="game-container"></div>
+
+    <!-- JavaScript -->
+    <script src="game.js"></script>
+
 </body>
 </html>
