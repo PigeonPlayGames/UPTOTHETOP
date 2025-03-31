@@ -1,3 +1,4 @@
+// 🔹 Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
     authDomain: "up-to-battle.firebaseapp.com",
@@ -9,102 +10,112 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-let score = 0;
+let currentUser = null;
+let currentScore = 0;
 let highScore = 0;
 
-// 🔹 Check if User is Logged In
+// 🔹 Check if user is logged in
 auth.onAuthStateChanged((user) => {
     if (user) {
-        document.getElementById("player-email").innerText = user.email;
-
-        // Fetch High Score from Firestore
-        const userRef = db.collection("users").doc(user.uid);
-        userRef.get().then(doc => {
-            if (doc.exists) {
-                highScore = doc.data().highScore || 0;
-                document.getElementById("highScore").innerText = highScore;
-            }
-        });
+        currentUser = user;
+        document.getElementById("player-email").innerText = user.email;  // Show logged-in email
+        loadHighScore();
+        loadLeaderboard();
     } else {
         alert("You must be logged in to play!");
-        window.location.href = "index.html"; // Redirect to login
+        window.location.href = "index.html"; // Redirect to homepage if not logged in
     }
 });
 
-// 🔹 Game Logic (Basic Example)
-function startGame() {
-    score = 0;
-    document.getElementById("score").innerText = score;
-    gameLoop();
+// 🔹 Load user's high score
+function loadHighScore() {
+    if (!currentUser) return;
+    
+    db.collection("scores").doc(currentUser.uid).get()
+        .then(doc => {
+            if (doc.exists) {
+                highScore = doc.data().score;
+                document.getElementById("highScore").innerText = highScore;
+            }
+        });
 }
 
-function gameLoop() {
-    setTimeout(() => {
-        score += Math.floor(Math.random() * 10) + 1; // Increase score randomly
-        document.getElementById("score").innerText = score;
+// 🔹 Load the top 10 leaderboard scores
+function loadLeaderboard() {
+    db.collection("scores")
+        .orderBy("score", "desc")
+        .limit(10)
+        .onSnapshot(snapshot => {
+            const leaderboardList = document.getElementById("leaderboard-list");
+            leaderboardList.innerHTML = "";  // Clear existing list
 
-        if (score < 100) {
-            gameLoop(); // Continue the game
-        } else {
-            endGame();
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const listItem = document.createElement("li");
+                listItem.innerText = `${data.username} - ${data.score}`;
+                leaderboardList.appendChild(listItem);
+            });
+        });
+}
+
+// 🔹 Start game and scoring
+document.getElementById("startGameBtn").addEventListener("click", startGame);
+
+function startGame() {
+    currentScore = 0;
+    updateScore();
+
+    // Game rendering logic
+    const canvas = document.createElement("canvas");
+    canvas.id = "gameCanvas";
+    canvas.width = 800;
+    canvas.height = 500;
+    document.body.appendChild(canvas);
+
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "blue";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Simulating score increase
+    let gameInterval = setInterval(() => {
+        currentScore += 10;
+        updateScore();
+
+        // Simulate game ending after some time
+        if (currentScore >= 500) {
+            clearInterval(gameInterval);
+            saveScore();
+            alert("Game Over! Score saved.");
         }
     }, 1000);
 }
 
-// 🔹 End Game & Save Score
-function endGame() {
-    alert("Game Over! Your final score: " + score);
-    saveHighScore();
+// 🔹 Update score display
+function updateScore() {
+    document.getElementById("score").innerText = currentScore;
 }
 
-// 🔹 Save High Score to Firebase
-function saveHighScore() {
-    const user = auth.currentUser;
-    if (!user) return;
+// 🔹 Save score to Firestore
+function saveScore() {
+    if (!currentUser) return;
 
-    const userRef = db.collection("users").doc(user.uid);
-    userRef.get().then(doc => {
-        if (!doc.exists || score > (doc.data().highScore || 0)) {
-            userRef.set({ highScore: score }, { merge: true }).then(() => {
-                document.getElementById("highScore").innerText = score; // Update UI
-                alert("New High Score: " + score);
-                updateLeaderboard();
-            });
-        }
-    });
+    if (currentScore > highScore) {
+        highScore = currentScore;
+        document.getElementById("highScore").innerText = highScore;
+
+        db.collection("scores").doc(currentUser.uid).set({
+            username: currentUser.email,  // Save email as username
+            score: highScore
+        }).then(() => {
+            loadLeaderboard();  // Refresh leaderboard
+        }).catch(error => console.error("Error saving score:", error));
+    }
 }
 
-// 🔹 Return to Homepage
-function goHome() {
-    window.location.href = "index.html";
-}
-
-// 🔹 Update & Display Top 10 Leaderboard
-function updateLeaderboard() {
-    db.collection("users")
-        .orderBy("highScore", "desc")
-        .limit(10)
-        .get()
-        .then((snapshot) => {
-            const leaderboardList = document.getElementById("leaderboard-list");
-            leaderboardList.innerHTML = "";
-
-            snapshot.forEach((doc) => {
-                const userData = doc.data();
-                const li = document.createElement("li");
-                li.innerText = `${userData.username || "Anonymous"} - ${userData.highScore || 0} points`;
-                leaderboardList.appendChild(li);
-            });
-        })
-        .catch((error) => {
-            console.error("Error fetching leaderboard:", error);
-        });
-}
-
-// 🔹 Event Listeners
-document.getElementById("startGameBtn").addEventListener("click", startGame);
-document.getElementById("homeBtn").addEventListener("click", goHome);
+// 🔹 Home button event
+document.getElementById("homeBtn").addEventListener("click", () => {
+    window.location.href = "index.html"; // Go back home
+});
