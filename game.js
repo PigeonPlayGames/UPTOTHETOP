@@ -25,6 +25,7 @@ let player, obstacles = [];
 let gravity = 0.5, jumpPower = -10;
 let score = 0;
 let gameLoop;
+let lastObstacleX = 0; // Track last obstacle X position for dynamic spacing
 
 // 🔹 Check Auth State
 onAuthStateChanged(auth, async (loggedInUser) => {
@@ -116,9 +117,9 @@ function updateGame() {
     ctx.fillStyle = "blue";
     ctx.fillRect(player.x, player.y, player.width, player.height);
 
-    // Generate obstacles
+    // Generate obstacles with dynamic spacing
     if (Math.random() < 0.02) {
-        obstacles.push({ x: canvas.width, y: 370, width: 30, height: 30 });
+        generateObstacle();
     }
 
     // Move & draw obstacles
@@ -137,6 +138,31 @@ function updateGame() {
     // Increase score
     score++;
     document.getElementById("score").innerText = score;
+}
+
+// 🔹 Generate Obstacle with Dynamic Spacing
+function generateObstacle() {
+    const gameWidth = canvas.width;
+    const minGap = 150;
+    const maxGap = 300;
+
+    // Dynamic gap based on score or difficulty
+    const dynamicGap = Math.max(minGap, Math.min(maxGap, score * 10));
+
+    // Ensure the next block is placed at least dynamicGap pixels away from the last one
+    const obstacleX = lastObstacleX + dynamicGap;
+
+    if (obstacleX < gameWidth) {
+        lastObstacleX = obstacleX;
+
+        const obstacle = {
+            x: obstacleX,
+            y: Math.floor(Math.random() * (canvas.height - 50)), // Random vertical position
+            width: 30,
+            height: 30
+        };
+        obstacles.push(obstacle);
+    }
 }
 
 // 🔹 Detect Collision
