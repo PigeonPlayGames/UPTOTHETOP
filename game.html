@@ -4,39 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game</title>
-    
-    <!-- Firebase Scripts -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
-
-    <!-- Styles -->
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <!-- Home Button -->
-    <button id="homeBtn">🏠 Home</button>
+    <!-- 🔹 Navbar -->
+    <nav>
+        <h2>Welcome, <span id="player-email">Loading...</span></h2>
+        <button id="homeBtn">Home</button>
+        <button id="logoutBtn">Logout</button>
+    </nav>
 
-    <h1>Welcome to the Game</h1>
+    <!-- 🔹 Game Section -->
+    <section id="game-section">
+        <h1>Simple Game</h1>
+        <p>Score: <span id="score">0</span></p>
+        <p>High Score: <span id="highScore">0</span></p>
+        <button id="startGameBtn">Start Game</button>
+        <div id="game-container"></div>
+    </section>
 
-    <!-- Display Player Info -->
-    <p>Player: <span id="player-email">Loading...</span></p>
-    <p>Current Score: <span id="score">0</span></p>
-    <p>High Score: <span id="highScore">0</span></p>
+    <!-- 🔹 Leaderboard -->
+    <section id="leaderboard">
+        <h2>Top 10 Leaderboard</h2>
+        <ul id="leaderboard-list">
+            <li>Loading scores...</li>
+        </ul>
+    </section>
 
-    <!-- Start Game Button -->
-    <button id="startGameBtn">Start Game</button>
+    <!-- 🔹 Firebase & Game Scripts -->
+    <script type="module" src="game.js"></script>
+    <script type="module">
+        import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 
-    <!-- Leaderboard Section -->
-    <h2>🏆 Leaderboard - Top 10 Players</h2>
-    <ul id="leaderboard-list"></ul>
-
-    <!-- 🔹 FIX: Added game-container so game.js doesn't throw an error -->
-    <div id="game-container"></div>
-
-    <!-- JavaScript -->
-    <script src="game.js"></script>
+        const auth = getAuth();
+        
+        // Logout Function
+        document.getElementById("logoutBtn").addEventListener("click", () => {
+            signOut(auth).then(() => {
+                window.location.href = "index.html";
+            }).catch(error => console.error("Logout Error:", error));
+        });
+    </script>
 
 </body>
 </html>
