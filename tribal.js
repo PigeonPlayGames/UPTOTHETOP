@@ -54,12 +54,15 @@ function updateUI() {
 
 document.querySelectorAll(".upgrade-btn").forEach(button => {
     button.addEventListener("click", (event) => {
-        const building = event.target.dataset.building;
-        upgradeBuilding(building);
+        const building = event.target.getAttribute("data-building");
+        if (building) {
+            upgradeBuilding(building);
+        }
     });
 });
 
 function upgradeBuilding(building) {
+    if (!villageData[building]) return;
     if (villageData.wood >= 10 && villageData.stone >= 10 && villageData.ironRes >= 5) {
         villageData.wood -= 10;
         villageData.stone -= 10;
@@ -106,6 +109,7 @@ function renderMap() {
             village.classList.add("village-icon");
             village.style.left = `${Math.random() * 90}%`;
             village.style.top = `${Math.random() * 90}%`;
+            village.innerText = "🏰";
             village.title = `${data.username || "Player"} (Score: ${data.score})`;
             mapContainer.appendChild(village);
         });
