@@ -3,63 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tribal Wars</title>
-    <link rel="stylesheet" href="tribal.css">
+    <title>Tribal Game</title>
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="tribal.js" type="module"></script>
 </head>
 <body>
-    <!-- 🔹 Navbar -->
-    <nav>
-        <h2>Welcome, <span id="player-name">Loading...</span></h2>
+    <header>
+        <h1>Tribal Game</h1>
         <button id="logoutBtn">Logout</button>
-    </nav>
-
-    <!-- 🔹 Resources Bar -->
-    <div class="resources-bar">
-        <span>Wood: <span id="wood-count">0</span></span>
-        <span>Stone: <span id="stone-count">0</span></span>
-        <span>Iron: <span id="iron-count">0</span></span>
-        <span>Score: <span id="player-score">0</span></span>
+    </header>
+    <div id="resources">
+        Wood: <span id="wood-count">100</span> | 
+        Stone: <span id="stone-count">100</span> | 
+        Iron: <span id="iron-count">100</span> | 
+        Score: <span id="player-score">0</span>
     </div>
-
-    <!-- 🔹 Village Section -->
     <section id="village">
-        <h1>Your Village</h1>
+        <h2>Your Village</h2>
         <div class="building">
-            <h3>Headquarters (Level <span id="hq-level">1</span>)</h3>
+            <p>Headquarters (Level <span id="hq-level">1</span>)</p>
             <button class="upgrade-btn" data-building="hq">Upgrade</button>
         </div>
         <div class="building">
-            <h3>Lumber Mill (Level <span id="lumber-level">1</span>)</h3>
+            <p>Lumber Mill (Level <span id="lumber-level">1</span>)</p>
             <button class="upgrade-btn" data-building="lumber">Upgrade</button>
         </div>
         <div class="building">
-            <h3>Quarry (Level <span id="quarry-level">1</span>)</h3>
+            <p>Quarry (Level <span id="quarry-level">1</span>)</p>
             <button class="upgrade-btn" data-building="quarry">Upgrade</button>
         </div>
         <div class="building">
-            <h3>Iron Mine (Level <span id="iron-level">1</span>)</h3>
+            <p>Iron Mine (Level <span id="iron-level">1</span>)</p>
             <button class="upgrade-btn" data-building="iron">Upgrade</button>
         </div>
     </section>
-
-    <!-- 🔹 World Map -->
     <section id="world-map">
         <h2>World Map</h2>
         <div id="map-container"></div>
     </section>
-
-    <!-- 🔹 Leaderboard -->
     <section id="leaderboard">
         <h2>Leaderboard</h2>
-        <ul id="leaderboard-list">
-            <li>Loading scores...</li>
-        </ul>
+        <ul id="leaderboard-list"></ul>
     </section>
-
-    <!-- 🔹 Notifications -->
     <div id="notification" class="hidden"></div>
-
-    <!-- 🔹 Script -->
-    <script type="module" src="tribal.js"></script>
 </body>
 </html>
