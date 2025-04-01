@@ -55,7 +55,7 @@ function updateUI() {
 document.querySelectorAll(".upgrade-btn").forEach(button => {
     button.addEventListener("click", (event) => {
         const building = event.target.getAttribute("data-building");
-        if (building) {
+        if (building && villageData.hasOwnProperty(building)) {
             upgradeBuilding(building);
         }
     });
