@@ -26,19 +26,19 @@
         <h1>Your Village</h1>
         <div class="building">
             <h3>Headquarters (Level <span id="hq-level">1</span>)</h3>
-            <button class="upgrade-btn" onclick="upgradeBuilding('hq')">Upgrade</button>
+            <button class="upgrade-btn" data-building="hq">Upgrade</button>
         </div>
         <div class="building">
             <h3>Lumber Mill (Level <span id="lumber-level">1</span>)</h3>
-            <button class="upgrade-btn" onclick="upgradeBuilding('lumber')">Upgrade</button>
+            <button class="upgrade-btn" data-building="lumber">Upgrade</button>
         </div>
         <div class="building">
             <h3>Quarry (Level <span id="quarry-level">1</span>)</h3>
-            <button class="upgrade-btn" onclick="upgradeBuilding('quarry')">Upgrade</button>
+            <button class="upgrade-btn" data-building="quarry">Upgrade</button>
         </div>
         <div class="building">
             <h3>Iron Mine (Level <span id="iron-level">1</span>)</h3>
-            <button class="upgrade-btn" onclick="upgradeBuilding('iron')">Upgrade</button>
+            <button class="upgrade-btn" data-building="iron">Upgrade</button>
         </div>
     </section>
 
@@ -59,7 +59,7 @@
     <!-- 🔹 Notifications -->
     <div id="notification" class="hidden"></div>
 
-    <!-- Move the script tag here -->
+    <!-- 🔹 Script -->
     <script type="module" src="tribal.js"></script>
 </body>
 </html>
