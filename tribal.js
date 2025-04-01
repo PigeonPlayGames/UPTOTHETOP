@@ -13,6 +13,7 @@ const firebaseConfig = {
     messagingSenderId: "328069667156",
     appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
@@ -20,6 +21,7 @@ const db = getFirestore();
 let user = null;
 let villageData = { hq: 1, lumber: 1, quarry: 1, iron: 1, wood: 100, stone: 100, ironRes: 100, score: 0 };
 
+// Check user authentication
 onAuthStateChanged(auth, async (loggedInUser) => {
     if (!loggedInUser) {
         alert("You must be logged in to play!");
@@ -52,23 +54,19 @@ function updateUI() {
     document.getElementById("player-score").innerText = villageData.score;
 }
 
-document.querySelectorAll(".upgrade-btn").forEach(button => {
-    button.addEventListener("click", (event) => {
-        const building = event.target.getAttribute("data-building");
-        if (building && villageData.hasOwnProperty(building)) {
-            upgradeBuilding(building);
-        }
-    });
-});
-
 function upgradeBuilding(building) {
     if (!villageData[building]) return;
-    if (villageData.wood >= 10 && villageData.stone >= 10 && villageData.ironRes >= 5) {
-        villageData.wood -= 10;
-        villageData.stone -= 10;
-        villageData.ironRes -= 5;
+
+    // Resource cost for upgrading
+    const cost = { wood: 10, stone: 10, ironRes: 5 };
+
+    if (villageData.wood >= cost.wood && villageData.stone >= cost.stone && villageData.ironRes >= cost.ironRes) {
+        villageData.wood -= cost.wood;
+        villageData.stone -= cost.stone;
+        villageData.ironRes -= cost.ironRes;
         villageData[building]++;
         villageData.score += 10;
+
         showNotification(`${building.replace('-', ' ')} upgraded to Level ${villageData[building]}!`);
         updateUI();
         saveVillageData();
@@ -76,6 +74,9 @@ function upgradeBuilding(building) {
         showNotification("Not enough resources!");
     }
 }
+
+// Make upgrade function accessible globally
+window.upgradeBuilding = upgradeBuilding;
 
 async function saveVillageData() {
     if (!user) return;
@@ -86,6 +87,7 @@ async function saveVillageData() {
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
+
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
@@ -101,12 +103,14 @@ function loadLeaderboard() {
 function renderMap() {
     const mapContainer = document.getElementById("map-container");
     mapContainer.innerHTML = "";
+
     onSnapshot(collection(db, "villages"), (snapshot) => {
         mapContainer.innerHTML = "";
         snapshot.forEach(doc => {
             const data = doc.data();
             const village = document.createElement("div");
             village.classList.add("village-icon");
+            village.style.position = "absolute";
             village.style.left = `${Math.random() * 90}%`;
             village.style.top = `${Math.random() * 90}%`;
             village.innerText = "🏰";
