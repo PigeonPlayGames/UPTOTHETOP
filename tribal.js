@@ -92,6 +92,7 @@ setInterval(() => {
 
 // 🔹 Update UI
 function updateUI() {
+    const scrollY = window.scrollY; // Preserve scroll position
     document.getElementById("wood-count").innerText = villageData.wood;
     document.getElementById("stone-count").innerText = villageData.stone;
     document.getElementById("iron-count").innerText = villageData.iron;
@@ -100,6 +101,7 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
+    window.scrollTo(0, scrollY); // Restore scroll position
 }
 
 // 🔹 Load Leaderboard
