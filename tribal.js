@@ -28,6 +28,19 @@ const buildings = {
   iron: document.getElementById("iron-level"),
 };
 
+function initializePlayer() {
+  const userRef = ref(db, `players/${userId}`);
+  get(userRef).then((snapshot) => {
+    if (!snapshot.exists()) {
+      set(userRef, {
+        resources: { wood: 100, stone: 100, iron: 100 },
+        buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
+        score: 0
+      });
+    }
+  });
+}
+
 function loadGameData() {
   const userRef = ref(db, `players/${userId}`);
   onValue(userRef, (snapshot) => {
@@ -67,8 +80,9 @@ function upgradeBuilding(building) {
 }
 
 document.querySelectorAll(".upgrade-btn").forEach((button) => {
-  button.addEventListener("click", () => {
-    const building = button.dataset.building;
+  button.addEventListener("click", (event) => {
+    const building = event.target.dataset.building;
+    console.log("Upgrade clicked:", building);
     upgradeBuilding(building);
   });
 });
@@ -77,4 +91,5 @@ document.getElementById("logoutBtn").addEventListener("click", () => {
   alert("Logged out!"); // Replace with authentication logout logic
 });
 
+initializePlayer();
 loadGameData();
