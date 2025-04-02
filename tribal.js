@@ -2,13 +2,12 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, get, set, update, onValue } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  databaseURL: "YOUR_DATABASE_URL",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
+    authDomain: "up-to-battle.firebaseapp.com",
+    projectId: "up-to-battle",
+    storageBucket: "up-to-battle.appspot.com",
+    messagingSenderId: "328069667156",
+    appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
 
 const app = initializeApp(firebaseConfig);
