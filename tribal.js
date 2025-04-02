@@ -53,6 +53,7 @@ async function loadVillageData() {
 // 🔹 Save Village Data
 async function saveVillageData() {
     if (!user) return;
+    villageData.username = user.email.split("@")[0]; // Ensure username is saved
     await setDoc(doc(db, "villages", user.uid), villageData);
     loadLeaderboard();
 }
@@ -119,7 +120,8 @@ function loadLeaderboard() {
 }
 
 // 🔹 Logout
-document.getElementById("logoutBtn").addEventListener("click", () => {
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await saveVillageData(); // Ensure data is saved before logout
     auth.signOut().then(() => {
         window.location.href = "index.html";
     }).catch(error => console.error("Logout Error:", error));
