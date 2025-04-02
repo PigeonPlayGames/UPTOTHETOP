@@ -101,6 +101,14 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
+    
+    // Update upgrade costs
+    for (const building in villageData.buildings) {
+        const cost = villageData.buildings[building] * 50;
+        document.getElementById(`${building}-cost`).innerText = cost;
+        document.getElementById(`${building}-cost-stone`).innerText = cost;
+        document.getElementById(`${building}-cost-iron`).innerText = cost;
+    }
 }
 
 // 🔹 Load Leaderboard
@@ -118,22 +126,6 @@ function loadLeaderboard() {
             leaderboardList.appendChild(listItem);
         });
     });
-}
-
-// 🔹 Map Village Spawning
-function spawnVillageOnMap() {
-    const map = document.getElementById("map-container");
-    const villageIcon = document.createElement("div");
-    villageIcon.classList.add("village-icon");
-
-    const maxX = map.clientWidth - 40;
-    const maxY = map.clientHeight - 40;
-    const x = Math.max(0, Math.min(maxX, Math.random() * maxX));
-    const y = Math.max(0, Math.min(maxY, Math.random() * maxY));
-
-    villageIcon.style.left = `${x}px`;
-    villageIcon.style.top = `${y}px`;
-    map.appendChild(villageIcon);
 }
 
 // 🔹 Logout
