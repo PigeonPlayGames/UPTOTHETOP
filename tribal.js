@@ -34,7 +34,10 @@ onAuthStateChanged(auth, async (loggedInUser) => {
         return;
     }
     user = loggedInUser;
-    document.getElementById("player-name").innerText = user.email;
+    const playerNameElement = document.getElementById("player-name");
+    if (playerNameElement) {
+        playerNameElement.innerText = user.email;
+    }
     await loadVillageData();
     loadLeaderboard();
 });
@@ -57,6 +60,13 @@ async function saveVillageData() {
 }
 
 // 🔹 Upgrade Buildings
+document.querySelectorAll(".upgrade-btn").forEach(button => {
+    button.addEventListener("click", () => {
+        const building = button.getAttribute("data-building");
+        upgradeBuilding(building);
+    });
+});
+
 function upgradeBuilding(building) {
     const cost = villageData.buildings[building] * 50;
     if (villageData.wood >= cost && villageData.stone >= cost && villageData.iron >= cost) {
@@ -108,6 +118,22 @@ function loadLeaderboard() {
             leaderboardList.appendChild(listItem);
         });
     });
+}
+
+// 🔹 Map Village Spawning
+function spawnVillageOnMap() {
+    const map = document.getElementById("map-container");
+    const villageIcon = document.createElement("div");
+    villageIcon.classList.add("village-icon");
+
+    const maxX = map.clientWidth - 40;
+    const maxY = map.clientHeight - 40;
+    const x = Math.max(0, Math.min(maxX, Math.random() * maxX));
+    const y = Math.max(0, Math.min(maxY, Math.random() * maxY));
+
+    villageIcon.style.left = `${x}px`;
+    villageIcon.style.top = `${y}px`;
+    map.appendChild(villageIcon);
 }
 
 // 🔹 Logout
