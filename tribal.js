@@ -19,6 +19,7 @@ const db = getFirestore();
 // 🔹 Game Variables
 let user = null;
 let villageData = {
+    username: "Unknown Player",
     wood: 100,
     stone: 100,
     iron: 100,
@@ -34,10 +35,7 @@ onAuthStateChanged(auth, async (loggedInUser) => {
         return;
     }
     user = loggedInUser;
-    const playerNameElement = document.getElementById("player-name");
-    if (playerNameElement) {
-        playerNameElement.innerText = user.email;
-    }
+    villageData.username = user.email.split("@")[0]; // Use email prefix as username
     await loadVillageData();
     loadLeaderboard();
 });
@@ -101,14 +99,6 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
-    
-    // Update upgrade costs
-    for (const building in villageData.buildings) {
-        const cost = villageData.buildings[building] * 50;
-        document.getElementById(`${building}-cost`).innerText = cost;
-        document.getElementById(`${building}-cost-stone`).innerText = cost;
-        document.getElementById(`${building}-cost-iron`).innerText = cost;
-    }
 }
 
 // 🔹 Load Leaderboard
@@ -122,7 +112,7 @@ function loadLeaderboard() {
         snapshot.forEach(doc => {
             const data = doc.data();
             const listItem = document.createElement("li");
-            listItem.innerText = `${data.username} - ${data.score}`;
+            listItem.innerText = `${data.username || "Unknown"} - ${data.score}`;
             leaderboardList.appendChild(listItem);
         });
     });
