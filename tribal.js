@@ -106,9 +106,13 @@ function updateUI() {
     // Update upgrade costs
     for (const building in villageData.buildings) {
         const cost = villageData.buildings[building] * 50;
-        document.getElementById(`${building}-cost`).innerText = cost;
-        document.getElementById(`${building}-cost-stone`).innerText = cost;
-        document.getElementById(`${building}-cost-iron`).innerText = cost;
+        const costWood = document.getElementById(`${building}-cost`);
+        const costStone = document.getElementById(`${building}-cost-stone`);
+        const costIron = document.getElementById(`${building}-cost-iron`);
+        
+        if (costWood) costWood.innerText = cost;
+        if (costStone) costStone.innerText = cost;
+        if (costIron) costIron.innerText = cost;
     }
     
     window.scrollTo(0, scrollY); // Restore scroll position
@@ -134,6 +138,7 @@ function loadLeaderboard() {
 // 🔹 Load World Map
 async function loadWorldMap() {
     const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
     mapContainer.innerHTML = "<p>Loading map...</p>";
     
     const querySnapshot = await getDocs(collection(db, "villages"));
