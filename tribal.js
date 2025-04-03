@@ -92,6 +92,8 @@ setInterval(() => {
 
 // 🔹 Update UI
 function updateUI() {
+    if (!document.getElementById("wood-count")) return; // Ensure UI elements exist before updating
+    
     const scrollY = window.scrollY; // Preserve scroll position
     document.getElementById("wood-count").innerText = villageData.wood;
     document.getElementById("stone-count").innerText = villageData.stone;
@@ -102,19 +104,28 @@ function updateUI() {
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
     
-    // Update upgrade costs
+    // Update upgrade costs correctly
     document.querySelectorAll(".building").forEach(buildingElement => {
-        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+        const button = buildingElement.querySelector(".upgrade-btn");
+        if (!button) return;
+        
+        const buildingType = button.getAttribute("data-building");
         const cost = villageData.buildings[buildingType] * 50;
-        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+        
+        const costElement = buildingElement.querySelector(".upgrade-cost");
+        if (costElement) {
+            costElement.innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+        }
     });
-    
+
     window.scrollTo(0, scrollY); // Restore scroll position
 }
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
+    if (!leaderboardList) return;
+
     leaderboardList.innerHTML = "<li>Loading...</li>";
     
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
@@ -130,7 +141,7 @@ function loadLeaderboard() {
 }
 
 // 🔹 Logout
-document.getElementById("logoutBtn").addEventListener("click", async () => {
+document.getElementById("logoutBtn")?.addEventListener("click", async () => {
     await saveVillageData(); // Ensure data is saved before logout
     auth.signOut().then(() => {
         window.location.href = "index.html";
