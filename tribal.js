@@ -1,7 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -38,6 +38,7 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     villageData.username = user.email.split("@")[0]; // Use email prefix as username
     await loadVillageData();
     loadLeaderboard();
+    loadWorldMap();
 });
 
 // 🔹 Load Village Data
@@ -92,8 +93,6 @@ setInterval(() => {
 
 // 🔹 Update UI
 function updateUI() {
-    if (!document.getElementById("wood-count")) return; // Ensure UI elements exist before updating
-    
     const scrollY = window.scrollY; // Preserve scroll position
     document.getElementById("wood-count").innerText = villageData.wood;
     document.getElementById("stone-count").innerText = villageData.stone;
@@ -103,29 +102,12 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
-    
-    // Update upgrade costs correctly
-    document.querySelectorAll(".building").forEach(buildingElement => {
-        const button = buildingElement.querySelector(".upgrade-btn");
-        if (!button) return;
-        
-        const buildingType = button.getAttribute("data-building");
-        const cost = villageData.buildings[buildingType] * 50;
-        
-        const costElement = buildingElement.querySelector(".upgrade-cost");
-        if (costElement) {
-            costElement.innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
-        }
-    });
-
     window.scrollTo(0, scrollY); // Restore scroll position
 }
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
-    if (!leaderboardList) return;
-
     leaderboardList.innerHTML = "<li>Loading...</li>";
     
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
@@ -140,8 +122,28 @@ function loadLeaderboard() {
     });
 }
 
+// 🔹 Load World Map
+async function loadWorldMap() {
+    const mapContainer = document.getElementById("map-container");
+    mapContainer.innerHTML = "<p>Loading map...</p>";
+    
+    const querySnapshot = await getDocs(collection(db, "villages"));
+    mapContainer.innerHTML = "";
+    
+    querySnapshot.forEach(doc => {
+        const village = doc.data();
+        const villageElement = document.createElement("div");
+        villageElement.classList.add("village-marker");
+        villageElement.innerText = village.username;
+        villageElement.addEventListener("click", () => {
+            alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
+        });
+        mapContainer.appendChild(villageElement);
+    });
+}
+
 // 🔹 Logout
-document.getElementById("logoutBtn")?.addEventListener("click", async () => {
+document.getElementById("logoutBtn").addEventListener("click", async () => {
     await saveVillageData(); // Ensure data is saved before logout
     auth.signOut().then(() => {
         window.location.href = "index.html";
