@@ -102,6 +102,15 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
+    
+    // Update upgrade costs
+    for (const building in villageData.buildings) {
+        const cost = villageData.buildings[building] * 50;
+        document.getElementById(`${building}-cost`).innerText = cost;
+        document.getElementById(`${building}-cost-stone`).innerText = cost;
+        document.getElementById(`${building}-cost-iron`).innerText = cost;
+    }
+    
     window.scrollTo(0, scrollY); // Restore scroll position
 }
 
