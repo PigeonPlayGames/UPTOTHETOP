@@ -1,7 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -18,13 +18,14 @@ const db = getFirestore();
 
 // 🔹 Game Variables
 let user = null;
-let highScore = 0;
-let gameRunning = false;
-let canvas, ctx;
-let player, obstacles = [];
-let gravity = 0.5, jumpPower = -10;
-let score = 0;
-let gameLoop;
+let villageData = {
+    username: "Unknown Player",
+    wood: 100,
+    stone: 100,
+    iron: 100,
+    score: 0,
+    buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 }
+};
 
 // 🔹 Check Auth State
 onAuthStateChanged(auth, async (loggedInUser) => {
@@ -34,147 +35,131 @@ onAuthStateChanged(auth, async (loggedInUser) => {
         return;
     }
     user = loggedInUser;
-    document.getElementById("player-email").innerText = user.email;
-    await loadHighScore();
+    villageData.username = user.email.split("@")[0]; // Use email prefix as username
+    await loadVillageData();
     loadLeaderboard();
+    loadWorldMap();
 });
 
-// 🔹 Load High Score
-async function loadHighScore() {
+// 🔹 Load Village Data
+async function loadVillageData() {
     if (!user) return;
-    const userDoc = await getDoc(doc(db, "scores", user.uid));
+    const userDoc = await getDoc(doc(db, "villages", user.uid));
     if (userDoc.exists()) {
-        highScore = userDoc.data().score;
-        document.getElementById("highScore").innerText = highScore;
+        villageData = userDoc.data();
     }
+    updateUI();
+}
+
+// 🔹 Save Village Data
+async function saveVillageData() {
+    if (!user) return;
+    villageData.username = user.email.split("@")[0]; // Ensure username is saved
+    await setDoc(doc(db, "villages", user.uid), villageData);
+    loadLeaderboard();
+}
+
+// 🔹 Upgrade Buildings
+document.querySelectorAll(".upgrade-btn").forEach(button => {
+    button.addEventListener("click", () => {
+        const building = button.getAttribute("data-building");
+        upgradeBuilding(building);
+    });
+});
+
+function upgradeBuilding(building) {
+    const cost = villageData.buildings[building] * 50;
+    if (villageData.wood >= cost && villageData.stone >= cost && villageData.iron >= cost) {
+        villageData.wood -= cost;
+        villageData.stone -= cost;
+        villageData.iron -= cost;
+        villageData.buildings[building]++;
+        villageData.score += 10;
+        saveVillageData();
+        updateUI();
+    } else {
+        alert("Not enough resources!");
+    }
+}
+
+// 🔹 Generate Resources Over Time
+setInterval(() => {
+    villageData.wood += villageData.buildings.lumber * 5;
+    villageData.stone += villageData.buildings.quarry * 5;
+    villageData.iron += villageData.buildings.iron * 5;
+    saveVillageData();
+    updateUI();
+}, 5000);
+
+// 🔹 Update UI
+function updateUI() {
+    const scrollY = window.scrollY; // Preserve scroll position
+    document.getElementById("wood-count").innerText = villageData.wood;
+    document.getElementById("stone-count").innerText = villageData.stone;
+    document.getElementById("iron-count").innerText = villageData.iron;
+    document.getElementById("player-score").innerText = villageData.score;
+    document.getElementById("hq-level").innerText = villageData.buildings.hq;
+    document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
+    document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
+    document.getElementById("iron-level").innerText = villageData.buildings.iron;
+    
+    // Update upgrade costs
+    for (const building in villageData.buildings) {
+        const cost = villageData.buildings[building] * 50;
+        const costWood = document.getElementById(`${building}-cost`);
+        const costStone = document.getElementById(`${building}-cost-stone`);
+        const costIron = document.getElementById(`${building}-cost-iron`);
+        
+        if (costWood) costWood.innerText = cost;
+        if (costStone) costStone.innerText = cost;
+        if (costIron) costIron.innerText = cost;
+    }
+    
+    window.scrollTo(0, scrollY); // Restore scroll position
 }
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
-
-    const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(10));
+    
+    const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
         snapshot.forEach(doc => {
             const data = doc.data();
             const listItem = document.createElement("li");
-            listItem.innerText = `${data.username} - ${data.score}`;
+            listItem.innerText = `${data.username || "Unknown"} - ${data.score}`;
             leaderboardList.appendChild(listItem);
         });
     });
 }
 
-// 🔹 Start Game
-document.getElementById("startGameBtn").addEventListener("click", startGame);
-
-function startGame() {
-    if (gameRunning) return;
-
-    score = 0;
-    obstacles = [];
-    gameRunning = true;
-
-    if (canvas) canvas.remove();
-
-    canvas = document.createElement("canvas");
-    canvas.id = "gameCanvas";
-    canvas.width = 800;
-    canvas.height = 500;
-    document.getElementById("game-container").appendChild(canvas);
-    ctx = canvas.getContext("2d");
-
-    player = { x: 50, y: 350, width: 50, height: 50, velocityY: 0, jumping: false };
-
-    gameLoop = setInterval(updateGame, 20);
-
-    document.addEventListener("keydown", jump);
-    canvas.addEventListener("click", jump);
-}
-
-// 🔹 Jump Function
-function jump(event) {
-    if (!gameRunning || player.jumping) return;
-    player.velocityY = jumpPower;
-    player.jumping = true;
-}
-
-// 🔹 Update Game
-function updateGame() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Apply gravity
-    player.velocityY += gravity;
-    player.y += player.velocityY;
-
-    if (player.y >= 350) {
-        player.y = 350;
-        player.jumping = false;
-    }
-
-    ctx.fillStyle = "blue";
-    ctx.fillRect(player.x, player.y, player.width, player.height);
-
-    // Generate obstacles
-    if (Math.random() < 0.02) {
-        obstacles.push({ x: canvas.width, y: 370, width: 30, height: 30 });
-    }
-
-    // Move & draw obstacles
-    ctx.fillStyle = "red";
-    for (let i = 0; i < obstacles.length; i++) {
-        obstacles[i].x -= 5;
-        ctx.fillRect(obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
-
-        // Check collision
-        if (detectCollision(player, obstacles[i])) {
-            endGame();
-            return;
-        }
-    }
-
-    // Increase score
-    score++;
-    document.getElementById("score").innerText = score;
-}
-
-// 🔹 Detect Collision
-function detectCollision(player, obstacle) {
-    return (
-        player.x < obstacle.x + obstacle.width &&
-        player.x + player.width > obstacle.x &&
-        player.y < obstacle.y + obstacle.height &&
-        player.y + player.height > obstacle.y
-    );
-}
-
-// 🔹 End Game
-function endGame() {
-    clearInterval(gameLoop);
-    gameRunning = false;
-    saveScore();
-    alert("Game Over! Score saved.");
-}
-
-// 🔹 Save Score
-async function saveScore() {
-    if (!user) return;
-
-    if (score > highScore) {
-        highScore = score;
-        document.getElementById("highScore").innerText = highScore;
-
-        await setDoc(doc(db, "scores", user.uid), {
-            username: user.email,
-            score: highScore
+// 🔹 Load World Map
+async function loadWorldMap() {
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
+    mapContainer.innerHTML = "<p>Loading map...</p>";
+    
+    const querySnapshot = await getDocs(collection(db, "villages"));
+    mapContainer.innerHTML = "";
+    
+    querySnapshot.forEach(doc => {
+        const village = doc.data();
+        const villageElement = document.createElement("div");
+        villageElement.classList.add("village-marker");
+        villageElement.innerText = village.username;
+        villageElement.addEventListener("click", () => {
+            alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
         });
-
-        loadLeaderboard();
-    }
+        mapContainer.appendChild(villageElement);
+    });
 }
 
-// 🔹 Home Button
-document.getElementById("homeBtn").addEventListener("click", () => {
-    window.location.href = "index.html";
+// 🔹 Logout
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await saveVillageData(); // Ensure data is saved before logout
+    auth.signOut().then(() => {
+        window.location.href = "index.html";
+    }).catch(error => console.error("Logout Error:", error));
 });
