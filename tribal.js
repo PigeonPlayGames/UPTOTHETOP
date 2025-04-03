@@ -1,7 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -38,7 +38,6 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     villageData.username = user.email.split("@")[0]; // Use email prefix as username
     await loadVillageData();
     loadLeaderboard();
-    loadWorldMap();
 });
 
 // 🔹 Load Village Data
@@ -104,16 +103,11 @@ function updateUI() {
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
     
     // Update upgrade costs
-    for (const building in villageData.buildings) {
-        const cost = villageData.buildings[building] * 50;
-        const costWood = document.getElementById(`${building}-cost`);
-        const costStone = document.getElementById(`${building}-cost-stone`);
-        const costIron = document.getElementById(`${building}-cost-iron`);
-        
-        if (costWood) costWood.innerText = cost;
-        if (costStone) costStone.innerText = cost;
-        if (costIron) costIron.innerText = cost;
-    }
+    document.querySelectorAll(".building").forEach(buildingElement => {
+        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+        const cost = villageData.buildings[buildingType] * 50;
+        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+    });
     
     window.scrollTo(0, scrollY); // Restore scroll position
 }
@@ -132,27 +126,6 @@ function loadLeaderboard() {
             listItem.innerText = `${data.username || "Unknown"} - ${data.score}`;
             leaderboardList.appendChild(listItem);
         });
-    });
-}
-
-// 🔹 Load World Map
-async function loadWorldMap() {
-    const mapContainer = document.getElementById("map-container");
-    if (!mapContainer) return;
-    mapContainer.innerHTML = "<p>Loading map...</p>";
-    
-    const querySnapshot = await getDocs(collection(db, "villages"));
-    mapContainer.innerHTML = "";
-    
-    querySnapshot.forEach(doc => {
-        const village = doc.data();
-        const villageElement = document.createElement("div");
-        villageElement.classList.add("village-marker");
-        villageElement.innerText = village.username;
-        villageElement.addEventListener("click", () => {
-            alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
-        });
-        mapContainer.appendChild(villageElement);
     });
 }
 
