@@ -92,7 +92,6 @@ setInterval(() => {
 
 // 🔹 Update UI
 function updateUI() {
-    const scrollX = window.scrollX;
     const scrollY = window.scrollY; // Preserve scroll position
     document.getElementById("wood-count").innerText = villageData.wood;
     document.getElementById("stone-count").innerText = villageData.stone;
@@ -102,7 +101,15 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
-    window.scrollTo(scrollX, scrollY); // Restore scroll position exactly
+    
+    // Update upgrade costs
+    document.querySelectorAll(".building").forEach(buildingElement => {
+        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+        const cost = villageData.buildings[buildingType] * 50;
+        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+    });
+    
+    window.scrollTo(0, scrollY); // Restore scroll position
 }
 
 // 🔹 Load Leaderboard
