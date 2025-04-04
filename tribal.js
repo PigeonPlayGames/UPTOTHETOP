@@ -102,6 +102,13 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
+
+    // 🔹 Update Upgrade Costs in UI
+    document.getElementById("hq-cost").innerText = villageData.buildings.hq * 50;
+    document.getElementById("lumber-cost").innerText = villageData.buildings.lumber * 50;
+    document.getElementById("quarry-cost").innerText = villageData.buildings.quarry * 50;
+    document.getElementById("iron-cost").innerText = villageData.buildings.iron * 50;
+
     window.scrollTo(0, scrollY);
 }
 
@@ -143,14 +150,20 @@ async function loadWorldMap() {
     });
 
     let scale = 1;
-    document.getElementById("zoom-in").addEventListener("click", () => {
-        scale += 0.1;
-        mapContainer.style.transform = `scale(${scale})`;
-    });
-    document.getElementById("zoom-out").addEventListener("click", () => {
-        scale = Math.max(0.5, scale - 0.1);
-        mapContainer.style.transform = `scale(${scale})`;
-    });
+    
+    const zoomInBtn = document.getElementById("zoom-in");
+    const zoomOutBtn = document.getElementById("zoom-out");
+
+    if (zoomInBtn && zoomOutBtn) {
+        zoomInBtn.addEventListener("click", () => {
+            scale += 0.1;
+            mapContainer.style.transform = `scale(${scale})`;
+        });
+        zoomOutBtn.addEventListener("click", () => {
+            scale = Math.max(0.5, scale - 0.1);
+            mapContainer.style.transform = `scale(${scale})`;
+        });
+    }
 }
 
 // 🔹 Logout
