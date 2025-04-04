@@ -130,23 +130,36 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 Load World Map
+// 🔹 Load World Map with Grid Layout
 async function loadWorldMap() {
     const mapContainer = document.getElementById("map-container");
     if (!mapContainer) return;
     mapContainer.innerHTML = "<p>Loading map...</p>";
+    mapContainer.style.display = "grid";
+    mapContainer.style.gridTemplateColumns = "repeat(auto-fill, minmax(100px, 1fr))";
+    mapContainer.style.gap = "10px";
+    mapContainer.style.padding = "10px";
+    mapContainer.style.background = "#e5d6ba";
+    mapContainer.style.borderRadius = "10px";
+
     const querySnapshot = await getDocs(collection(db, "villages"));
     mapContainer.innerHTML = "";
+
     querySnapshot.forEach(doc => {
         const village = doc.data();
         const villageElement = document.createElement("div");
-        villageElement.classList.add("village-marker");
-        villageElement.style.left = `${Math.random() * 90}%`;
-        villageElement.style.top = `${Math.random() * 90}%`;
+        villageElement.classList.add("village-tile");
         villageElement.innerText = village.username;
+        villageElement.style.textAlign = "center";
+        villageElement.style.padding = "10px";
+        villageElement.style.border = "2px solid #8b5a2b";
+        villageElement.style.background = "#f4e1c1";
+        villageElement.style.borderRadius = "8px";
+        villageElement.style.cursor = "pointer";
         villageElement.addEventListener("click", () => {
             alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
         });
+
         mapContainer.appendChild(villageElement);
     });
 }
