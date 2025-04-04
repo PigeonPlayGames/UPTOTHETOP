@@ -1,7 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -35,9 +35,10 @@ onAuthStateChanged(auth, async (loggedInUser) => {
         return;
     }
     user = loggedInUser;
-    villageData.username = user.email.split("@")[0]; // Use email prefix as username
+    villageData.username = user.email.split("@")[0];
     await loadVillageData();
     loadLeaderboard();
+    loadWorldMap();
 });
 
 // 🔹 Load Village Data
@@ -53,7 +54,7 @@ async function loadVillageData() {
 // 🔹 Save Village Data
 async function saveVillageData() {
     if (!user) return;
-    villageData.username = user.email.split("@")[0]; // Ensure username is saved
+    villageData.username = user.email.split("@")[0];
     await setDoc(doc(db, "villages", user.uid), villageData);
     loadLeaderboard();
 }
@@ -92,7 +93,7 @@ setInterval(() => {
 
 // 🔹 Update UI
 function updateUI() {
-    const scrollY = window.scrollY; // Preserve scroll position
+    const scrollY = window.scrollY;
     document.getElementById("wood-count").innerText = villageData.wood;
     document.getElementById("stone-count").innerText = villageData.stone;
     document.getElementById("iron-count").innerText = villageData.iron;
@@ -101,22 +102,13 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
-    
-    // Update upgrade costs
-    document.querySelectorAll(".building").forEach(buildingElement => {
-        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
-        const cost = villageData.buildings[buildingType] * 50;
-        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
-    });
-    
-    window.scrollTo(0, scrollY); // Restore scroll position
+    window.scrollTo(0, scrollY);
 }
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
-    
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
@@ -129,9 +121,30 @@ function loadLeaderboard() {
     });
 }
 
+// 🔹 Load World Map
+async function loadWorldMap() {
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
+    mapContainer.innerHTML = "<p>Loading map...</p>";
+    const querySnapshot = await getDocs(collection(db, "villages"));
+    mapContainer.innerHTML = "";
+    querySnapshot.forEach(doc => {
+        const village = doc.data();
+        const villageElement = document.createElement("div");
+        villageElement.classList.add("village-marker");
+        villageElement.style.left = `${Math.random() * 90}%`;
+        villageElement.style.top = `${Math.random() * 90}%`;
+        villageElement.innerText = village.username;
+        villageElement.addEventListener("click", () => {
+            alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
+        });
+        mapContainer.appendChild(villageElement);
+    });
+}
+
 // 🔹 Logout
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-    await saveVillageData(); // Ensure data is saved before logout
+    await saveVillageData();
     auth.signOut().then(() => {
         window.location.href = "index.html";
     }).catch(error => console.error("Logout Error:", error));
