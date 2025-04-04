@@ -102,17 +102,8 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
-
-    // 🔹 Ensure upgrade costs update correctly
-    document.querySelectorAll(".building").forEach(buildingElement => {
-        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
-        const cost = villageData.buildings[buildingType] * 50;
-        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
-    });
-
     window.scrollTo(0, scrollY);
 }
-
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
@@ -130,37 +121,35 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 Load World Map with Grid Layout
+// 🔹 Load World Map with Zoom Feature
 async function loadWorldMap() {
     const mapContainer = document.getElementById("map-container");
     if (!mapContainer) return;
     mapContainer.innerHTML = "<p>Loading map...</p>";
-    mapContainer.style.display = "grid";
-    mapContainer.style.gridTemplateColumns = "repeat(auto-fill, minmax(100px, 1fr))";
-    mapContainer.style.gap = "10px";
-    mapContainer.style.padding = "10px";
-    mapContainer.style.background = "#e5d6ba";
-    mapContainer.style.borderRadius = "10px";
-
     const querySnapshot = await getDocs(collection(db, "villages"));
     mapContainer.innerHTML = "";
-
+    
     querySnapshot.forEach(doc => {
         const village = doc.data();
         const villageElement = document.createElement("div");
-        villageElement.classList.add("village-tile");
+        villageElement.classList.add("village-marker");
+        villageElement.style.left = `${Math.random() * 100}%`;
+        villageElement.style.top = `${Math.random() * 100}%`;
         villageElement.innerText = village.username;
-        villageElement.style.textAlign = "center";
-        villageElement.style.padding = "10px";
-        villageElement.style.border = "2px solid #8b5a2b";
-        villageElement.style.background = "#f4e1c1";
-        villageElement.style.borderRadius = "8px";
-        villageElement.style.cursor = "pointer";
         villageElement.addEventListener("click", () => {
             alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
         });
-
         mapContainer.appendChild(villageElement);
+    });
+
+    let scale = 1;
+    document.getElementById("zoom-in").addEventListener("click", () => {
+        scale += 0.1;
+        mapContainer.style.transform = `scale(${scale})`;
+    });
+    document.getElementById("zoom-out").addEventListener("click", () => {
+        scale = Math.max(0.5, scale - 0.1);
+        mapContainer.style.transform = `scale(${scale})`;
     });
 }
 
