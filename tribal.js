@@ -102,8 +102,17 @@ function updateUI() {
     document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
+
+    // 🔹 Ensure upgrade costs update correctly
+    document.querySelectorAll(".building").forEach(buildingElement => {
+        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+        const cost = villageData.buildings[buildingType] * 50;
+        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+    });
+
     window.scrollTo(0, scrollY);
 }
+
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
