@@ -6,31 +6,36 @@
   <title>Medieval Village</title>
   <style>
     body {
-      background: linear-gradient(to top, #a9d6c3, #87ceeb);
+      background: radial-gradient(circle, #a9d6c3 40%, #87ceeb 100%);
       margin: 0;
-      padding: 40px;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       font-family: serif;
     }
 
-    .village {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 40px;
+    .village-container {
+      position: relative;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      border: 15px solid #666;
+      background: #d9c2a3;
+      box-shadow: inset 0 0 40px rgba(0,0,0,0.4);
     }
 
     .building {
-      position: relative;
+      position: absolute;
       width: 100px;
       height: 100px;
       display: flex;
-      align-items: flex-end;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
     }
 
     .roof {
-      position: absolute;
-      top: 0;
       width: 0;
       height: 0;
       border-left: 50px solid transparent;
@@ -53,22 +58,9 @@
       border-bottom-color: #555;
     }
 
-    .wall {
-      width: 200px;
-      height: 50px;
-      background: #666;
-      border: 4px solid #444;
-      position: relative;
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-    }
-
-    .brick {
-      width: 30px;
-      height: 20px;
-      background: #888;
-      border: 2px solid #444;
+    .quarry {
+      background: #b0a99f;
+      border: 3px dashed #555;
     }
 
     .mine {
@@ -77,35 +69,15 @@
       background: #3e3e3e;
       border-radius: 50% 50% 0 0;
       border: 3px solid #222;
-      position: relative;
-    }
-
-    .rails {
-      position: absolute;
-      bottom: 0;
-      width: 100%;
-      height: 10px;
-      background: #555;
-    }
-
-    .quarry {
-      background: #b0a99f;
-      border: 3px dashed #555;
-    }
-
-    .label {
-      margin-top: 10px;
-      font-weight: bold;
-      text-align: center;
+      margin-top: 30px;
     }
 
     .tree {
       width: 20px;
       height: 60px;
       background: #5a2a0c;
-      position: absolute;
-      left: 10px;
-      bottom: 0;
+      position: relative;
+      margin-top: 10px;
     }
 
     .tree::after {
@@ -119,24 +91,40 @@
       border-radius: 50%;
     }
 
-    /* Layout blocks */
-    .hq, .lumber, .quarry-b, .mine-b {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+    .label {
+      font-weight: bold;
+      margin-top: 8px;
+      text-align: center;
     }
 
+    /* Placement */
+    .hq       { top: 40%; left: 40%; transform: translate(-50%, -50%); }
+    .lumber   { top: 10%; left: 50%; transform: translate(-50%, -50%); }
+    .quarry   { top: 50%; left: 10%; transform: translate(-50%, -50%); }
+    .iron     { top: 80%; left: 50%; transform: translate(-50%, -50%); }
+    .wall-b   { top: 50%; left: 90%; transform: translate(-50%, -50%); }
+
+    .wall-text {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      top: -30px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
   </style>
 </head>
 <body>
 
-  <div class="village">
+  <div class="village-container">
+    <div class="wall-text">Village Wall</div>
 
     <!-- Headquarters -->
     <div class="building hq">
       <div class="roof castle-roof"></div>
       <div class="structure castle"></div>
-      <div class="label">Headquarters</div>
+      <div class="label">HQ</div>
     </div>
 
     <!-- Lumber Mill -->
@@ -145,33 +133,30 @@
       <div class="structure">
         <div class="tree"></div>
       </div>
-      <div class="label">Lumber Mill</div>
+      <div class="label">Lumber</div>
     </div>
 
     <!-- Quarry -->
-    <div class="building quarry-b">
+    <div class="building quarry">
       <div class="roof" style="border-bottom-color:#888;"></div>
       <div class="structure quarry"></div>
       <div class="label">Quarry</div>
     </div>
 
     <!-- Iron Mine -->
-    <div class="building mine-b">
+    <div class="building iron">
       <div class="mine"></div>
-      <div class="rails"></div>
-      <div class="label">Iron Mine</div>
+      <div class="label">Iron</div>
     </div>
 
-    <!-- Wall -->
+    <!-- Wall symbol on one side -->
     <div class="building wall-b">
-      <div class="wall">
-        <div class="brick"></div>
-        <div class="brick"></div>
-        <div class="brick"></div>
+      <div style="width: 60px; height: 40px; background: #666; display: flex; gap: 5px;">
+        <div style="flex: 1; background: #888;"></div>
+        <div style="flex: 1; background: #888;"></div>
       </div>
       <div class="label">Wall</div>
     </div>
-
   </div>
 
 </body>
