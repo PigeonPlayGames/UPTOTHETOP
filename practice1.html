@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Medieval Village</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(#d2b48c, #a0522d);
+      font-family: 'Cinzel', serif;
+    }
+
+    .village {
+      display: grid;
+      grid-template-areas:
+        "wall wall wall"
+        "hq lumber quarry"
+        "iron iron iron";
+      gap: 20px;
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .building {
+      background: #e0c097;
+      border: 3px solid #5c3a21;
+      border-radius: 15px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      padding: 20px;
+      text-align: center;
+      transition: transform 0.2s ease-in-out;
+      position: relative;
+    }
+
+    .building:hover {
+      transform: scale(1.05);
+      cursor: pointer;
+    }
+
+    .wall { grid-area: wall; background: #7c6f64; color: white; }
+    .hq { grid-area: hq; }
+    .lumber { grid-area: lumber; }
+    .quarry { grid-area: quarry; }
+    .iron { grid-area: iron; }
+
+    .building h2 {
+      margin-top: 0;
+      font-size: 1.4em;
+    }
+
+    .building::before {
+      content: "";
+      position: absolute;
+      top: -15px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px;
+      height: 60px;
+      background-size: cover;
+    }
+
+    .hq::before {
+      background-image: url('https://cdn-icons-png.flaticon.com/512/756/756345.png'); /* Castle Icon */
+    }
+
+    .lumber::before {
+      background-image: url('https://cdn-icons-png.flaticon.com/512/4273/4273024.png'); /* Lumber Icon */
+    }
+
+    .quarry::before {
+      background-image: url('https://cdn-icons-png.flaticon.com/512/3197/3197725.png'); /* Quarry/Rocks Icon */
+    }
+
+    .iron::before {
+      background-image: url('https://cdn-icons-png.flaticon.com/512/1046/1046857.png'); /* Iron Icon */
+    }
+
+    .wall::before {
+      background-image: url('https://cdn-icons-png.flaticon.com/512/808/808424.png'); /* Wall Icon */
+    }
+
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500&display=swap');
+  </style>
+</head>
+<body>
+  <div class="village">
+    <div class="building wall">
+      <h2>Wall</h2>
+      <p>Protects the village from invaders.</p>
+    </div>
+    <div class="building hq">
+      <h2>Headquarters</h2>
+      <p>Central hub for upgrades and expansion.</p>
+    </div>
+    <div class="building lumber">
+      <h2>Lumber Mill</h2>
+      <p>Produces wood for construction.</p>
+    </div>
+    <div class="building quarry">
+      <h2>Quarry</h2>
+      <p>Gathers stone for buildings and walls.</p>
+    </div>
+    <div class="building iron">
+      <h2>Iron Mine</h2>
+      <p>Extracts iron for weapons and tools.</p>
+    </div>
+  </div>
+</body>
+</html>
