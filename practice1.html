@@ -21,8 +21,15 @@
       height: 500px;
       border-radius: 50%;
       border: 15px solid #666;
-      background: #d9c2a3;
-      box-shadow: inset 0 0 40px rgba(0,0,0,0.4);
+      background: radial-gradient(circle at center, #d9c2a3 60%, #b8a081);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3), inset 0 0 30px rgba(0,0,0,0.2);
+      perspective: 800px;
+      animation: pan 20s infinite linear alternate;  
+    }
+
+    @keyframes pan {
+      0%   { transform: rotateX(0deg) rotateY(0deg); }
+      100% { transform: rotateX(10deg) rotateY(20deg); }
     }
 
     .building {
@@ -33,6 +40,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: flex-end;
+      transform-style: preserve-3d;
     }
 
     .roof {
@@ -41,6 +49,8 @@
       border-left: 50px solid transparent;
       border-right: 50px solid transparent;
       border-bottom: 30px solid #5a2a0c;
+      transform: rotateX(25deg);
+      box-shadow: 0 6px 6px rgba(0,0,0,0.2);
     }
 
     .structure {
@@ -50,8 +60,15 @@
       border: 3px solid #5a2a0c;
     }
 
+    .structure, .roof {
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      border-radius: 2px;
+}
+
     .castle {
-      background: #999;
+      background: linear-gradient(to bottom, #999, #666);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+      transform: rotateX(15deg);
     }
 
     .castle-roof {
@@ -61,23 +78,34 @@
     .quarry {
       background: #b0a99f;
       border: 3px dashed #555;
+      background: repeating-linear-gradient(
+      45deg,
+      #aaa,
+      #aaa 5px,
+      #bbb 5px,
+      #bbb 10px
+      );
+      transform: rotateX(10deg);
     }
 
     .mine {
       width: 100px;
       height: 70px;
-      background: #3e3e3e;
       border-radius: 50% 50% 0 0;
       border: 3px solid #222;
       margin-top: 30px;
+      background: radial-gradient(ellipse at center, #444 20%, #222 90%);
+      transform: rotateX(20deg);
+      box-shadow: inset 0 -10px 20px rgba(0,0,0,0.4);
     }
 
     .tree {
       width: 20px;
       height: 60px;
-      background: #5a2a0c;
       position: relative;
       margin-top: 10px;
+      background: linear-gradient(to bottom, #6b3f1d, #40210b);
+      box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
 
     .tree::after {
@@ -87,8 +115,14 @@
       left: -20px;
       width: 60px;
       height: 40px;
-      background: green;
       border-radius: 50%;
+      background: radial-gradient(circle, #0b3, #060);
+      box-shadow: inset -5px -5px 10px rgba(0,0,0,0.4);
+    }
+
+    .wall-b div {
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+      transform: rotateX(10deg);
     }
 
     .label {
@@ -96,6 +130,7 @@
       margin-top: 8px;
       text-align: center;
     }
+    
 
     /* Placement */
     .hq       { top: 40%; left: 40%; transform: translate(-50%, -50%); }
