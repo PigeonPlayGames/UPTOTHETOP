@@ -113,6 +113,7 @@ nav button:hover {
     touch-action: none;        /* allow custom touch gestures */
     background: #c8b9a7;
     border-radius: 10px;
+    touch-action: none;
 }
 
 /* giant scrollable surface */
