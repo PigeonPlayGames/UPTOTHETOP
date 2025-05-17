@@ -21,17 +21,8 @@ const db = getFirestore();
 
 // 🔹 Game State
 let user = null;
-let villageData = {
-    username: "Unknown Player",
-    userId: null,
-    wood: 100,
-    stone: 100,
-    iron: 100,
-    score: 0,
-    x: Math.floor(Math.random() * 3000),
-    y: Math.floor(Math.random() * 3000),
-    buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 }
-};
+let villageData = null;
+let villageDataLoaded = false;
 
 // 🔹 Auth Check
 onAuthStateChanged(auth, async (loggedInUser) => {
@@ -40,39 +31,51 @@ onAuthStateChanged(auth, async (loggedInUser) => {
         window.location.href = "index.html";
         return;
     }
+
     user = loggedInUser;
-    villageData.username = user.email.split("@")[0];
-    villageData.userId = user.uid;
     await loadVillageData();
+    startGameLoops();
     loadLeaderboard();
     loadWorldMap();
 });
 
 // 🔹 Load Village Data
 async function loadVillageData() {
-    if (!user) return;
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
 
     if (snapshot.exists()) {
         villageData = snapshot.data();
+        console.log("Loaded existing village:", villageData);
     } else {
-        villageData.x = Math.floor(Math.random() * 3000);
-        villageData.y = Math.floor(Math.random() * 3000);
-        villageData.userId = user.uid;
+        villageData = {
+            username: user.email.split("@")[0],
+            userId: user.uid,
+            wood: 100,
+            stone: 100,
+            iron: 100,
+            score: 0,
+            x: Math.floor(Math.random() * 3000),
+            y: Math.floor(Math.random() * 3000),
+            buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 }
+        };
+        console.log("Creating new village:", villageData);
         await saveVillageData();
     }
 
+    villageDataLoaded = true;
     updateUI();
 }
 
 // 🔹 Save Village Data
 async function saveVillageData() {
-    if (!user) return;
-    villageData.username = user.email.split("@")[0];
-    villageData.userId = user.uid;
-    await setDoc(doc(db, "villages", user.uid), villageData);
-    loadLeaderboard();
+    if (!user || !villageDataLoaded) return;
+    try {
+        await setDoc(doc(db, "villages", user.uid), villageData);
+        console.log("Village saved.");
+    } catch (err) {
+        console.error("Failed to save village:", err);
+    }
 }
 
 // 🔹 Upgrade Buildings
@@ -84,6 +87,8 @@ document.querySelectorAll(".upgrade-btn").forEach(button => {
 });
 
 function upgradeBuilding(building) {
+    if (!villageDataLoaded) return;
+
     const level = villageData.buildings[building];
     const cost = level * 50;
 
@@ -100,17 +105,23 @@ function upgradeBuilding(building) {
     }
 }
 
-// 🔹 Auto Resource Generation
-setInterval(() => {
-    villageData.wood += villageData.buildings.lumber * 5;
-    villageData.stone += villageData.buildings.quarry * 5;
-    villageData.iron += villageData.buildings.iron * 5;
-    saveVillageData();
-    updateUI();
-}, 5000);
+// 🔹 Auto Resource Generation Loop
+function startGameLoops() {
+    setInterval(() => {
+        if (!villageDataLoaded) return;
+
+        villageData.wood += villageData.buildings.lumber * 5;
+        villageData.stone += villageData.buildings.quarry * 5;
+        villageData.iron += villageData.buildings.iron * 5;
+        saveVillageData();
+        updateUI();
+    }, 5000);
+}
 
 // 🔹 Update UI
 function updateUI() {
+    if (!villageData) return;
+
     const scrollY = window.scrollY;
     document.getElementById("wood-count").innerText = villageData.wood;
     document.getElementById("stone-count").innerText = villageData.stone;
@@ -174,9 +185,10 @@ async function loadWorldMap() {
     initPanZoom(wrapper, world);
 }
 
-// 🔹 Pan and Zoom Utility (with mobile support)
+// 🔹 Pan and Zoom Utility
 function initPanZoom(viewport, content) {
     let scale = 1, startX = 0, startY = 0, originX = 0, originY = 0, panning = false;
+
     const setTransform = () =>
         content.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
 
@@ -193,23 +205,20 @@ function initPanZoom(viewport, content) {
         setTransform();
     }, { passive: false });
 
-    // Pinch-to-zoom for mobile
+    // Mobile pinch-to-zoom
     let lastTouchDistance = null;
-
     viewport.addEventListener("touchmove", (e) => {
         if (e.touches.length === 2) {
             e.preventDefault();
             const dx = e.touches[0].clientX - e.touches[1].clientX;
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             const distance = Math.sqrt(dx * dx + dy * dy);
-
             if (lastTouchDistance !== null) {
                 const delta = distance - lastTouchDistance;
                 const newScale = Math.min(Math.max(0.5, scale + delta * 0.005), 2.5);
                 scale = newScale;
                 setTransform();
             }
-
             lastTouchDistance = distance;
         }
     }, { passive: false });
