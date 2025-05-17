@@ -132,7 +132,7 @@ nav button:hover {
     position: absolute;
     width: 60px;
     height: 60px;
-    background: url("village.png") center/contain no-repeat;
+    background: url("village2.png") center/contain no-repeat;
     cursor: pointer;
 }
 /* tooltip on hover / tap */
