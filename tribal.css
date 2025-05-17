@@ -106,7 +106,7 @@ nav button:hover {
 
 /* visible viewport */
 #map-wrapper {
-    width: 100%;
+    width: 100vw;
     height: 300px;             /* adjust if you want taller */
     overflow: hidden;
     position: relative;
