@@ -19,10 +19,11 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
 
-// 🔹 Game Variables
+// 🔹 Game State
 let user = null;
 let villageData = {
     username: "Unknown Player",
+    userId: null, // 🔸 ensure this is always included
     wood: 100,
     stone: 100,
     iron: 100,
@@ -41,6 +42,7 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     }
     user = loggedInUser;
     villageData.username = user.email.split("@")[0];
+    villageData.userId = user.uid;
     await loadVillageData();
     loadLeaderboard();
     loadWorldMap();
@@ -49,15 +51,18 @@ onAuthStateChanged(auth, async (loggedInUser) => {
 // 🔹 Load Village Data
 async function loadVillageData() {
     if (!user) return;
-    const userDoc = await getDoc(doc(db, "villages", user.uid));
-    if (userDoc.exists()) {
-        villageData = userDoc.data();
+    const ref = doc(db, "villages", user.uid);
+    const snapshot = await getDoc(ref);
+
+    if (snapshot.exists()) {
+        villageData = snapshot.data();
     } else {
-        // Add default coords if first-time
         villageData.x = Math.floor(Math.random() * 3000);
         villageData.y = Math.floor(Math.random() * 3000);
+        villageData.userId = user.uid; // 🔸 ensure correct ownership
         await saveVillageData();
     }
+
     updateUI();
 }
 
@@ -65,6 +70,7 @@ async function loadVillageData() {
 async function saveVillageData() {
     if (!user) return;
     villageData.username = user.email.split("@")[0];
+    villageData.userId = user.uid; // 🔸 REQUIRED to pass Firestore rules
     await setDoc(doc(db, "villages", user.uid), villageData);
     loadLeaderboard();
 }
@@ -78,7 +84,9 @@ document.querySelectorAll(".upgrade-btn").forEach(button => {
 });
 
 function upgradeBuilding(building) {
-    const cost = villageData.buildings[building] * 50;
+    const level = villageData.buildings[building];
+    const cost = level * 50;
+
     if (villageData.wood >= cost && villageData.stone >= cost && villageData.iron >= cost) {
         villageData.wood -= cost;
         villageData.stone -= cost;
@@ -128,6 +136,7 @@ function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
+
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
         snapshot.forEach(doc => {
@@ -139,11 +148,12 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 Load Enhanced World Map
+// 🔹 Load World Map
 async function loadWorldMap() {
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
     if (!wrapper || !world) return;
+
     world.innerHTML = "";
 
     const snapshot = await getDocs(collection(db, "villages"));
@@ -156,7 +166,7 @@ async function loadWorldMap() {
         el.setAttribute("data-username", v.username || "Unknown");
         el.setAttribute("data-score", v.score ?? 0);
         el.addEventListener("click", () => {
-            alert(`${v.username}'s Village\nHQ Lv ${v.buildings.hq}\nScore ${v.score}`);
+            alert(`${v.username}'s Village\nHQ Lv ${v.buildings?.hq ?? 1}\nScore ${v.score ?? 0}`);
         });
         world.appendChild(el);
     });
@@ -164,7 +174,7 @@ async function loadWorldMap() {
     initPanZoom(wrapper, world);
 }
 
-// 🔹 Pan + Zoom Utility
+// 🔹 Pan and Zoom Utility
 function initPanZoom(viewport, content) {
     let scale = 1, startX = 0, startY = 0, originX = 0, originY = 0, panning = false;
     const setTransform = () =>
