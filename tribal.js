@@ -1,7 +1,10 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import {
+    getFirestore, doc, getDoc, setDoc, collection,
+    query, orderBy, limit, onSnapshot, getDocs
+} from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -24,10 +27,12 @@ let villageData = {
     stone: 100,
     iron: 100,
     score: 0,
+    x: Math.floor(Math.random() * 3000),
+    y: Math.floor(Math.random() * 3000),
     buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 }
 };
 
-// 🔹 Check Auth State
+// 🔹 Auth Check
 onAuthStateChanged(auth, async (loggedInUser) => {
     if (!loggedInUser) {
         alert("You must be logged in to play!");
@@ -47,6 +52,11 @@ async function loadVillageData() {
     const userDoc = await getDoc(doc(db, "villages", user.uid));
     if (userDoc.exists()) {
         villageData = userDoc.data();
+    } else {
+        // Add default coords if first-time
+        villageData.x = Math.floor(Math.random() * 3000);
+        villageData.y = Math.floor(Math.random() * 3000);
+        await saveVillageData();
     }
     updateUI();
 }
@@ -82,7 +92,7 @@ function upgradeBuilding(building) {
     }
 }
 
-// 🔹 Generate Resources Over Time
+// 🔹 Auto Resource Generation
 setInterval(() => {
     villageData.wood += villageData.buildings.lumber * 5;
     villageData.stone += villageData.buildings.quarry * 5;
@@ -103,16 +113,15 @@ function updateUI() {
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
 
-    // 🔹 Ensure upgrade costs update correctly
     document.querySelectorAll(".building").forEach(buildingElement => {
-        const buildingType = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
-        const cost = villageData.buildings[buildingType] * 50;
-        buildingElement.querySelector(".upgrade-cost").innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+        const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+        const cost = villageData.buildings[type] * 50;
+        buildingElement.querySelector(".upgrade-cost").innerText =
+            `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
     });
 
     window.scrollTo(0, scrollY);
 }
-
 
 // 🔹 Load Leaderboard
 function loadLeaderboard() {
@@ -123,45 +132,76 @@ function loadLeaderboard() {
         leaderboardList.innerHTML = "";
         snapshot.forEach(doc => {
             const data = doc.data();
-            const listItem = document.createElement("li");
-            listItem.innerText = `${data.username || "Unknown"} - ${data.score}`;
-            leaderboardList.appendChild(listItem);
+            const li = document.createElement("li");
+            li.innerText = `${data.username || "Unknown"} - ${data.score}`;
+            leaderboardList.appendChild(li);
         });
     });
 }
 
-// 🔹 Load World Map with Grid Layout
+// 🔹 Load Enhanced World Map
 async function loadWorldMap() {
-    const mapContainer = document.getElementById("map-container");
-    if (!mapContainer) return;
-    mapContainer.innerHTML = "<p>Loading map...</p>";
-    mapContainer.style.display = "grid";
-    mapContainer.style.gridTemplateColumns = "repeat(auto-fill, minmax(100px, 1fr))";
-    mapContainer.style.gap = "10px";
-    mapContainer.style.padding = "10px";
-    mapContainer.style.background = "#e5d6ba";
-    mapContainer.style.borderRadius = "10px";
+    const wrapper = document.getElementById("map-wrapper");
+    const world = document.getElementById("map-world");
+    if (!wrapper || !world) return;
+    world.innerHTML = "";
 
-    const querySnapshot = await getDocs(collection(db, "villages"));
-    mapContainer.innerHTML = "";
-
-    querySnapshot.forEach(doc => {
-        const village = doc.data();
-        const villageElement = document.createElement("div");
-        villageElement.classList.add("village-tile");
-        villageElement.innerText = village.username;
-        villageElement.style.textAlign = "center";
-        villageElement.style.padding = "10px";
-        villageElement.style.border = "2px solid #8b5a2b";
-        villageElement.style.background = "#f4e1c1";
-        villageElement.style.borderRadius = "8px";
-        villageElement.style.cursor = "pointer";
-        villageElement.addEventListener("click", () => {
-            alert(`${village.username}'s Village\nLevel: ${village.buildings.hq}\nScore: ${village.score}`);
+    const snapshot = await getDocs(collection(db, "villages"));
+    snapshot.forEach(doc => {
+        const v = doc.data();
+        const el = document.createElement("div");
+        el.className = "village-tile";
+        el.style.left = (v.x || 0) + "px";
+        el.style.top = (v.y || 0) + "px";
+        el.setAttribute("data-username", v.username || "Unknown");
+        el.setAttribute("data-score", v.score ?? 0);
+        el.addEventListener("click", () => {
+            alert(`${v.username}'s Village\nHQ Lv ${v.buildings.hq}\nScore ${v.score}`);
         });
-
-        mapContainer.appendChild(villageElement);
+        world.appendChild(el);
     });
+
+    initPanZoom(wrapper, world);
+}
+
+// 🔹 Pan + Zoom Utility
+function initPanZoom(viewport, content) {
+    let scale = 1, startX = 0, startY = 0, originX = 0, originY = 0, panning = false;
+    const setTransform = () =>
+        content.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
+
+    viewport.addEventListener("wheel", e => {
+        e.preventDefault();
+        const delta = -e.deltaY * 0.001;
+        const newScale = Math.min(Math.max(0.5, scale + delta), 2.5);
+        const rect = viewport.getBoundingClientRect();
+        const offsetX = (e.clientX - rect.left - originX) / scale;
+        const offsetY = (e.clientY - rect.top - originY) / scale;
+        originX -= offsetX * (newScale - scale);
+        originY -= offsetY * (newScale - scale);
+        scale = newScale;
+        setTransform();
+    }, { passive: false });
+
+    const pointerDown = e => {
+        panning = true;
+        startX = (e.clientX ?? e.touches[0].clientX) - originX;
+        startY = (e.clientY ?? e.touches[0].clientY) - originY;
+    };
+    const pointerMove = e => {
+        if (!panning) return;
+        originX = (e.clientX ?? e.touches[0].clientX) - startX;
+        originY = (e.clientY ?? e.touches[0].clientY) - startY;
+        setTransform();
+    };
+    const pointerUp = () => (panning = false);
+
+    viewport.addEventListener("mousedown", pointerDown);
+    viewport.addEventListener("touchstart", pointerDown);
+    window.addEventListener("mousemove", pointerMove);
+    window.addEventListener("touchmove", pointerMove, { passive: false });
+    window.addEventListener("mouseup", pointerUp);
+    window.addEventListener("touchend", pointerUp);
 }
 
 // 🔹 Logout
@@ -169,5 +209,5 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
     await saveVillageData();
     auth.signOut().then(() => {
         window.location.href = "index.html";
-    }).catch(error => console.error("Logout Error:", error));
+    }).catch(err => console.error("Logout Error:", err));
 });
