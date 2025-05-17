@@ -23,7 +23,7 @@ const db = getFirestore();
 let user = null;
 let villageData = {
     username: "Unknown Player",
-    userId: null, // 🔸 ensure this is always included
+    userId: null,
     wood: 100,
     stone: 100,
     iron: 100,
@@ -59,7 +59,7 @@ async function loadVillageData() {
     } else {
         villageData.x = Math.floor(Math.random() * 3000);
         villageData.y = Math.floor(Math.random() * 3000);
-        villageData.userId = user.uid; // 🔸 ensure correct ownership
+        villageData.userId = user.uid;
         await saveVillageData();
     }
 
@@ -70,7 +70,7 @@ async function loadVillageData() {
 async function saveVillageData() {
     if (!user) return;
     villageData.username = user.email.split("@")[0];
-    villageData.userId = user.uid; // 🔸 REQUIRED to pass Firestore rules
+    villageData.userId = user.uid;
     await setDoc(doc(db, "villages", user.uid), villageData);
     loadLeaderboard();
 }
@@ -174,7 +174,7 @@ async function loadWorldMap() {
     initPanZoom(wrapper, world);
 }
 
-// 🔹 Pan and Zoom Utility
+// 🔹 Pan and Zoom Utility (with mobile support)
 function initPanZoom(viewport, content) {
     let scale = 1, startX = 0, startY = 0, originX = 0, originY = 0, panning = false;
     const setTransform = () =>
@@ -193,6 +193,32 @@ function initPanZoom(viewport, content) {
         setTransform();
     }, { passive: false });
 
+    // Pinch-to-zoom for mobile
+    let lastTouchDistance = null;
+
+    viewport.addEventListener("touchmove", (e) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (lastTouchDistance !== null) {
+                const delta = distance - lastTouchDistance;
+                const newScale = Math.min(Math.max(0.5, scale + delta * 0.005), 2.5);
+                scale = newScale;
+                setTransform();
+            }
+
+            lastTouchDistance = distance;
+        }
+    }, { passive: false });
+
+    viewport.addEventListener("touchend", () => {
+        lastTouchDistance = null;
+    });
+
+    // Panning
     const pointerDown = e => {
         panning = true;
         startX = (e.clientX ?? e.touches[0].clientX) - originX;
@@ -216,8 +242,12 @@ function initPanZoom(viewport, content) {
 
 // 🔹 Logout
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-    await saveVillageData();
-    auth.signOut().then(() => {
+    try {
+        await saveVillageData();
+        await auth.signOut();
         window.location.href = "index.html";
-    }).catch(err => console.error("Logout Error:", err));
+    } catch (err) {
+        console.error("Logout Error:", err);
+        alert("Failed to logout. Try again.");
+    }
 });
