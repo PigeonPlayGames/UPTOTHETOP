@@ -182,12 +182,27 @@ async function loadWorldMap() {
         world.appendChild(el);
     });
 
+    centerOnPlayer(wrapper, world, villageData.x, villageData.y);
     initPanZoom(wrapper, world);
+}
+
+// 🔹 Center Map on Player
+function centerOnPlayer(wrapper, world, x, y) {
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const offsetX = wrapperRect.width / 2 - x;
+    const offsetY = wrapperRect.height / 2 - y;
+    world.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(1)`;
+    world.dataset.initialX = offsetX;
+    world.dataset.initialY = offsetY;
 }
 
 // 🔹 Pan and Zoom Utility
 function initPanZoom(viewport, content) {
-    let scale = 1, startX = 0, startY = 0, originX = 0, originY = 0, panning = false;
+    let scale = 1;
+    let originX = parseFloat(content.dataset.initialX) || 0;
+    let originY = parseFloat(content.dataset.initialY) || 0;
+    let startX = 0, startY = 0;
+    let panning = false;
 
     const setTransform = () =>
         content.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
@@ -205,7 +220,6 @@ function initPanZoom(viewport, content) {
         setTransform();
     }, { passive: false });
 
-    // Mobile pinch-to-zoom
     let lastTouchDistance = null;
     viewport.addEventListener("touchmove", (e) => {
         if (e.touches.length === 2) {
@@ -227,7 +241,6 @@ function initPanZoom(viewport, content) {
         lastTouchDistance = null;
     });
 
-    // Panning
     const pointerDown = e => {
         panning = true;
         startX = (e.clientX ?? e.touches[0].clientX) - originX;
@@ -247,6 +260,9 @@ function initPanZoom(viewport, content) {
     window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("mouseup", pointerUp);
     window.addEventListener("touchend", pointerUp);
+
+    // Apply initial transform
+    setTransform();
 }
 
 // 🔹 Logout
