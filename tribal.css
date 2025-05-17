@@ -1,13 +1,13 @@
-/* 🔹 General Styles */
+/* ─────────────────── GENERAL ─────────────────── */
 body {
-    font-family: 'Georgia', serif;
+    font-family: "Georgia", serif;
     background-color: #f4e4c1;
     color: #3e2723;
     margin: 0;
     padding: 0;
 }
 
-/* 🔹 Navbar */
+/* ─────────────────── NAVBAR ─────────────────── */
 nav {
     background: #5c3b1e;
     color: #fff;
@@ -28,7 +28,7 @@ nav button:hover {
     background: #a87142;
 }
 
-/* 🔹 Resources Bar */
+/* ─────────────────── RESOURCE BAR ─────────────────── */
 .resources-bar {
     display: flex;
     flex-wrap: wrap;
@@ -40,14 +40,11 @@ nav button:hover {
     gap: 10px;
     text-align: center;
 }
-
 .resources-bar img {
     width: 20px;
     height: 20px;
     vertical-align: middle;
 }
-
-/* Mobile-specific tweaks */
 @media (max-width: 600px) {
     .resources-bar {
         font-size: 14px;
@@ -56,8 +53,7 @@ nav button:hover {
     }
 }
 
-
-/* 🔹 Village Section */
+/* ─────────────────── VILLAGE SECTION ─────────────────── */
 #village {
     text-align: center;
     padding: 20px;
@@ -69,16 +65,13 @@ nav button:hover {
     border-radius: 10px;
     display: inline-block;
     width: 200px;
-    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
-}
-.building h3 {
-    margin-bottom: 10px;
+    box-shadow: 2px 2px 8px rgba(0 0 0 / 20%);
 }
 .building button {
     background: #8d6e63;
     border: none;
     padding: 8px 12px;
-    color: white;
+    color: #fff;
     font-size: 14px;
     cursor: pointer;
     border-radius: 5px;
@@ -87,7 +80,7 @@ nav button:hover {
     background: #5c3b1e;
 }
 
-/* 🔹 Game Display Layout (World Map + Leaderboard side by side) */
+/* ─────────────────── GAME DISPLAY (Map + Leaderboard) ─────────────────── */
 #game-display {
     display: flex;
     flex-wrap: wrap;
@@ -96,26 +89,68 @@ nav button:hover {
     gap: 20px;
     padding: 20px;
 }
+@media (max-width: 768px) {
+    #game-display {
+        flex-direction: column;
+        align-items: center;
+    }
+}
 
-/* 🔹 World Map */
+/* ─────────────── WORLD MAP (pan / zoom) ─────────────── */
 #world-map {
     flex: 1 1 400px;
     max-width: 600px;
     text-align: center;
     padding: 20px;
 }
-#map-container {
-    background: #c8b9a7;
-    height: 300px;
+
+/* visible viewport */
+#map-wrapper {
     width: 100%;
-    margin: auto;
+    height: 300px;             /* adjust if you want taller */
+    overflow: hidden;
+    position: relative;
+    touch-action: none;        /* allow custom touch gestures */
+    background: #c8b9a7;
     border-radius: 10px;
-    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
-    overflow-y: auto;
-    padding: 10px;
 }
 
-/* 🔹 Leaderboard */
+/* giant scrollable surface */
+#map-world {
+    width: 3000px;
+    height: 3000px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    background-image: radial-gradient(#d8cfb9 20%, #c8b9a7 20%);
+    background-size: 200px 200px;   /* subtle grid */
+    transform-origin: 0 0;
+}
+
+/* a village icon */
+.village-tile {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    background: url("village.png") center/contain no-repeat;
+    cursor: pointer;
+}
+/* tooltip on hover / tap */
+.village-tile:hover::after {
+    content: attr(data-username) " (" attr(data-score) ")";
+    position: absolute;
+    top: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #5c3b1e;
+    color: #fff;
+    padding: 2px 6px;
+    font-size: 12px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+/* ─────────────────── LEADERBOARD ─────────────────── */
 #leaderboard {
     flex: 1 1 300px;
     max-width: 400px;
@@ -133,13 +168,5 @@ nav button:hover {
     width: 100%;
     max-width: 250px;
     border-radius: 5px;
-    box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.2);
-}
-
-/* 🔹 Responsive Fixes */
-@media (max-width: 768px) {
-    #game-display {
-        flex-direction: column;
-        align-items: center;
-    }
+    box-shadow: 1px 1px 5px rgba(0 0 0 / 20%);
 }
