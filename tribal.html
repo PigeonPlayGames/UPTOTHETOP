@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Top Tribe</title>
-    <link rel="stylesheet" href="tribal.css">
+    <link rel="stylesheet" href="tribal.css" />
     <script defer src="tribal.js" type="module"></script>
 </head>
 <body>
@@ -14,14 +14,13 @@
         <button id="logoutBtn">Logout</button>
     </nav>
 
-    <!-- 🔹 Resources Bar -->
-    <div class="resources-bar">  
-        <span><img src="paintwood.png" alt="Wood"> Wood: <span id="wood-count">100</span></span>
-        <span><img src="paintstone.png" alt="Stone"> Stone: <span id="stone-count">100</span></span>
-        <span><img src="paintiron.png" alt="Iron"> Iron: <span id="iron-count">100</span></span>
+    <!-- 🔹 Resource Bar -->
+    <div class="resources-bar">
+        <span><img src="paintwood.png" alt="Wood Icon" /> Wood: <span id="wood-count">0</span></span>
+        <span><img src="paintstone.png" alt="Stone Icon" /> Stone: <span id="stone-count">0</span></span>
+        <span><img src="paintiron.png" alt="Iron Icon" /> Iron: <span id="iron-count">0</span></span>
         <span>Score: <span id="player-score">0</span></span>
     </div>
-
 
     <main>
         <!-- 🔹 Village Section -->
@@ -55,14 +54,21 @@
 
         <!-- 🔹 Game Display -->
         <section id="game-display">
+            <!-- World Map -->
             <div id="world-map">
                 <h2>World Map</h2>
-                <div id="map-container"></div>
+                <!-- NEW: pan‑/zoom surface -->
+                <div id="map-wrapper">
+                    <div id="map-world"></div>
+                </div>
             </div>
 
+            <!-- Leaderboard -->
             <div id="leaderboard">
                 <h2>Leaderboard</h2>
-                <ul id="leaderboard-list"></ul>
+                <ul id="leaderboard-list">
+                    <li>Loading...</li>
+                </ul>
             </div>
         </section>
     </main>
