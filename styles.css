@@ -80,6 +80,12 @@ header {
     text-align: center;
     color: white;
 }
+
+.game-card a {
+    color: white;
+    text-decoration: none; /* optional */
+}
+
 .modal {
     display: none;
     position: fixed;
