@@ -70,6 +70,7 @@ header {
     display: flex;
     justify-content: center;
     gap: 20px;
+    color: white;
 }
 .game-card {
     background: #1e1e1e;
