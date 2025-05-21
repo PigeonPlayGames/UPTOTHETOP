@@ -80,6 +80,21 @@ nav button:hover {
     background: #5c3b1e;
 }
 
+#village-image {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px; /* adjust to fit your image size */
+    height: auto;
+    transform: translate(-50%, -50%); /* center on map */
+    background-image: url("village_level1.png");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 2; /* higher than map, lower than UI */
+    pointer-events: none; /* so it doesn't block UI interactions */
+}
+
 /* ─────────────────── GAME DISPLAY (Map + Leaderboard) ─────────────────── */
 #game-display {
     display: flex;
