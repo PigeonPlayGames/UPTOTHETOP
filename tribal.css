@@ -117,16 +117,17 @@ nav button:hover {
 }
 
 /* giant scrollable surface */
+
 #map-world {
     width: 3000px;
     height: 3000px;
     position: absolute;
     left: 0;
     top: 0;
-    background-image: radial-gradient(#d8cfb9 20%, #c8b9a7 20%);
-    background-size: 200px 200px;   /* subtle grid */
+    background: url("World_Map.png") top left / cover no-repeat;
     transform-origin: 0 0;
 }
+
 
 /* a village icon */
 .village-tile {
