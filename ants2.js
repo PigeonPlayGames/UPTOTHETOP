@@ -3,7 +3,7 @@ const ctx = canvas.getContext('2d');
 
 const ANT_COUNT = 20;
 const FOOD_COUNT = 30;
-const ANT_SIZE = 250; // size of sprite frame
+const ANT_SIZE = 340; // size of sprite frame
 const FRAME_COUNT = 4;
 const SPRITE_SPEED = 150; // ms per frame
 const SPEED = 1.5;
