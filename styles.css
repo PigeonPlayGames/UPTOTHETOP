@@ -53,6 +53,11 @@ header {
     align-items: center;
     justify-content: center;
 }
+
+.ppg-text {
+    margin-top: 135px;
+}
+
 .cta-btn {
     background: #ff6600;
     padding: 10px 20px;
