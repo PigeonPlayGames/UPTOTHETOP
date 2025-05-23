@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Troops Module
-import { initTroops} from "/moduls/troops2.js";
+import { initTroops } from "/moduls/troops.js";  // ✅ Correct path and export
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -40,14 +40,6 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     startGameLoops();
     loadLeaderboard();
     loadWorldMap();
-
-    // Attach troop training button listeners
-    document.querySelectorAll(".train-btn").forEach(button => {
-        button.addEventListener("click", () => {
-            const type = button.getAttribute("data-type");
-            trainTroop(type);
-        });
-    });
 });
 
 // 🔹 Load Village Data
@@ -77,9 +69,8 @@ async function loadVillageData() {
 
     villageDataLoaded = true;
 
-    initTroops(villageData, saveVillageData);
+    initTroops(db, user, villageData, saveVillageData, updateUI);  // ✅ Correct usage
     updateUI();
-    updateTroopsUI(villageData);
 }
 
 // 🔹 Save Village Data
@@ -115,7 +106,6 @@ function upgradeBuilding(building) {
         villageData.score += 10;
         saveVillageData();
         updateUI();
-        updateTroopsUI(villageData);
     } else {
         alert("Not enough resources!");
     }
@@ -131,7 +121,6 @@ function startGameLoops() {
         villageData.iron += villageData.buildings.iron * 5;
         saveVillageData();
         updateUI();
-        updateTroopsUI(villageData);
     }, 5000);
 }
 
@@ -157,7 +146,6 @@ function updateUI() {
     });
 
     window.scrollTo(0, scrollY);
-    updateTroopsUI(villageData);
 }
 
 // 🔹 Load Leaderboard
@@ -283,7 +271,7 @@ function initPanZoom(viewport, content) {
 }
 
 // 🔹 Logout
-document.getElementById("logoutBtn").addEventListener("click", async () => {
+document.getElementById("logout-btn").addEventListener("click", async () => {
     try {
         await saveVillageData();
         await auth.signOut();
