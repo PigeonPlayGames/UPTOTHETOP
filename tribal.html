@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Top Tribe</title>
     <link rel="stylesheet" href="tribal.css" />
-    <script defer src="tribal.js" type="module"></script>
+    <script defer type="module" src="main.js"></script>
 </head>
 <body>
     <!-- 🔹 Navbar -->
     <nav>
         <h1>Top Tribe</h1>
-        <button id="logout-btn" style="display:none;" onclick="logout()">Logout</button>
+        <button id="logoutBtn" style="display:none;">Logout</button>
     </nav>
 
     <!-- 🔹 Resource Bar -->
@@ -29,26 +29,43 @@
 
             <div class="building">
                 <p>Headquarters (Level <span id="hq-level">1</span>)</p>
-                <p class="upgrade-cost" id="hq-upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
                 <button class="upgrade-btn" data-building="hq">Upgrade</button>
             </div>
 
             <div class="building">
                 <p>Lumber Mill (Level <span id="lumber-level">1</span>)</p>
-                <p class="upgrade-cost" id="lumber-upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
                 <button class="upgrade-btn" data-building="lumber">Upgrade</button>
             </div>
 
             <div class="building">
                 <p>Quarry (Level <span id="quarry-level">1</span>)</p>
-                <p class="upgrade-cost" id="quarry-upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
                 <button class="upgrade-btn" data-building="quarry">Upgrade</button>
             </div>
 
             <div class="building">
                 <p>Iron Mine (Level <span id="iron-level">1</span>)</p>
-                <p class="upgrade-cost" id="iron-upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
                 <button class="upgrade-btn" data-building="iron">Upgrade</button>
+            </div>
+        </section>
+
+        <!-- 🔹 Troops Section -->
+        <section id="troops">
+            <h2>Your Troops</h2>
+            <div class="troop">
+                <p>Spear Fighters: <span id="spear-count">0</span></p>
+                <button class="train-btn" data-type="spear">Train Spear</button>
+            </div>
+            <div class="troop">
+                <p>Swordsmen: <span id="sword-count">0</span></p>
+                <button class="train-btn" data-type="sword">Train Sword</button>
+            </div>
+            <div class="troop">
+                <p>Axemen: <span id="axe-count">0</span></p>
+                <button class="train-btn" data-type="axe">Train Axe</button>
             </div>
         </section>
 
@@ -57,12 +74,10 @@
             <!-- World Map -->
             <div id="world-map">
                 <h2>World Map</h2>
-                <!-- NEW: pan‑/zoom surface -->
                 <div id="map-wrapper">
                     <div id="map-world"></div>
-                    <div id="village-image"></div> <!-- Moved here -->
+                    <div id="village-image"></div>
                 </div>
-
             </div>
 
             <!-- Leaderboard -->
