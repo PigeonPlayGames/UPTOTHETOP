@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Troops Module
-import { initTroops } from "/moduls/troops.js";  // ✅ Correct path and export
+import { initTroops } from "/moduls/troops2.js";  // ✅ Correct path and export
 
 // 🔹 Firebase Config
 const firebaseConfig = {
