@@ -6,6 +6,9 @@ import {
     query, orderBy, limit, onSnapshot, getDocs
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
+// 🔹 Troops Module
+import { initTroops, updateTroopsUI, trainTroop } from "./troops.js";
+
 // 🔹 Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
@@ -37,6 +40,14 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     startGameLoops();
     loadLeaderboard();
     loadWorldMap();
+
+    // Attach troop training button listeners
+    document.querySelectorAll(".train-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const type = button.getAttribute("data-type");
+            trainTroop(type);
+        });
+    });
 });
 
 // 🔹 Load Village Data
@@ -57,14 +68,18 @@ async function loadVillageData() {
             score: 0,
             x: Math.floor(Math.random() * 3000),
             y: Math.floor(Math.random() * 3000),
-            buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 }
+            buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
+            troops: { spear: 0, sword: 0, axe: 0 }
         };
         console.log("Creating new village:", villageData);
         await saveVillageData();
     }
 
     villageDataLoaded = true;
+
+    initTroops(villageData, saveVillageData);
     updateUI();
+    updateTroopsUI(villageData);
 }
 
 // 🔹 Save Village Data
@@ -100,6 +115,7 @@ function upgradeBuilding(building) {
         villageData.score += 10;
         saveVillageData();
         updateUI();
+        updateTroopsUI(villageData);
     } else {
         alert("Not enough resources!");
     }
@@ -115,6 +131,7 @@ function startGameLoops() {
         villageData.iron += villageData.buildings.iron * 5;
         saveVillageData();
         updateUI();
+        updateTroopsUI(villageData);
     }, 5000);
 }
 
@@ -140,6 +157,7 @@ function updateUI() {
     });
 
     window.scrollTo(0, scrollY);
+    updateTroopsUI(villageData);
 }
 
 // 🔹 Load Leaderboard
@@ -261,7 +279,6 @@ function initPanZoom(viewport, content) {
     window.addEventListener("mouseup", pointerUp);
     window.addEventListener("touchend", pointerUp);
 
-    // Apply initial transform
     setTransform();
 }
 
