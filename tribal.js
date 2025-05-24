@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Troops Module
-import { initTroops } from "/moduls/troops2.js";  // ✅ Ensure this file exists and exports properly
+import { initTroops } from "/moduls/troops2.js";
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -22,10 +22,12 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
 
+// 🔹 State
 let user = null;
 let villageData = null;
 let villageDataLoaded = false;
 
+// 🔹 Auth Check
 onAuthStateChanged(auth, async (loggedInUser) => {
     if (!loggedInUser) {
         alert("You must be logged in to play!");
@@ -40,13 +42,13 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     loadWorldMap();
 });
 
+// 🔹 Load or Create Village
 async function loadVillageData() {
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
 
     if (snapshot.exists()) {
         villageData = snapshot.data();
-        console.log("Loaded existing village:", villageData);
     } else {
         villageData = {
             username: user.email.split("@")[0],
@@ -60,30 +62,50 @@ async function loadVillageData() {
             buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
             troops: { spear: 0, sword: 0, axe: 0 }
         };
-        console.log("Creating new village:", villageData);
         await saveVillageData();
     }
 
     villageDataLoaded = true;
-
     initTroops(db, user, villageData, saveVillageData, updateUI);
     updateUI();
 }
 
+// 🔹 Save Village
 async function saveVillageData() {
     if (!user || !villageDataLoaded) return;
     try {
-        console.log("Saving village:", JSON.stringify(villageData, null, 2));
         await setDoc(doc(db, "villages", user.uid), villageData);
-        console.log("Village saved to Firestore.");
     } catch (err) {
-        console.error("Failed to save village:", err);
-        alert("Error saving your village. Check console.");
+        console.error("Save failed:", err);
+        alert("Error saving your village.");
     }
 }
 
-// 🔹 Upgrade Buildings
+// 🔹 UI Update
+function updateUI() {
+    if (!villageData) return;
 
+    const scrollY = window.scrollY;
+    document.getElementById("wood-count").innerText = villageData.wood;
+    document.getElementById("stone-count").innerText = villageData.stone;
+    document.getElementById("iron-count").innerText = villageData.iron;
+    document.getElementById("player-score").innerText = villageData.score;
+    document.getElementById("hq-level").innerText = villageData.buildings.hq;
+    document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
+    document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
+    document.getElementById("iron-level").innerText = villageData.buildings.iron;
+
+    document.querySelectorAll(".building").forEach(buildingElement => {
+        const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+        const cost = villageData.buildings[type] * 50;
+        buildingElement.querySelector(".upgrade-cost").innerText =
+            `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+    });
+
+    window.scrollTo(0, scrollY);
+}
+
+// 🔹 Upgrade Building Logic
 document.querySelectorAll(".upgrade-btn").forEach(button => {
     button.addEventListener("click", () => {
         const building = button.getAttribute("data-building");
@@ -110,11 +132,10 @@ function upgradeBuilding(building) {
     }
 }
 
-// 🔹 Auto Resource Generation
+// 🔹 Resource Generation Loop
 function startGameLoops() {
     setInterval(() => {
         if (!villageDataLoaded) return;
-
         villageData.wood += villageData.buildings.lumber * 5;
         villageData.stone += villageData.buildings.quarry * 5;
         villageData.iron += villageData.buildings.iron * 5;
@@ -123,34 +144,12 @@ function startGameLoops() {
     }, 5000);
 }
 
-function updateUI() {
-    if (!villageData) return;
-
-    const scrollY = window.scrollY;
-    document.getElementById("wood-count").innerText = villageData.wood;
-    document.getElementById("stone-count").innerText = villageData.stone;
-    document.getElementById("iron-count").innerText = villageData.iron;
-    document.getElementById("player-score").innerText = villageData.score;
-    document.getElementById("hq-level").innerText = villageData.buildings.hq;
-    document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
-    document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
-    document.getElementById("iron-level").innerText = villageData.buildings.iron;
-
-    document.querySelectorAll(".building").forEach(buildingElement => {
-        const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
-        const cost = villageData.buildings[type] * 50;
-        buildingElement.querySelector(".upgrade-cost").innerText =
-            `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
-    });
-
-    window.scrollTo(0, scrollY);
-}
-
+// 🔹 Leaderboard
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
-    const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
 
+    const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
         snapshot.forEach(doc => {
@@ -162,6 +161,7 @@ function loadLeaderboard() {
     });
 }
 
+// 🔹 Map Rendering
 async function loadWorldMap() {
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
@@ -174,8 +174,8 @@ async function loadWorldMap() {
         const v = doc.data();
         const el = document.createElement("div");
         el.className = "village-tile";
-        el.style.left = (v.x || 0) + "px";
-        el.style.top = (v.y || 0) + "px";
+        el.style.left = `${v.x}px`;
+        el.style.top = `${v.y}px`;
         el.setAttribute("data-username", v.username || "Unknown");
         el.setAttribute("data-score", v.score ?? 0);
         el.addEventListener("click", () => {
@@ -264,7 +264,7 @@ function initPanZoom(viewport, content) {
     setTransform();
 }
 
-// 🔹 Logout
+// 🔹 Logout Button
 const logoutBtn = document.getElementById("logout-btn");
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
