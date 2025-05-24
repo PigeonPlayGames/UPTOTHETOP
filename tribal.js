@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 // 🔹 Troops Module
-import { initTroops } from "/moduls/troops2.js";  // ✅ Correct path and export
+import { initTroops } from "/moduls/troops2.js";  // ✅ Ensure this file exists and exports properly
 
 // 🔹 Firebase Config
 const firebaseConfig = {
@@ -22,12 +22,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
 
-// 🔹 Game State
 let user = null;
 let villageData = null;
 let villageDataLoaded = false;
 
-// 🔹 Auth Check
 onAuthStateChanged(auth, async (loggedInUser) => {
     if (!loggedInUser) {
         alert("You must be logged in to play!");
@@ -42,7 +40,6 @@ onAuthStateChanged(auth, async (loggedInUser) => {
     loadWorldMap();
 });
 
-// 🔹 Load Village Data
 async function loadVillageData() {
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
@@ -69,22 +66,24 @@ async function loadVillageData() {
 
     villageDataLoaded = true;
 
-    initTroops(db, user, villageData, saveVillageData, updateUI);  // ✅ Correct usage
+    initTroops(db, user, villageData, saveVillageData, updateUI);
     updateUI();
 }
 
-// 🔹 Save Village Data
 async function saveVillageData() {
     if (!user || !villageDataLoaded) return;
     try {
+        console.log("Saving village:", JSON.stringify(villageData, null, 2));
         await setDoc(doc(db, "villages", user.uid), villageData);
-        console.log("Village saved.");
+        console.log("Village saved to Firestore.");
     } catch (err) {
         console.error("Failed to save village:", err);
+        alert("Error saving your village. Check console.");
     }
 }
 
 // 🔹 Upgrade Buildings
+
 document.querySelectorAll(".upgrade-btn").forEach(button => {
     button.addEventListener("click", () => {
         const building = button.getAttribute("data-building");
@@ -111,7 +110,7 @@ function upgradeBuilding(building) {
     }
 }
 
-// 🔹 Auto Resource Generation Loop
+// 🔹 Auto Resource Generation
 function startGameLoops() {
     setInterval(() => {
         if (!villageDataLoaded) return;
@@ -124,7 +123,6 @@ function startGameLoops() {
     }, 5000);
 }
 
-// 🔹 Update UI
 function updateUI() {
     if (!villageData) return;
 
@@ -148,7 +146,6 @@ function updateUI() {
     window.scrollTo(0, scrollY);
 }
 
-// 🔹 Load Leaderboard
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
@@ -165,7 +162,6 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 Load World Map
 async function loadWorldMap() {
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
@@ -192,7 +188,6 @@ async function loadWorldMap() {
     initPanZoom(wrapper, world);
 }
 
-// 🔹 Center Map on Player
 function centerOnPlayer(wrapper, world, x, y) {
     const wrapperRect = wrapper.getBoundingClientRect();
     const offsetX = wrapperRect.width / 2 - x;
@@ -202,7 +197,6 @@ function centerOnPlayer(wrapper, world, x, y) {
     world.dataset.initialY = offsetY;
 }
 
-// 🔹 Pan and Zoom Utility
 function initPanZoom(viewport, content) {
     let scale = 1;
     let originX = parseFloat(content.dataset.initialX) || 0;
@@ -271,13 +265,16 @@ function initPanZoom(viewport, content) {
 }
 
 // 🔹 Logout
-document.getElementById("logout-btn").addEventListener("click", async () => {
-    try {
-        await saveVillageData();
-        await auth.signOut();
-        window.location.href = "index.html";
-    } catch (err) {
-        console.error("Logout Error:", err);
-        alert("Failed to logout. Try again.");
-    }
-});
+const logoutBtn = document.getElementById("logout-btn");
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+        try {
+            await saveVillageData();
+            await auth.signOut();
+            window.location.href = "index.html";
+        } catch (err) {
+            console.error("Logout Error:", err);
+            alert("Failed to logout. Try again.");
+        }
+    });
+}
