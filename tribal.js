@@ -1,6 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+import { updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 import {
     getFirestore, doc, getDoc, setDoc, collection,
     query, orderBy, limit, onSnapshot, getDocs
