@@ -246,6 +246,8 @@ async function loadWorldMap() {
 
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
+            v.id = docSnap.id; // Add this line to capture the actual document ID
+
             if (!v.x || !v.y) return;
 
             const el = document.createElement("div");
@@ -319,12 +321,12 @@ async function loadWorldMap() {
                     villageData.iron += Math.floor((v.iron || 0) * 0.1);
                     villageData.score += 20;
 
-                    await updateDoc(doc(db, "villages", v.userId), {
+                    await updateDoc(doc(db, "villages", v.id), {
+                        console.log(`Defender troops cleared for village ID: ${v.id}`);
                         "troops.spear": 0,
                         "troops.sword": 0,
                         "troops.axe": 0
                     });
-
 
                 } else {
                     resultMessage = "You lost the battle!";
