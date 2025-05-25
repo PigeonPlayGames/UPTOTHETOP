@@ -240,41 +240,76 @@ async function loadWorldMap() {
 
     world.innerHTML = "";
 
-    const snapshot = await getDocs(collection(db, "villages"));
-    snapshot.forEach(docSnap => {
-        const v = docSnap.data();
-        const el = document.createElement("div");
-        el.className = "village-tile";
-        el.style.left = `${v.x}px`;
-        el.style.top = `${v.y}px`;
-        el.setAttribute("data-username", v.username || "Unknown");
-        el.setAttribute("data-score", v.score ?? 0);
+    try {
+        const snapshot = await getDocs(collection(db, "villages"));
 
-        // Display info
-        el.addEventListener("click", async () => {
+        snapshot.forEach(docSnap => {
+            const v = docSnap.data();
+            if (!v.x || !v.y) return; // Skip if coordinates are missing
+
+            const el = document.createElement("div");
+            el.className = "village-tile";
+
+            // Highlight the current user's village
             if (v.userId === user.uid) {
-                alert("This is your own village.");
-                return;
+                el.classList.add("your-village");
             }
 
-            const confirmAttack = confirm(`Attack ${v.username}'s village?`);
-            if (!confirmAttack) return;
+            el.style.left = `${v.x}px`;
+            el.style.top = `${v.y}px`;
+            el.setAttribute("data-username", v.username || "Unknown");
+            el.setAttribute("data-score", v.score ?? 0);
 
-            const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
-            const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
-            const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
+            el.addEventListener("click", async () => {
+                if (v.userId === user.uid) {
+                    alert("This is your own village.");
+                    return;
+                }
 
-            const totalSent = spear + sword + axe;
-            if (totalSent <= 0) return alert("You must send at least 1 troop.");
+                const confirmAttack = confirm(`Attack ${v.username}'s village?`);
+                if (!confirmAttack) return;
 
-            // Check if player has enough troops
-            if (
-                spear > villageData.troops.spear ||
-                sword > villageData.troops.sword ||
-                axe > villageData.troops.axe
-            ) {
-                return alert("Not enough troops.");
-            }
+                const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
+                const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
+                const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
+
+                const totalSent = spear + sword + axe;
+                if (totalSent <= 0) {
+                    alert("You must send at least 1 troop.");
+                    return;
+                }
+
+                // Check if user has enough troops
+                if (
+                    spear > villageData.troops.spear ||
+                    sword > villageData.troops.sword ||
+                    axe > villageData.troops.axe
+                ) {
+                    alert("Not enough troops.");
+                    return;
+                }
+
+                // Deduct troops (simple version)
+                villageData.troops.spear -= spear;
+                villageData.troops.sword -= sword;
+                villageData.troops.axe -= axe;
+                await saveVillageData();
+                updateUI();
+
+                alert(`You sent ${totalSent} troops to attack ${v.username}! (PvP result logic coming soon...)`);
+            });
+
+            world.appendChild(el);
+        });
+
+        centerOnPlayer(wrapper, world, villageData.x, villageData.y);
+        initPanZoom(wrapper, world);
+    } catch (err) {
+        console.error("Error loading world map:", err);
+        alert("Failed to load world map.");
+    }
+}
+
 
             // Calculate strengths
             const attackerStrength = spear * 1 + sword * 2 + axe * 3;
