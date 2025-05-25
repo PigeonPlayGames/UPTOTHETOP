@@ -282,7 +282,7 @@ async function loadWorldMap() {
                     return alert("Not enough troops.");
                 }
 
-                // Calculate combat strength
+               // Calculate combat strength
                 const attackerStrength = spear * 1 + sword * 2 + axe * 3;
                 const defenderStrength =
                     (v.troops?.spear || 0) * 1 +
@@ -291,25 +291,55 @@ async function loadWorldMap() {
 
                 let resultMessage = "";
 
+                // Deep copy the attacker's troop counts for survival logic
+                let remainingSpear = spear;
+                let remainingSword = sword;
+                let remainingAxe = axe;
+
                 if (attackerStrength > defenderStrength) {
                     resultMessage = "You won the battle!";
-                    villageData.score += 20;
+
+                    // Remove troops from attacker equal to defender strength
+                    let damage = defenderStrength;
+
+                    // Reduce from weakest to strongest (spear → sword → axe)
+                    const reduceTroops = (count, power) => {
+                        const loss = Math.min(count, Math.floor(damage / power));
+                        damage -= loss * power;
+                        return count - loss;
+                    };
+
+                    remainingSpear = reduceTroops(remainingSpear, 1);
+                    remainingSword = reduceTroops(remainingSword, 2);
+                    remainingAxe = reduceTroops(remainingAxe, 3);
+
+                    // Update attacker troop counts
+                    villageData.troops.spear -= (spear - remainingSpear);
+                    villageData.troops.sword -= (sword - remainingSword);
+                    villageData.troops.axe   -= (axe   - remainingAxe);
+
+                    // Reward resources
                     villageData.wood += Math.floor((v.wood || 0) * 0.1);
                     villageData.stone += Math.floor((v.stone || 0) * 0.1);
                     villageData.iron += Math.floor((v.iron || 0) * 0.1);
+                    villageData.score += 20;
+
                 } else {
                     resultMessage = "You lost the battle!";
+    
+                    // Attacker loses all troops
+                    villageData.troops.spear -= spear;
+                    villageData.troops.sword -= sword;
+                    villageData.troops.axe   -= axe;
+
                     villageData.score = Math.max(0, villageData.score - 5);
                 }
 
-                // Deduct troops sent
-                villageData.troops.spear -= spear;
-                villageData.troops.sword -= sword;
-                villageData.troops.axe -= axe;
-
+                // Save results and update UI
                 await saveVillageData();
                 updateUI();
                 alert(resultMessage);
+
             });
 
             world.appendChild(el);
