@@ -322,7 +322,6 @@ async function loadWorldMap() {
                     villageData.score += 20;
 
                     await updateDoc(doc(db, "villages", v.id), {
-                        console.log(`Defender troops cleared for village ID: ${v.id}`);
                         "troops.spear": 0,
                         "troops.sword": 0,
                         "troops.axe": 0
