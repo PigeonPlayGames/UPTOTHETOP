@@ -318,12 +318,12 @@ async function loadWorldMap() {
                     villageData.iron += Math.floor((v.iron || 0) * 0.1);
                     villageData.score += 20;
 
-                    // 🔹 Wipe defender's troops
-                    const defenderRef = doc(db, "villages", v.userId);
-                    await setDoc(defenderRef, {
-                        ...v,
-                        troops: { spear: 0, sword: 0, axe: 0 }
+                    await updateDoc(doc(db, "villages", v.userId), {
+                        "troops.spear": 0,
+                        "troops.sword": 0,
+                        "troops.axe": 0
                     });
+
 
                 } else {
                     resultMessage = "You lost the battle!";
