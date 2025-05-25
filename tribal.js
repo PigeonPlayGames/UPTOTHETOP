@@ -52,11 +52,8 @@ async function loadVillageData() {
 
     if (snapshot.exists()) {
         villageData = snapshot.data();
-
-        // Ensure required structures
         villageData.buildings = villageData.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 };
         villageData.troops = villageData.troops || { spear: 0, sword: 0, axe: 0 };
-
     } else {
         villageData = {
             username: user.email.split("@")[0],
@@ -119,25 +116,31 @@ function updateUI() {
     window.scrollTo(0, scrollY);
 }
 
-// 🔹 Upgrade Buttons (Handles both buildings and troops)
+// 🔹 Upgrade Buttons
 function bindUpgradeButtons() {
     document.querySelectorAll(".upgrade-btn").forEach(button => {
         const building = button.getAttribute("data-building");
-        const troop = button.getAttribute("data-troop");
-
         if (building) {
             button.addEventListener("click", () => {
                 upgradeBuilding(building);
-            });
-        } else if (troop) {
-            button.addEventListener("click", () => {
-                upgradeTroop(troop);
             });
         }
     });
 }
 
-// 🔹 Building Upgrade Logic (Unchanged)
+// 🔹 Recruit Buttons
+function bindRecruitButtons() {
+    document.querySelectorAll(".recruit-btn").forEach(button => {
+        const troop = button.getAttribute("data-troop");
+        if (troop) {
+            button.addEventListener("click", () => {
+                recruitTroop(troop);
+            });
+        }
+    });
+}
+
+// 🔹 Upgrade Logic
 function upgradeBuilding(building) {
     if (!villageDataLoaded) return;
 
@@ -158,42 +161,7 @@ function upgradeBuilding(building) {
     }
 }
 
-// 🔹 Troop Upgrade Logic (NEW)
-function upgradeTroop(troop) {
-    if (!villageDataLoaded) return;
-
-    // Initialize troop levels if they don't exist
-    if (!villageData.troopLevels) villageData.troopLevels = {};
-    const level = villageData.troopLevels[troop] ?? 1;
-    const cost = level * 75;
-
-    if (villageData.wood >= cost && villageData.iron >= cost) {
-        villageData.wood -= cost;
-        villageData.iron -= cost;
-        villageData.troopLevels[troop] = level + 1;
-        villageData.score += 5;
-
-        saveVillageData();
-        updateUI();
-        alert(`${troop.charAt(0).toUpperCase() + troop.slice(1)} upgraded to level ${level + 1}!`);
-    } else {
-        alert("Not enough resources to upgrade this troop.");
-    }
-}
-
-
-// 🔹 Recruit Buttons
-function bindRecruitButtons() {
-    const troopTypes = ["spear", "sword", "axe"];
-
-    troopTypes.forEach(type => {
-        const btn = document.getElementById(`recruit-${type}-btn`);
-        if (btn) {
-            btn.addEventListener("click", () => recruitTroop(type));
-        }
-    });
-}
-
+// 🔹 Recruit Logic
 function recruitTroop(type) {
     const cost = 100;
 
@@ -201,6 +169,7 @@ function recruitTroop(type) {
         villageData.wood -= cost;
         villageData.iron -= cost;
         villageData.troops[type] = (villageData.troops[type] || 0) + 1;
+        villageData.score += 5;
         saveVillageData();
         updateUI();
         alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
@@ -341,7 +310,7 @@ function initPanZoom(viewport, content) {
     setTransform();
 }
 
-// 🔹 Logout Button
+// 🔹 Logout
 function bindLogout() {
     const logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) {
