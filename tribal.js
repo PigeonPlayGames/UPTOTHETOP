@@ -158,20 +158,36 @@ function upgradeBuilding(building) {
 
 // 🔹 Recruit Logic
 function recruitTroop(type) {
-    const cost = 100;
+    const costs = {
+        spear: { wood: 100 },
+        sword: { iron: 100 },
+        axe:   { stone: 100 }
+    };
 
-    if (villageData.wood >= cost && villageData.iron >= cost) {
-        villageData.wood -= cost;
-        villageData.iron -= cost;
-        villageData.troops[type] = (villageData.troops[type] || 0) + 1;
-        villageData.score += 5;
-        saveVillageData();
-        updateUI();
-        alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
-    } else {
-        alert("Not enough resources to recruit a troop.");
+    const cost = costs[type];
+
+    // Check if resources are sufficient
+    const hasEnough = Object.entries(cost).every(([resource, amount]) => {
+        return villageData[resource] >= amount;
+    });
+
+    if (!hasEnough) {
+        alert(`Not enough resources to train a ${type}.`);
+        return;
     }
+
+    // Deduct the resources
+    Object.entries(cost).forEach(([resource, amount]) => {
+        villageData[resource] -= amount;
+    });
+
+    villageData.troops[type] = (villageData.troops[type] || 0) + 1;
+    villageData.score += 5;
+    saveVillageData();
+    updateUI();
+    alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
 }
+
 
 // 🔹 Resource Loop
 function startGameLoops() {
