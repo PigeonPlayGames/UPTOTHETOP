@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
         loadLeaderboard();
         loadWorldMap();
         bindUpgradeButtons();
-        bindRecruitButtons();
+        bindTrainButtons();  // 🔹 Fixed here
         bindLogout();
     });
 });
@@ -128,13 +128,13 @@ function bindUpgradeButtons() {
     });
 }
 
-// 🔹 Recruit Buttons
-function bindRecruitButtons() {
-    document.querySelectorAll(".recruit-btn").forEach(button => {
-        const troop = button.getAttribute("data-troop");
-        if (troop) {
+// 🔹 Fixed: Train Buttons (match HTML)
+function bindTrainButtons() {
+    document.querySelectorAll(".train-btn").forEach(button => {
+        const type = button.getAttribute("data-type");
+        if (type) {
             button.addEventListener("click", () => {
-                recruitTroop(troop);
+                recruitTroop(type);
             });
         }
     });
