@@ -27,19 +27,23 @@ let user = null;
 let villageData = null;
 let villageDataLoaded = false;
 
-// 🔹 Auth Check
-onAuthStateChanged(auth, async (loggedInUser) => {
-    if (!loggedInUser) {
-        alert("You must be logged in to play!");
-        window.location.href = "index.html";
-        return;
-    }
+// 🔹 DOM Ready
+document.addEventListener("DOMContentLoaded", () => {
+    onAuthStateChanged(auth, async (loggedInUser) => {
+        if (!loggedInUser) {
+            alert("You must be logged in to play!");
+            window.location.href = "index.html";
+            return;
+        }
 
-    user = loggedInUser;
-    await loadVillageData();
-    startGameLoops();
-    loadLeaderboard();
-    loadWorldMap();
+        user = loggedInUser;
+        await loadVillageData();
+        startGameLoops();
+        loadLeaderboard();
+        loadWorldMap();
+        bindUpgradeButtons();
+        bindLogout();
+    });
 });
 
 // 🔹 Load or Create Village
@@ -105,13 +109,15 @@ function updateUI() {
     window.scrollTo(0, scrollY);
 }
 
-// 🔹 Upgrade Building Logic
-document.querySelectorAll(".upgrade-btn").forEach(button => {
-    button.addEventListener("click", () => {
-        const building = button.getAttribute("data-building");
-        upgradeBuilding(building);
+// 🔹 Upgrade Building
+function bindUpgradeButtons() {
+    document.querySelectorAll(".upgrade-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const building = button.getAttribute("data-building");
+            upgradeBuilding(building);
+        });
     });
-});
+}
 
 function upgradeBuilding(building) {
     if (!villageDataLoaded) return;
@@ -132,7 +138,7 @@ function upgradeBuilding(building) {
     }
 }
 
-// 🔹 Resource Generation Loop
+// 🔹 Resource Loop
 function startGameLoops() {
     setInterval(() => {
         if (!villageDataLoaded) return;
@@ -265,16 +271,18 @@ function initPanZoom(viewport, content) {
 }
 
 // 🔹 Logout Button
-const logoutBtn = document.getElementById("logout-btn");
-if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-        try {
-            await saveVillageData();
-            await auth.signOut();
-            window.location.href = "index.html";
-        } catch (err) {
-            console.error("Logout Error:", err);
-            alert("Failed to logout. Try again.");
-        }
-    });
+function bindLogout() {
+    const logoutBtn = document.getElementById("logout-btn");
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", async () => {
+            try {
+                await saveVillageData();
+                await auth.signOut();
+                window.location.href = "index.html";
+            } catch (err) {
+                console.error("Logout Error:", err);
+                alert("Failed to logout. Try again.");
+            }
+        });
+    }
 }
