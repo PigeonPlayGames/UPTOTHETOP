@@ -119,16 +119,25 @@ function updateUI() {
     window.scrollTo(0, scrollY);
 }
 
-// 🔹 Upgrade Buttons
+// 🔹 Upgrade Buttons (Handles both buildings and troops)
 function bindUpgradeButtons() {
     document.querySelectorAll(".upgrade-btn").forEach(button => {
-        button.addEventListener("click", () => {
-            const building = button.getAttribute("data-building");
-            upgradeBuilding(building);
-        });
+        const building = button.getAttribute("data-building");
+        const troop = button.getAttribute("data-troop");
+
+        if (building) {
+            button.addEventListener("click", () => {
+                upgradeBuilding(building);
+            });
+        } else if (troop) {
+            button.addEventListener("click", () => {
+                upgradeTroop(troop);
+            });
+        }
     });
 }
 
+// 🔹 Building Upgrade Logic (Unchanged)
 function upgradeBuilding(building) {
     if (!villageDataLoaded) return;
 
@@ -141,12 +150,37 @@ function upgradeBuilding(building) {
         villageData.iron -= cost;
         villageData.buildings[building]++;
         villageData.score += 10;
+
         saveVillageData();
         updateUI();
     } else {
         alert("Not enough resources!");
     }
 }
+
+// 🔹 Troop Upgrade Logic (NEW)
+function upgradeTroop(troop) {
+    if (!villageDataLoaded) return;
+
+    // Initialize troop levels if they don't exist
+    if (!villageData.troopLevels) villageData.troopLevels = {};
+    const level = villageData.troopLevels[troop] ?? 1;
+    const cost = level * 75;
+
+    if (villageData.wood >= cost && villageData.iron >= cost) {
+        villageData.wood -= cost;
+        villageData.iron -= cost;
+        villageData.troopLevels[troop] = level + 1;
+        villageData.score += 5;
+
+        saveVillageData();
+        updateUI();
+        alert(`${troop.charAt(0).toUpperCase() + troop.slice(1)} upgraded to level ${level + 1}!`);
+    } else {
+        alert("Not enough resources to upgrade this troop.");
+    }
+}
+
 
 // 🔹 Recruit Buttons
 function bindRecruitButtons() {
