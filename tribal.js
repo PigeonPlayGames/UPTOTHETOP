@@ -52,9 +52,22 @@ async function loadVillageData() {
 
     if (snapshot.exists()) {
         villageData = snapshot.data();
+
+        // ✅ Ensure all required fields exist (even if document exists)
         villageData.buildings = villageData.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 };
         villageData.troops = villageData.troops || { spear: 0, sword: 0, axe: 0 };
+        villageData.wood = villageData.wood ?? 100;
+        villageData.stone = villageData.stone ?? 100;
+        villageData.iron = villageData.iron ?? 100;
+        villageData.score = villageData.score ?? 0;
+        villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
+        villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
+
+        // ✅ Save any missing data back to Firestore
+        await saveVillageData();
+
     } else {
+        // First time user setup
         villageData = {
             username: user.email.split("@")[0],
             userId: user.uid,
@@ -73,6 +86,7 @@ async function loadVillageData() {
     villageDataLoaded = true;
     updateUI();
 }
+
 
 // 🔹 Save Village
 async function saveVillageData() {
