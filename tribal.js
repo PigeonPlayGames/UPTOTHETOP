@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
         loadLeaderboard();
         loadWorldMap();
         bindUpgradeButtons();
-        bindTrainButtons();  // 🔹 Fixed here
+        bindTrainButtons(); // ✅ Fixed troop button binding
         bindLogout();
     });
 });
@@ -89,31 +89,27 @@ async function saveVillageData() {
 function updateUI() {
     if (!villageData) return;
 
-    const scrollY = window.scrollY;
-
     document.getElementById("wood-count").innerText = villageData.wood ?? 0;
     document.getElementById("stone-count").innerText = villageData.stone ?? 0;
     document.getElementById("iron-count").innerText = villageData.iron ?? 0;
     document.getElementById("player-score").innerText = villageData.score ?? 0;
 
-    document.getElementById("hq-level").innerText = villageData.buildings?.hq ?? 1;
-    document.getElementById("lumber-level").innerText = villageData.buildings?.lumber ?? 1;
-    document.getElementById("quarry-level").innerText = villageData.buildings?.quarry ?? 1;
-    document.getElementById("iron-level").innerText = villageData.buildings?.iron ?? 1;
+    document.getElementById("hq-level").innerText = villageData.buildings.hq;
+    document.getElementById("lumber-level").innerText = villageData.buildings.lumber;
+    document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
+    document.getElementById("iron-level").innerText = villageData.buildings.iron;
 
-    document.getElementById("spear-count").textContent = villageData.troops?.spear ?? 0;
-    document.getElementById("sword-count").textContent = villageData.troops?.sword ?? 0;
-    document.getElementById("axe-count").textContent = villageData.troops?.axe ?? 0;
+    document.getElementById("spear-count").textContent = villageData.troops.spear;
+    document.getElementById("sword-count").textContent = villageData.troops.sword;
+    document.getElementById("axe-count").textContent = villageData.troops.axe;
 
     document.querySelectorAll(".building").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
-        const level = villageData.buildings?.[type] ?? 1;
+        const level = villageData.buildings[type];
         const cost = level * 50;
         buildingElement.querySelector(".upgrade-cost").innerText =
             `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
     });
-
-    window.scrollTo(0, scrollY);
 }
 
 // 🔹 Upgrade Buttons
@@ -128,7 +124,7 @@ function bindUpgradeButtons() {
     });
 }
 
-// 🔹 Fixed: Train Buttons (match HTML)
+// 🔹 Train Troop Buttons (✅ fixed to use .train-btn and data-type)
 function bindTrainButtons() {
     document.querySelectorAll(".train-btn").forEach(button => {
         const type = button.getAttribute("data-type");
@@ -153,7 +149,6 @@ function upgradeBuilding(building) {
         villageData.iron -= cost;
         villageData.buildings[building]++;
         villageData.score += 10;
-
         saveVillageData();
         updateUI();
     } else {
