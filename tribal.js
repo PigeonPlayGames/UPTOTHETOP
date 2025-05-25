@@ -97,9 +97,9 @@ function updateUI() {
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
 
-    document.getElementById("spear-count").innerText = villageData.troops.spear;
-    document.getElementById("sword-count").innerText = villageData.troops.sword;
-    document.getElementById("axe-count").innerText = villageData.troops.axe;
+    document.getElementById("spear-count").textContent = villageData.troops.spear;
+    document.getElementById("sword-count").textContent = villageData.troops.sword;
+    document.getElementById("axe-count").textContent = villageData.troops.axe;
 
     document.querySelectorAll(".building").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
