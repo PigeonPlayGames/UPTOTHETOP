@@ -1,99 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Top Tribe</title>
-    <link rel="stylesheet" href="tribal.css" />
-    <script defer type="module" src="tribal.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Top Tribe</title>
+  <link rel="stylesheet" href="tribal.css" />
+  <script defer type="module" src="tribal.js"></script>
 </head>
 <body>
-    <!-- 🔹 Navbar -->
-    <nav>
-        <h1>Top Tribe</h1>
-        <button id="logout-btn" style="display:none;">Logout</button>
-    </nav>
+  <!-- 🔹 Navbar -->
+  <nav>
+    <h1>Top Tribe</h1>
+    <button id="logout-btn" style="display:none;">Logout</button>
+  </nav>
 
-    <!-- 🔹 Resource Bar -->
-    <div class="resources-bar">
-        <span><img src="paintwood.png" alt="Wood Icon" /> Wood: <span id="wood-count">0</span></span>
-        <span><img src="paintstone.png" alt="Stone Icon" /> Stone: <span id="stone-count">0</span></span>
-        <span><img src="paintiron.png" alt="Iron Icon" /> Iron: <span id="iron-count">0</span></span>
-        <span>Score: <span id="player-score">0</span></span>
-    </div>
+  <!-- 🔹 Resource Bar -->
+  <div class="resources-bar">
+    <span><img src="paintwood.png" alt="Wood Icon" /> Wood: <span id="wood-count">0</span></span>
+    <span><img src="paintstone.png" alt="Stone Icon" /> Stone: <span id="stone-count">0</span></span>
+    <span><img src="paintiron.png" alt="Iron Icon" /> Iron: <span id="iron-count">0</span></span>
+    <span>Score: <span id="player-score">0</span></span>
+  </div>
 
-    <main>
-        <!-- 🔹 Village Section -->
-        <section id="village">
-            <h2>Your Village</h2>
+  <main>
+    <!-- 🔹 Village Section -->
+    <section id="village">
+      <h2>Your Village</h2>
 
-            <div class="building">
-                <p>Headquarters (Level <span id="hq-level">1</span>)</p>
-                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
-                <button class="upgrade-btn" data-building="hq">Upgrade</button>
-            </div>
+      <div class="building">
+        <p>Headquarters (Level <span id="hq-level">1</span>)</p>
+        <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+        <button class="upgrade-btn" data-building="hq">Upgrade</button>
+      </div>
 
-            <div class="building">
-                <p>Lumber Mill (Level <span id="lumber-level">1</span>)</p>
-                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
-                <button class="upgrade-btn" data-building="lumber">Upgrade</button>
-            </div>
+      <div class="building">
+        <p>Lumber Mill (Level <span id="lumber-level">1</span>)</p>
+        <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+        <button class="upgrade-btn" data-building="lumber">Upgrade</button>
+      </div>
 
-            <div class="building">
-                <p>Quarry (Level <span id="quarry-level">1</span>)</p>
-                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
-                <button class="upgrade-btn" data-building="quarry">Upgrade</button>
-            </div>
+      <div class="building">
+        <p>Quarry (Level <span id="quarry-level">1</span>)</p>
+        <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+        <button class="upgrade-btn" data-building="quarry">Upgrade</button>
+      </div>
 
-            <div class="building">
-                <p>Iron Mine (Level <span id="iron-level">1</span>)</p>
-                <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
-                <button class="upgrade-btn" data-building="iron">Upgrade</button>
-            </div>
-        </section>
+      <div class="building">
+        <p>Iron Mine (Level <span id="iron-level">1</span>)</p>
+        <p class="upgrade-cost">Upgrade Cost: Wood: 50, Stone: 50, Iron: 50</p>
+        <button class="upgrade-btn" data-building="iron">Upgrade</button>
+      </div>
+    </section>
 
-        <!-- 🔹 Troops Section -->
-        <section id="troops">
-            <h2>Your Troops</h2>
-            <div class="troop">
-                <p>Spear Fighters: <span id="spear-count">0</span></p>
-                <button class="train-btn" data-type="spear">Train Spear</button>
-            </div>
-            <div class="troop">
-                <p>Swordsmen: <span id="sword-count">0</span></p>
-                <button class="train-btn" data-type="sword">Train Sword</button>
-            </div>
-            <div class="troop">
-                <p>Axemen: <span id="axe-count">0</span></p>
-                <button class="train-btn" data-type="axe">Train Axe</button>
-            </div>
+    <!-- 🔹 Troops Section -->
+    <section id="troops">
+      <h2>Your Troops</h2>
+      <div class="troop">
+        <p>Spear Fighters: <span id="spear-count">0</span></p>
+        <button class="recruit-btn" data-troop="spear">Train Spear</button>
+      </div>
+      <div class="troop">
+        <p>Swordsmen: <span id="sword-count">0</span></p>
+        <button class="recruit-btn" data-troop="sword">Train Sword</button>
+      </div>
+      <div class="troop">
+        <p>Axemen: <span id="axe-count">0</span></p>
+        <button class="recruit-btn" data-troop="axe">Train Axe</button>
+      </div>
+    </section>
 
-            <!-- 🔹 Troop Recruitment Button (used in initTroops) -->
-            <div class="troop-recruit">
-                <h3>General Recruitment</h3>
-                <button id="recruit-btn">Recruit Basic Troop</button>
-            </div>
-        </section>
+    <!-- 🔹 Game Display -->
+    <section id="game-display">
+      <!-- World Map -->
+      <div id="world-map">
+        <h2>World Map</h2>
+        <div id="map-wrapper">
+          <div id="map-world"></div>
+          <div id="village-image"></div>
+        </div>
+      </div>
 
-        <!-- 🔹 Game Display -->
-        <section id="game-display">
-            <!-- World Map -->
-            <div id="world-map">
-                <h2>World Map</h2>
-                <div id="map-wrapper">
-                    <div id="map-world"></div>
-                    <div id="village-image"></div>
-                </div>
-            </div>
-
-            <!-- Leaderboard -->
-            <div id="leaderboard">
-                <h2>Leaderboard</h2>
-                <ul id="leaderboard-list">
-                    <li>Loading...</li>
-                </ul>
-            </div>
-        </section>
-    </main>
+      <!-- Leaderboard -->
+      <div id="leaderboard">
+        <h2>Leaderboard</h2>
+        <ul id="leaderboard-list">
+          <li>Loading...</li>
+        </ul>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
