@@ -6,9 +6,6 @@ import {
     query, orderBy, limit, onSnapshot, getDocs
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
-// 🔹 Troops Module
-import { initTroops } from "/moduls/troops2.js";
-
 // 🔹 Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
@@ -18,6 +15,7 @@ const firebaseConfig = {
     messagingSenderId: "328069667156",
     appId: "1:328069667156:web:5f36cb5ee1a898b17310c1"
 };
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
@@ -42,6 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
         loadLeaderboard();
         loadWorldMap();
         bindUpgradeButtons();
+        bindRecruitButtons();
         bindLogout();
     });
 });
@@ -70,7 +69,6 @@ async function loadVillageData() {
     }
 
     villageDataLoaded = true;
-    initTroops(db, user, villageData, saveVillageData, updateUI);
     updateUI();
 }
 
@@ -99,6 +97,10 @@ function updateUI() {
     document.getElementById("quarry-level").innerText = villageData.buildings.quarry;
     document.getElementById("iron-level").innerText = villageData.buildings.iron;
 
+    document.getElementById("spear-count").innerText = villageData.troops.spear;
+    document.getElementById("sword-count").innerText = villageData.troops.sword;
+    document.getElementById("axe-count").innerText = villageData.troops.axe;
+
     document.querySelectorAll(".building").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
         const cost = villageData.buildings[type] * 50;
@@ -109,7 +111,7 @@ function updateUI() {
     window.scrollTo(0, scrollY);
 }
 
-// 🔹 Upgrade Building
+// 🔹 Upgrade Buttons
 function bindUpgradeButtons() {
     document.querySelectorAll(".upgrade-btn").forEach(button => {
         button.addEventListener("click", () => {
@@ -135,6 +137,33 @@ function upgradeBuilding(building) {
         updateUI();
     } else {
         alert("Not enough resources!");
+    }
+}
+
+// 🔹 Recruit Buttons
+function bindRecruitButtons() {
+    const troopTypes = ["spear", "sword", "axe"];
+
+    troopTypes.forEach(type => {
+        const btn = document.getElementById(`recruit-${type}-btn`);
+        if (btn) {
+            btn.addEventListener("click", () => recruitTroop(type));
+        }
+    });
+}
+
+function recruitTroop(type) {
+    const cost = 100;
+
+    if (villageData.wood >= cost && villageData.iron >= cost) {
+        villageData.wood -= cost;
+        villageData.iron -= cost;
+        villageData.troops[type] = (villageData.troops[type] || 0) + 1;
+        saveVillageData();
+        updateUI();
+        alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
+    } else {
+        alert("Not enough resources to recruit a troop.");
     }
 }
 
@@ -167,7 +196,7 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 Map Rendering
+// 🔹 World Map
 async function loadWorldMap() {
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
