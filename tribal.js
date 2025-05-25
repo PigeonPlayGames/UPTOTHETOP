@@ -324,42 +324,6 @@ async function loadWorldMap() {
 }
 
 
-            // Calculate strengths
-            const attackerStrength = spear * 1 + sword * 2 + axe * 3;
-            const defenderStrength = (v.troops?.spear || 0) * 1 +
-                                     (v.troops?.sword || 0) * 2 +
-                                     (v.troops?.axe || 0) * 3;
-
-            let resultMessage = "";
-            if (attackerStrength > defenderStrength) {
-                resultMessage = "You won the battle!";
-                villageData.score += 20;
-                villageData.wood += Math.floor((v.wood || 0) * 0.1);
-                villageData.stone += Math.floor((v.stone || 0) * 0.1);
-                villageData.iron += Math.floor((v.iron || 0) * 0.1);
-            } else {
-                resultMessage = "You lost the battle!";
-                villageData.score -= 5;
-            }
-
-            // Deduct troops sent
-            villageData.troops.spear -= spear;
-            villageData.troops.sword -= sword;
-            villageData.troops.axe -= axe;
-
-            await saveVillageData();
-            updateUI();
-            alert(resultMessage);
-        });
-
-        world.appendChild(el);
-    });
-
-    centerOnPlayer(wrapper, world, villageData.x, villageData.y);
-    initPanZoom(wrapper, world);
-}
-
-
 function centerOnPlayer(wrapper, world, x, y) {
     const wrapperRect = wrapper.getBoundingClientRect();
     const offsetX = wrapperRect.width / 2 - x;
