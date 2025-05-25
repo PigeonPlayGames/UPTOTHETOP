@@ -227,23 +227,76 @@ async function loadWorldMap() {
     world.innerHTML = "";
 
     const snapshot = await getDocs(collection(db, "villages"));
-    snapshot.forEach(doc => {
-        const v = doc.data();
+    snapshot.forEach(docSnap => {
+        const v = docSnap.data();
         const el = document.createElement("div");
         el.className = "village-tile";
         el.style.left = `${v.x}px`;
         el.style.top = `${v.y}px`;
         el.setAttribute("data-username", v.username || "Unknown");
         el.setAttribute("data-score", v.score ?? 0);
-        el.addEventListener("click", () => {
-            alert(`${v.username}'s Village\nHQ Lv ${v.buildings?.hq ?? 1}\nScore ${v.score ?? 0}`);
+
+        // Display info
+        el.addEventListener("click", async () => {
+            if (v.userId === user.uid) {
+                alert("This is your own village.");
+                return;
+            }
+
+            const confirmAttack = confirm(`Attack ${v.username}'s village?`);
+            if (!confirmAttack) return;
+
+            const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
+            const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
+            const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
+
+            const totalSent = spear + sword + axe;
+            if (totalSent <= 0) return alert("You must send at least 1 troop.");
+
+            // Check if player has enough troops
+            if (
+                spear > villageData.troops.spear ||
+                sword > villageData.troops.sword ||
+                axe > villageData.troops.axe
+            ) {
+                return alert("Not enough troops.");
+            }
+
+            // Calculate strengths
+            const attackerStrength = spear * 1 + sword * 2 + axe * 3;
+            const defenderStrength = (v.troops?.spear || 0) * 1 +
+                                     (v.troops?.sword || 0) * 2 +
+                                     (v.troops?.axe || 0) * 3;
+
+            let resultMessage = "";
+            if (attackerStrength > defenderStrength) {
+                resultMessage = "You won the battle!";
+                villageData.score += 20;
+                villageData.wood += Math.floor((v.wood || 0) * 0.1);
+                villageData.stone += Math.floor((v.stone || 0) * 0.1);
+                villageData.iron += Math.floor((v.iron || 0) * 0.1);
+            } else {
+                resultMessage = "You lost the battle!";
+                villageData.score -= 5;
+            }
+
+            // Deduct troops sent
+            villageData.troops.spear -= spear;
+            villageData.troops.sword -= sword;
+            villageData.troops.axe -= axe;
+
+            await saveVillageData();
+            updateUI();
+            alert(resultMessage);
         });
+
         world.appendChild(el);
     });
 
     centerOnPlayer(wrapper, world, villageData.x, villageData.y);
     initPanZoom(wrapper, world);
 }
+
 
 function centerOnPlayer(wrapper, world, x, y) {
     const wrapperRect = wrapper.getBoundingClientRect();
