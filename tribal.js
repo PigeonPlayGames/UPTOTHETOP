@@ -245,12 +245,10 @@ async function loadWorldMap() {
 
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
-            if (!v.x || !v.y) return; // Skip if coordinates are missing
+            if (!v.x || !v.y) return;
 
             const el = document.createElement("div");
             el.className = "village-tile";
-
-            // Highlight the current user's village
             if (v.userId === user.uid) {
                 el.classList.add("your-village");
             }
@@ -274,29 +272,44 @@ async function loadWorldMap() {
                 const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
 
                 const totalSent = spear + sword + axe;
-                if (totalSent <= 0) {
-                    alert("You must send at least 1 troop.");
-                    return;
-                }
+                if (totalSent <= 0) return alert("You must send at least 1 troop.");
 
-                // Check if user has enough troops
                 if (
                     spear > villageData.troops.spear ||
                     sword > villageData.troops.sword ||
                     axe > villageData.troops.axe
                 ) {
-                    alert("Not enough troops.");
-                    return;
+                    return alert("Not enough troops.");
                 }
 
-                // Deduct troops (simple version)
+                // Calculate combat strength
+                const attackerStrength = spear * 1 + sword * 2 + axe * 3;
+                const defenderStrength =
+                    (v.troops?.spear || 0) * 1 +
+                    (v.troops?.sword || 0) * 2 +
+                    (v.troops?.axe || 0) * 3;
+
+                let resultMessage = "";
+
+                if (attackerStrength > defenderStrength) {
+                    resultMessage = "You won the battle!";
+                    villageData.score += 20;
+                    villageData.wood += Math.floor((v.wood || 0) * 0.1);
+                    villageData.stone += Math.floor((v.stone || 0) * 0.1);
+                    villageData.iron += Math.floor((v.iron || 0) * 0.1);
+                } else {
+                    resultMessage = "You lost the battle!";
+                    villageData.score = Math.max(0, villageData.score - 5);
+                }
+
+                // Deduct troops sent
                 villageData.troops.spear -= spear;
                 villageData.troops.sword -= sword;
                 villageData.troops.axe -= axe;
+
                 await saveVillageData();
                 updateUI();
-
-                alert(`You sent ${totalSent} troops to attack ${v.username}! (PvP result logic coming soon...)`);
+                alert(resultMessage);
             });
 
             world.appendChild(el);
