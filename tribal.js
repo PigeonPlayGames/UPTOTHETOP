@@ -37,6 +37,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
         user = loggedInUser;
         await loadVillageData();
+        // 🔹 Real-time listener for changes to this user's village (e.g., after battle)
+onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
+    if (!docSnap.exists() || !villageData) return;
+
+    const updatedData = docSnap.data();
+    villageData.troops = updatedData.troops;
+    villageData.lastBattleMessage = updatedData.lastBattleMessage;
+
+    updateUI();
+
+    if (villageData.lastBattleMessage) {
+        alert(villageData.lastBattleMessage);
+        delete villageData.lastBattleMessage;
+
+        updateDoc(doc(db, "villages", user.uid), {
+            lastBattleMessage: null
+        }).catch((error) => {
+            console.error("Failed to clear battle message:", error);
+        });
+    }
+});
+
+
         startGameLoops();
         loadLeaderboard();
         loadWorldMap();
@@ -63,6 +86,7 @@ async function loadVillageData() {
         villageData.score = villageData.score ?? 0;
         villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
         villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
+        villageData = snapshot.data();
         
 
         // ✅ Save any missing data back to Firestore
