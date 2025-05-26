@@ -29,43 +29,21 @@ let villageDataLoaded = false;
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
     onAuthStateChanged(auth, async (loggedInUser) => {
-    if (!loggedInUser) {
-        alert("You must be logged in to play!");
-        window.location.href = "index.html";
-        return;
-    }
-
-    user = loggedInUser;
-    await loadVillageData();
-
-    // 🔹 Real-time listener for changes to your village (e.g., troop updates, battle messages)
-    onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-            const updatedData = docSnap.data();
-
-            // Only update the reactive fields
-            villageData.troops = updatedData.troops;
-            villageData.lastBattleMessage = updatedData.lastBattleMessage;
-
-            updateUI();
-
-            // Show and clear the battle message if it exists
-            if (villageData.lastBattleMessage) {
-                alert(villageData.lastBattleMessage);
-                delete villageData.lastBattleMessage;
-                saveVillageData();
-            }
+        if (!loggedInUser) {
+            alert("You must be logged in to play!");
+            window.location.href = "index.html";
+            return;
         }
+
+        user = loggedInUser;
+        await loadVillageData();
+        startGameLoops();
+        loadLeaderboard();
+        loadWorldMap();
+        bindUpgradeButtons();
+        bindTrainButtons(); // ✅ Fixed troop button binding
+        bindLogout();
     });
-
-    startGameLoops();
-    loadLeaderboard();
-    loadWorldMap();
-    bindUpgradeButtons();
-    bindTrainButtons();
-    bindLogout();
-});
-
 });
 
 // 🔹 Load or Create Village
