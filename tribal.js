@@ -130,6 +130,12 @@ async function loadVillageData() {
 // 🔹 Save Village
 async function saveVillageData() {
     if (!user || !villageDataLoaded) return;
+
+    // 🔹 Clean out any undefined fields (Firestore doesn't allow them)
+    if (villageData.lastBattleMessage === undefined) {
+        delete villageData.lastBattleMessage;
+    }
+
     try {
         await setDoc(doc(db, "villages", user.uid), villageData);
     } catch (err) {
@@ -137,6 +143,7 @@ async function saveVillageData() {
         alert("Error saving your village.");
     }
 }
+
 
 // 🔹 UI Update
 function updateUI() {
