@@ -197,7 +197,7 @@ function recruitTroop(type) {
     });
 
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
-    villageData.score += 5;
+    // commenteed out villageData.score += 5;
     saveVillageData();
     updateUI();
     alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
