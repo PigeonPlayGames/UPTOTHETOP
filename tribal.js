@@ -27,7 +27,6 @@ let villageData = null;
 let villageDataLoaded = false;
 
 // 🔹 DOM Ready
-// 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
