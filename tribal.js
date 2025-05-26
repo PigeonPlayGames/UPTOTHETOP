@@ -63,6 +63,7 @@ async function loadVillageData() {
         villageData.score = villageData.score ?? 0;
         villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
         villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
+        
 
         // ✅ Save any missing data back to Firestore
         await saveVillageData();
@@ -86,6 +87,13 @@ async function loadVillageData() {
 
     villageDataLoaded = true;
     updateUI();
+
+    if (villageData.lastBattleMessage) {
+        alert(villageData.lastBattleMessage);
+        delete villageData.lastBattleMessage; // Clear it after showing
+        await saveVillageData();
+    }
+
 }
 
 
@@ -169,6 +177,7 @@ function upgradeBuilding(building) {
     } else {
         alert("Not enough resources!");
     }
+
 }
 
 // 🔹 Recruit Logic
@@ -233,7 +242,6 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 World Map
 async function loadWorldMap() {
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
@@ -246,7 +254,7 @@ async function loadWorldMap() {
 
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
-            v.id = docSnap.id; // Add this line to capture the actual document ID
+            v.id = docSnap.id;
 
             if (!v.x || !v.y) return;
 
@@ -273,8 +281,8 @@ async function loadWorldMap() {
                 const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
                 const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
                 const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
-
                 const totalSent = spear + sword + axe;
+
                 if (totalSent <= 0) return alert("You must send at least 1 troop.");
 
                 if (
@@ -291,15 +299,11 @@ async function loadWorldMap() {
                     (v.troops?.sword || 0) * 2 +
                     (v.troops?.axe || 0) * 3;
 
-                let resultMessage = "";
                 let remainingSpear = spear;
                 let remainingSword = sword;
                 let remainingAxe = axe;
 
                 if (attackerStrength > defenderStrength) {
-                    resultMessage = "You won the battle!";
-
-                    // Deduct only surviving troops based on defender's strength
                     let damage = defenderStrength;
                     const reduce = (count, power) => {
                         const loss = Math.min(count, Math.floor(damage / power));
@@ -313,34 +317,53 @@ async function loadWorldMap() {
 
                     villageData.troops.spear -= (spear - remainingSpear);
                     villageData.troops.sword -= (sword - remainingSword);
-                    villageData.troops.axe   -= (axe - remainingAxe);
+                    villageData.troops.axe -= (axe - remainingAxe);
 
-                    // Gain resources
                     villageData.wood += Math.floor((v.wood || 0) * 0.1);
                     villageData.stone += Math.floor((v.stone || 0) * 0.1);
                     villageData.iron += Math.floor((v.iron || 0) * 0.1);
                     villageData.score += 20;
 
+                    const report = `
+🛡️ Battle Report: Victory!
+You attacked ${v.username}
+———————————————
+👥 Enemy Troops: Spear: ${v.troops?.spear || 0}, Sword: ${v.troops?.sword || 0}, Axe: ${v.troops?.axe || 0}
+💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
+⚔️ Your Losses: Spear: ${spear - remainingSpear}, Sword: ${sword - remainingSword}, Axe: ${axe - remainingAxe}
+🎉 You won and plundered resources!
+                    `;
+                    alert(report);
+
                     await updateDoc(doc(db, "villages", v.id), {
                         "troops.spear": 0,
                         "troops.sword": 0,
-                        "troops.axe": 0
+                        "troops.axe": 0,
+                        "lastBattleMessage": `Your troops were killed by ${villageData.username}`
                     });
-
                 } else {
-                    resultMessage = "You lost the battle!";
-
-                    // Attacker loses all troops
                     villageData.troops.spear -= spear;
                     villageData.troops.sword -= sword;
-                    villageData.troops.axe   -= axe;
-
+                    villageData.troops.axe -= axe;
                     villageData.score = Math.max(0, villageData.score - 5);
+
+                    const report = `
+🛡️ Battle Report: Defeat
+You attacked ${v.username || "Unknown"}
+———————————————
+👥 Enemy Troops: Spear: ${v.troops?.spear || 0}, Sword: ${v.troops?.sword || 0}, Axe: ${v.troops?.axe || 0}
+💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
+☠️ All your troops were lost!
+                    `;
+                    alert(report);
+
+                    await updateDoc(doc(db, "villages", v.id), {
+                        lastBattleMessage: `Your troops were attacked and survived against ${villageData.username}`
+                    });
                 }
 
                 await saveVillageData();
                 updateUI();
-                alert(resultMessage);
             });
 
             world.appendChild(el);
