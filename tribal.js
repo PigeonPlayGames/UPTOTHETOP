@@ -342,51 +342,76 @@ async function loadWorldMap() {
     let attackerLosses = { spear: 0, sword: 0, axe: 0 };
 
     if (attackerStrength > defenderStrength) {
-        // ✅ Victory with attacker losses
-        let attackDamage = defenderStrength;
+    // Store original defender troop values for the report
+    const defenderSpear = v.troops?.spear || 0;
+    const defenderSword = v.troops?.sword || 0;
+    const defenderAxe = v.troops?.axe || 0;
 
-        const reduce = (count, power) => {
-            const loss = Math.min(count, Math.floor(attackDamage / power));
-            attackDamage -= loss * power;
-            return [count - loss, loss];
-        };
+    let damage = defenderStrength;
+    const attackerLosses = { spear: 0, sword: 0, axe: 0 };
 
-        [remainingSpear, attackerLosses.spear] = reduce(spear, 1);
-        [remainingSword, attackerLosses.sword] = reduce(sword, 2);
-        [remainingAxe, attackerLosses.axe] = reduce(axe, 3);
+    const reduce = (count, power) => {
+        const loss = Math.min(count, Math.floor(damage / power));
+        damage -= loss * power;
+        return [count - loss, loss];
+    };
 
-        villageData.troops.spear -= attackerLosses.spear;
-        villageData.troops.sword -= attackerLosses.sword;
-        villageData.troops.axe -= attackerLosses.axe;
+    [remainingSpear, attackerLosses.spear] = reduce(spear, 1);
+    [remainingSword, attackerLosses.sword] = reduce(sword, 2);
+    [remainingAxe, attackerLosses.axe] = reduce(axe, 3);
 
-        const loot = {
-            wood: Math.floor((v.wood || 0) * 0.1),
-            stone: Math.floor((v.stone || 0) * 0.1),
-            iron: Math.floor((v.iron || 0) * 0.1)
-        };
+    // Subtract attacker losses
+    villageData.troops.spear -= attackerLosses.spear;
+    villageData.troops.sword -= attackerLosses.sword;
+    villageData.troops.axe -= attackerLosses.axe;
 
-        villageData.wood += loot.wood;
-        villageData.stone += loot.stone;
-        villageData.iron += loot.iron;
-        villageData.score += 20;
+    // Defender's resources (scouted values)
+    const scouted = {
+        wood: v.wood || 0,
+        stone: v.stone || 0,
+        iron: v.iron || 0
+    };
 
-        const report = `
+    // Calculate total carrying capacity
+    const totalRemainingTroops = remainingSpear + remainingSword + remainingAxe;
+    const capacityPerResource = totalRemainingTroops * 30;
+
+    // Distribute plunder fairly (could be improved later to prioritize)
+    const plundered = {
+        wood: Math.min(capacityPerResource, scouted.wood),
+        stone: Math.min(capacityPerResource, scouted.stone),
+        iron: Math.min(capacityPerResource, scouted.iron)
+    };
+
+    // Add plunder to attacker's village
+    villageData.wood += plundered.wood;
+    villageData.stone += plundered.stone;
+    villageData.iron += plundered.iron;
+    villageData.score += 20;
+
+    // Battle report
+    const report = `
 🛡️ Battle Report: Victory!
 You attacked ${v.username}
 ———————————————
 👥 Enemy Troops: Spear: ${defenderSpear}, Sword: ${defenderSword}, Axe: ${defenderAxe}
 💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
 ⚔️ Your Losses: Spear: ${attackerLosses.spear}, Sword: ${attackerLosses.sword}, Axe: ${attackerLosses.axe}
-🎉 You won and plundered: Wood: ${loot.wood}, Stone: ${loot.stone}, Iron: ${loot.iron}
-        `;
-        alert(report);
+🔍 Scouted Resources: Wood: ${scouted.wood}, Stone: ${scouted.stone}, Iron: ${scouted.iron}
+🎯 Plundered: Wood: ${plundered.wood}, Stone: ${plundered.stone}, Iron: ${plundered.iron}
+    `;
+    alert(report);
 
-        await updateDoc(doc(db, "villages", v.id), {
-            "troops.spear": 0,
-            "troops.sword": 0,
-            "troops.axe": 0,
-            lastBattleMessage: `Your village was attacked by ${villageData.username} and lost the battle.`
-        });
+    // Update defender's document
+    await updateDoc(doc(db, "villages", v.id), {
+        "troops.spear": 0,
+        "troops.sword": 0,
+        "troops.axe": 0,
+        wood: Math.max(0, scouted.wood - plundered.wood),
+        stone: Math.max(0, scouted.stone - plundered.stone),
+        iron: Math.max(0, scouted.iron - plundered.iron),
+        lastBattleMessage: `Your village was attacked by ${villageData.username} and lost the battle.`
+    });
 
     } else {
         // ❌ Defeat
