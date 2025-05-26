@@ -27,6 +27,7 @@ let villageData = null;
 let villageDataLoaded = false;
 
 // 🔹 DOM Ready
+// 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
@@ -37,37 +38,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
         user = loggedInUser;
         await loadVillageData();
+
         // 🔹 Real-time listener for changes to this user's village (e.g., after battle)
-onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
-    if (!docSnap.exists() || !villageData) return;
+        onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
+            if (!docSnap.exists() || !villageData) return;
 
-    const updatedData = docSnap.data();
-    villageData.troops = updatedData.troops;
-    villageData.lastBattleMessage = updatedData.lastBattleMessage;
+            const updatedData = docSnap.data();
+            villageData.troops = updatedData.troops;
+            villageData.lastBattleMessage = updatedData.lastBattleMessage;
 
-    updateUI();
+            updateUI();
 
-    if (villageData.lastBattleMessage) {
-        alert(villageData.lastBattleMessage);
-        delete villageData.lastBattleMessage;
+            if (villageData.lastBattleMessage) {
+                alert(villageData.lastBattleMessage);
 
-        updateDoc(doc(db, "villages", user.uid), {
-            lastBattleMessage: null
-        }).catch((error) => {
-            console.error("Failed to clear battle message:", error);
+                // Clear from Firestore so it's not shown again
+                (async () => {
+                    try {
+                        await updateDoc(doc(db, "villages", user.uid), {
+                            lastBattleMessage: null
+                        });
+                    } catch (error) {
+                        console.error("Failed to clear battle message:", error);
+                    }
+                })();
+            }
         });
-    }
-});
 
-
+        // ✅ These must be outside the snapshot listener
         startGameLoops();
         loadLeaderboard();
         loadWorldMap();
         bindUpgradeButtons();
-        bindTrainButtons(); // ✅ Fixed troop button binding
+        bindTrainButtons();
         bindLogout();
     });
 });
+
 
 // 🔹 Load or Create Village
 async function loadVillageData() {
@@ -86,7 +93,6 @@ async function loadVillageData() {
         villageData.score = villageData.score ?? 0;
         villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
         villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
-        villageData = snapshot.data();
         
 
         // ✅ Save any missing data back to Firestore
