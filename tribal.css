@@ -53,6 +53,19 @@ nav button:hover {
     }
 }
 
+/* ─────────────────── TROOPS SECTION ─────────────────── */
+.troop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.troop-icon {
+  width: 30px;
+  height: 30px;
+}
+
 /* ─────────────────── VILLAGE SECTION ─────────────────── */
 #village {
     text-align: center;
