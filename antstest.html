@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ant Colony Simulation</title>
+    <link rel="stylesheet" href="antstest.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+    <div class="container mx-auto bg-white shadow-lg rounded-lg p-6 max-w-4xl w-full">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-6">Ant Colony Simulation</h1>
+
+        <div class="game-area bg-gray-200 rounded-lg overflow-hidden border-2 border-gray-300">
+            <canvas id="gameCanvas" class="block w-full h-auto max-h-[600px]"></canvas>
+        </div>
+
+        <div class="game-info mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="info-card bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                <h2 class="text-xl font-semibold text-gray-700 mb-2">Colony Status</h2>
+                <p class="text-gray-600">Ants: <span id="antCount" class="font-medium">0</span></p>
+                <p class="text-gray-600">Food: <span id="foodCount" class="font-medium">0</span></p>
+                <p class="text-gray-600">Population Cap: <span id="populationCap" class="font-medium">0</span></p>
+            </div>
+            <div class="info-card bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                <h2 class="text-xl font-semibold text-gray-700 mb-2">Actions</h2>
+                <button id="startButton" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out shadow-md">
+                    Start Simulation
+                </button>
+                <button id="pauseButton" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md mt-2 transition duration-300 ease-in-out shadow-md">
+                    Pause Simulation
+                </button>
+            </div>
+            <div class="info-card bg-white p-3 rounded-md shadow-sm border border-gray-100 col-span-1 md:col-span-2">
+                <h2 class="text-xl font-semibold text-gray-700 mb-2">Game Log</h2>
+                <div id="gameLog" class="bg-gray-100 p-2 rounded-md h-24 overflow-y-auto text-sm text-gray-700">
+                    <p>Welcome to your Ant Colony!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="antstest.js"></script>
+</body>
+</html>
