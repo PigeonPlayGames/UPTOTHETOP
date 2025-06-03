@@ -1,0 +1,128 @@
+/* antstest.css */
+
+/* Basic body styling, ensuring full height and centered content */
+body {
+    margin: 0;
+    padding: 0;
+    /* Using Tailwind's bg-gray-100, flex, flex-col, items-center, justify-center, min-h-screen, p-4 classes from HTML */
+}
+
+/* Styling for the main game container */
+.container {
+    /* Using Tailwind's mx-auto, bg-white, shadow-lg, rounded-lg, p-6, max-w-4xl, w-full classes from HTML */
+}
+
+/* Styling for the game canvas area */
+.game-area {
+    /* Using Tailwind's bg-gray-200, rounded-lg, overflow-hidden, border-2, border-gray-300 classes from HTML */
+    display: flex; /* Use flexbox to center the canvas */
+    justify-content: center;
+    align-items: center;
+    min-height: 400px; /* Minimum height for the game area, adjust as needed */
+    position: relative; /* Needed for absolute positioning of elements within */
+}
+
+/* Canvas specific styling */
+#gameCanvas {
+    /* Using Tailwind's block, w-full, h-auto, max-h-[600px] classes from HTML */
+    background-color: #f0f0f0; /* Light background for the canvas */
+    border-radius: 8px; /* Match container's rounded corners */
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle inner shadow */
+}
+
+/* Styling for the game information panel */
+.game-info {
+    /* Using Tailwind's mt-6, p-4, bg-gray-50, rounded-lg, border, border-gray-200, grid, grid-cols-1, md:grid-cols-2, gap-4 classes from HTML */
+}
+
+/* Styling for individual info cards within the panel */
+.info-card {
+    /* Using Tailwind's bg-white, p-3, rounded-md, shadow-sm, border, border-gray-100 classes from HTML */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08); /* Slightly more prominent shadow */
+}
+
+/* Styling for buttons */
+button {
+    /* Using Tailwind's w-full, bg-green-500/yellow-500, hover:bg-green-600/yellow-600, text-white, font-bold, py-2, px-4, rounded-md, transition, duration-300, ease-in-out, shadow-md classes from HTML */
+    cursor: pointer;
+    border: none;
+    outline: none;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Add a subtle ripple effect on button click */
+button:active::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.3);
+    width: 0;
+    height: 0;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    animation: ripple 0.4s linear forwards;
+}
+
+@keyframes ripple {
+    from {
+        width: 0;
+        height: 0;
+        opacity: 1;
+    }
+    to {
+        width: 200%;
+        height: 200%;
+        opacity: 0;
+    }
+}
+
+
+/* Styling for the game log area */
+#gameLog {
+    /* Using Tailwind's bg-gray-100, p-2, rounded-md, h-24, overflow-y-auto, text-sm, text-gray-700 classes from HTML */
+    border: 1px solid #e0e0e0;
+    resize: vertical; /* Allow vertical resizing of the log */
+    min-height: 60px;
+    max-height: 150px;
+    line-height: 1.4;
+}
+
+/* Scrollbar styling for Webkit browsers (Chrome, Safari) */
+#gameLog::-webkit-scrollbar {
+    width: 8px;
+}
+
+#gameLog::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#gameLog::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+#gameLog::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+
+    .game-info {
+        grid-template-columns: 1fr; /* Stack info cards on small screens */
+    }
+
+    .info-card {
+        margin-bottom: 1rem;
+    }
+
+    .info-card:last-child {
+        margin-bottom: 0;
+    }
+}
