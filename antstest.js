@@ -168,6 +168,7 @@ class QueenAnt extends Ant {
                 workerAntCount++; // Increment worker ant count
                 populationCap = Math.min(maxAnts, populationCap + 1); // Increase population cap slightly
                 logMessage(`A new Worker Ant (Ant ${newAntId}) was born! Total ants: ${totalAntCount}`);
+                console.log(`Queen reproduced: workerAntCount=${workerAntCount}, totalAntCount=${totalAntCount}`); // Debug log
             }
             this.reproductionTimer = 0; // Reset timer regardless of successful reproduction
         }
@@ -243,6 +244,8 @@ function updateUI() {
     queenStatusSpan.textContent = queenAnt ? 'Present' : 'Absent';
     foodCountSpan.textContent = foodCount;
     populationCapSpan.textContent = populationCap;
+
+    console.log(`UI Update: Total Ants: ${totalAntCount}, Workers: ${workerAntCount}, Soldiers: ${soldierAntCount}, Queen: ${queenAnt ? 'Present' : 'Absent'}, Food: ${foodCount}`); // Debug log
 }
 
 // Function to spawn initial ants
@@ -252,6 +255,7 @@ function spawnInitialAnts() {
     const queenY = canvas.height / 2;
     queenAnt = new QueenAnt(0, queenX, queenY);
     logMessage('The Queen Ant has established her nest!');
+    console.log(`Spawned Queen: queenAnt is now ${queenAnt ? 'set' : 'null'}`); // Debug log
 
     // Spawn initial Worker Ants
     for (let i = 0; i < 5; i++) { // Start with 5 worker ants
@@ -261,7 +265,8 @@ function spawnInitialAnts() {
         workerAntCount++;
     }
     logMessage(`A new colony of ${workerAntCount} Worker Ants has been established!`);
-    totalAntCount = workerAntCount + soldierAntCount + 1; // Update total count
+    totalAntCount = workerAntCount + soldierAntCount + (queenAnt ? 1 : 0); // Update total count
+    console.log(`Initial spawn complete: workerAntCount=${workerAntCount}, totalAntCount=${totalAntCount}`); // Debug log
 }
 
 // Function to spawn food sources
