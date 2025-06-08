@@ -24,3 +24,44 @@ h1 {
     background-color: #000;
     border: 5px solid #555;
 }
+
+/* --- STYLES FOR TOUCH CONTROLS --- */
+.touch-controls {
+    margin-top: 20px;
+    /* Use CSS Grid for a perfect D-pad layout */
+    display: grid;
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(2, 60px);
+    gap: 10px;
+    /* This makes the layout easier by naming areas */
+    grid-template-areas: 
+        ".    up   ."
+        "left down right";
+}
+
+.touch-controls button {
+    font-size: 2rem;
+    border-radius: 10px;
+    border: 3px solid #555;
+    background-color: #333;
+    color: #eee;
+    cursor: pointer; /* Shows a hand cursor on hover */
+}
+
+.touch-controls button:active {
+    background-color: #555; /* Visual feedback when pressed */
+}
+
+/* Assign each button to its named grid area */
+#btnUp    { grid-area: up; }
+#btnLeft  { grid-area: left; }
+#btnDown  { grid-area: down; }
+#btnRight { grid-area: right; }
+
+/* --- PRO-TIP: HIDE CONTROLS ON DESKTOP --- */
+/* If the screen width is 768px or more, hide the touch controls */
+@media (min-width: 768px) {
+    .touch-controls {
+        display: none;
+    }
+}
