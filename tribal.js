@@ -36,27 +36,33 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         user = loggedInUser;
-        await loadVillageData();
+        await loadVillageData(); // Loads data and handles offline gains
 
-        // 🔹 Real-time listener for changes to this user's village (e.g., after battle)
+        // 🔹 Real-time listener for changes to this user's village (e.g., after battle or other users' actions)
         onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
-            if (!docSnap.exists() || !villageData) return;
+            // Only proceed if villageData is already loaded on the client and the document exists
+            if (!docSnap.exists() || !villageDataLoaded) return;
 
             const updatedData = docSnap.data();
-            villageData.troops = updatedData.troops;
-            villageData.lastBattleMessage = updatedData.lastBattleMessage;
+
+            // Merge updated data from Firestore into local villageData
+            // This ensures local state is always in sync with the database, especially for resource changes
+            villageData = { ...villageData, ...updatedData };
 
             updateUI();
 
+            // Handle battle messages
             if (villageData.lastBattleMessage) {
                 alert(villageData.lastBattleMessage);
 
-                // Clear from Firestore so it's not shown again
+                // Clear from Firestore so it's not shown again on subsequent loads
                 (async () => {
                     try {
                         await updateDoc(doc(db, "villages", user.uid), {
                             lastBattleMessage: null
                         });
+                        // Also clear locally after alert
+                        delete villageData.lastBattleMessage;
                     } catch (error) {
                         console.error("Failed to clear battle message:", error);
                     }
@@ -64,7 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // ✅ These must be outside the snapshot listener
+        // ✅ These must be outside the snapshot listener and after village data is loaded
         startGameLoops();
         loadLeaderboard();
         loadWorldMap();
@@ -74,7 +80,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-
 // 🔹 Load or Create Village
 async function loadVillageData() {
     const ref = doc(db, "villages", user.uid);
@@ -83,7 +88,7 @@ async function loadVillageData() {
     if (snapshot.exists()) {
         villageData = snapshot.data();
 
-        // ✅ Ensure all required fields exist (even if document exists)
+        // Ensure all required fields exist (even if document exists from older version)
         villageData.buildings = villageData.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 };
         villageData.troops = villageData.troops || { spear: 0, sword: 0, axe: 0 };
         villageData.wood = villageData.wood ?? 100;
@@ -92,10 +97,38 @@ async function loadVillageData() {
         villageData.score = villageData.score ?? 0;
         villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
         villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
-        
 
-        // ✅ Save any missing data back to Firestore
-        await saveVillageData();
+        // --- NEW OFFLINE RESOURCE CALCULATION ---
+        const currentTime = Date.now();
+        const lastLoginTime = villageData.lastLogin || currentTime; // Use current time if no lastLogin exists
+
+        const timeElapsedMs = currentTime - lastLoginTime;
+        const timeElapsedSeconds = Math.floor(timeElapsedMs / 1000);
+
+        if (timeElapsedSeconds > 0) {
+            // Calculate resources per second based on current building levels
+            const woodPerSecond = (villageData.buildings.lumber * 5) / 5; // 5 wood every 5 seconds = 1 wood/second
+            const stonePerSecond = (villageData.buildings.quarry * 5) / 5; // 1 stone/second
+            const ironPerSecond = (villageData.buildings.iron * 5) / 5; // 1 iron/second
+
+            const generatedWood = woodPerSecond * timeElapsedSeconds;
+            const generatedStone = stonePerSecond * timeElapsedSeconds;
+            const generatedIron = ironPerSecond * timeElapsedSeconds;
+
+            villageData.wood += generatedWood;
+            villageData.stone += generatedStone;
+            villageData.iron += generatedIron;
+
+            // Optional: Notify the user about offline gains
+            if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
+                alert(`Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
+            }
+        }
+        // --- END OFFLINE RESOURCE CALCULATION ---
+
+        // Update lastLogin to now, regardless of offline gains, as the user is now active
+        villageData.lastLogin = currentTime;
+        await saveVillageData(); // Save the updated data, including new resources and lastLogin timestamp
 
     } else {
         // First time user setup
@@ -109,7 +142,8 @@ async function loadVillageData() {
             x: Math.floor(Math.random() * 3000),
             y: Math.floor(Math.random() * 3000),
             buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
-            troops: { spear: 0, sword: 0, axe: 0 }
+            troops: { spear: 0, sword: 0, axe: 0 },
+            lastLogin: Date.now() // Set initial login time for new users
         };
         await saveVillageData();
     }
@@ -117,26 +151,34 @@ async function loadVillageData() {
     villageDataLoaded = true;
     updateUI();
 
+    // Handle initial battle message if present (e.g., from an attack while user was offline)
     if (villageData.lastBattleMessage) {
         alert(villageData.lastBattleMessage);
-        delete villageData.lastBattleMessage; // Clear it after showing
-        await saveVillageData();
+        delete villageData.lastBattleMessage; // Clear it locally
+        await saveVillageData(); // Persist the cleared message to Firestore
     }
-
 }
 
 
 // 🔹 Save Village
 async function saveVillageData() {
-    if (!user || !villageDataLoaded) return;
+    if (!user || !villageDataLoaded) {
+        console.warn("Attempted to save village data before user or data loaded.");
+        return;
+    }
 
-    // 🔹 Clean out any undefined fields (Firestore doesn't allow them)
-    if (villageData.lastBattleMessage === undefined) {
-        delete villageData.lastBattleMessage;
+    // Always update lastLogin timestamp before saving
+    villageData.lastLogin = Date.now();
+
+    // Clean out any undefined fields (Firestore doesn't allow them)
+    // Using a more robust method to ensure no undefined values are written
+    const dataToSave = JSON.parse(JSON.stringify(villageData)); // Deep copy to remove undefined
+    if (dataToSave.lastBattleMessage === undefined) {
+        delete dataToSave.lastBattleMessage;
     }
 
     try {
-        await setDoc(doc(db, "villages", user.uid), villageData);
+        await setDoc(doc(db, "villages", user.uid), dataToSave);
     } catch (err) {
         console.error("Save failed:", err);
         alert("Error saving your village.");
@@ -148,9 +190,9 @@ async function saveVillageData() {
 function updateUI() {
     if (!villageData) return;
 
-    document.getElementById("wood-count").innerText = villageData.wood ?? 0;
-    document.getElementById("stone-count").innerText = villageData.stone ?? 0;
-    document.getElementById("iron-count").innerText = villageData.iron ?? 0;
+    document.getElementById("wood-count").innerText = Math.floor(villageData.wood ?? 0);
+    document.getElementById("stone-count").innerText = Math.floor(villageData.stone ?? 0);
+    document.getElementById("iron-count").innerText = Math.floor(villageData.iron ?? 0);
     document.getElementById("player-score").innerText = villageData.score ?? 0;
 
     document.getElementById("hq-level").innerText = villageData.buildings.hq;
@@ -183,7 +225,7 @@ function bindUpgradeButtons() {
     });
 }
 
-// 🔹 Train Troop Buttons (✅ fixed to use .train-btn and data-type)
+// 🔹 Train Troop Buttons
 function bindTrainButtons() {
     document.querySelectorAll(".train-btn").forEach(button => {
         const type = button.getAttribute("data-type");
@@ -208,12 +250,11 @@ function upgradeBuilding(building) {
         villageData.iron -= cost;
         villageData.buildings[building]++;
         villageData.score += 10;
-        saveVillageData();
+        saveVillageData(); // Save changes
         updateUI();
     } else {
         alert("Not enough resources!");
     }
-
 }
 
 // 🔹 Recruit Logic
@@ -221,7 +262,7 @@ function recruitTroop(type) {
     const costs = {
         spear: { wood: 100 },
         sword: { iron: 100 },
-        axe:   { stone: 100 }
+        axe: { stone: 100 }
     };
 
     const cost = costs[type];
@@ -242,21 +283,22 @@ function recruitTroop(type) {
     });
 
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
-    // commenteed out villageData.score += 5;
-    saveVillageData();
+    // villageData.score += 5; // Commented out as in original
+    saveVillageData(); // Save changes
     updateUI();
     alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
 }
 
 
-// 🔹 Resource Loop
+// 🔹 Resource Loop (updates UI and local data, but saves only on user actions or logout)
 function startGameLoops() {
     setInterval(() => {
         if (!villageDataLoaded) return;
         villageData.wood += villageData.buildings.lumber * 5;
         villageData.stone += villageData.buildings.quarry * 5;
         villageData.iron += villageData.buildings.iron * 5;
-        saveVillageData();
+        // The saveVillageData() call is removed from here to reduce frequent writes.
+        // Data is saved on login, logout, and user-initiated actions like upgrades/training.
         updateUI();
     }, 5000);
 }
@@ -269,6 +311,10 @@ function loadLeaderboard() {
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
+        if (snapshot.empty) {
+            leaderboardList.innerHTML = "<li>No players yet!</li>";
+            return;
+        }
         snapshot.forEach(doc => {
             const data = doc.data();
             const li = document.createElement("li");
@@ -283,21 +329,22 @@ async function loadWorldMap() {
     const world = document.getElementById("map-world");
     if (!wrapper || !world) return;
 
-    world.innerHTML = "";
+    world.innerHTML = ""; // Clear existing map tiles
 
     try {
         const snapshot = await getDocs(collection(db, "villages"));
 
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
-            v.id = docSnap.id;
+            v.id = docSnap.id; // Get the document ID for updating
 
-            if (!v.x || !v.y) return;
+            if (!v.x || !v.y) return; // Skip if coordinates are missing
 
             const el = document.createElement("div");
             el.className = "village-tile";
             if (v.userId === user.uid) {
                 el.classList.add("your-village");
+                el.setAttribute("title", "Your Village"); // Add tooltip for own village
             }
 
             el.style.left = `${v.x}px`;
@@ -306,139 +353,151 @@ async function loadWorldMap() {
             el.setAttribute("data-score", v.score ?? 0);
 
             el.addEventListener("click", async () => {
-    if (v.userId === user.uid) {
-        alert("This is your own village.");
-        return;
-    }
+                if (v.userId === user.uid) {
+                    alert("This is your own village. You cannot attack yourself!");
+                    return;
+                }
 
-    const confirmAttack = confirm(`Attack ${v.username}'s village?`);
-    if (!confirmAttack) return;
+                const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
+                if (!confirmAttack) return;
 
-    const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
-    const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
-    const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
-    const totalSent = spear + sword + axe;
+                const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
+                const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
+                const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
+                const totalSent = spear + sword + axe;
 
-    if (totalSent <= 0) return alert("You must send at least 1 troop.");
+                if (totalSent <= 0) return alert("You must send at least 1 troop to attack.");
 
-    if (
-        spear > villageData.troops.spear ||
-        sword > villageData.troops.sword ||
-        axe > villageData.troops.axe
-    ) {
-        return alert("Not enough troops.");
-    }
+                if (
+                    spear > villageData.troops.spear ||
+                    sword > villageData.troops.sword ||
+                    axe > villageData.troops.axe
+                ) {
+                    return alert("Not enough troops in your village to send that many.");
+                }
 
-    const attackerStrength = spear * 1 + sword * 2 + axe * 3;
-    const defenderSpear = v.troops?.spear || 0;
-    const defenderSword = v.troops?.sword || 0;
-    const defenderAxe = v.troops?.axe || 0;
-    const defenderStrength = defenderSpear * 1 + defenderSword * 2 + defenderAxe * 3;
+                const attackerStrength = spear * 1 + sword * 2 + axe * 3;
+                const defenderSpear = v.troops?.spear || 0;
+                const defenderSword = v.troops?.sword || 0;
+                const defenderAxe = v.troops?.axe || 0;
+                const defenderStrength = defenderSpear * 1 + defenderSword * 2 + defenderAxe * 3;
 
-    let remainingSpear = spear;
-    let remainingSword = sword;
-    let remainingAxe = axe;
+                let remainingSpear = spear;
+                let remainingSword = sword;
+                let remainingAxe = axe;
 
-    let attackerLosses = { spear: 0, sword: 0, axe: 0 };
+                if (attackerStrength > defenderStrength) {
+                    // 🎉 Victory
+                    const initialDefenderSpear = v.troops?.spear || 0;
+                    const initialDefenderSword = v.troops?.sword || 0;
+                    const initialDefenderAxe = v.troops?.axe || 0;
 
-    if (attackerStrength > defenderStrength) {
-    // Store original defender troop values for the report
-    const defenderSpear = v.troops?.spear || 0;
-    const defenderSword = v.troops?.sword || 0;
-    const defenderAxe = v.troops?.axe || 0;
+                    let damageToAttackerTroops = defenderStrength; // Total power to be absorbed by attacker's troops
+                    const attackerLosses = { spear: 0, sword: 0, axe: 0 };
 
-    let damage = defenderStrength;
-    const attackerLosses = { spear: 0, sword: 0, axe: 0 };
+                    // Function to calculate troop losses based on damage
+                    const calculateLoss = (currentCount, troopPower) => {
+                        const loss = Math.min(currentCount, Math.floor(damageToAttackerTroops / troopPower));
+                        damageToAttackerTroops -= loss * troopPower;
+                        return loss;
+                    };
 
-    const reduce = (count, power) => {
-        const loss = Math.min(count, Math.floor(damage / power));
-        damage -= loss * power;
-        return [count - loss, loss];
-    };
+                    // Prioritize losing stronger troops first for attacker losses (optional but common game mechanic)
+                    attackerLosses.axe = calculateLoss(axe, 3);
+                    attackerLosses.sword = calculateLoss(sword, 2);
+                    attackerLosses.spear = calculateLoss(spear, 1);
 
-    [remainingSpear, attackerLosses.spear] = reduce(spear, 1);
-    [remainingSword, attackerLosses.sword] = reduce(sword, 2);
-    [remainingAxe, attackerLosses.axe] = reduce(axe, 3);
 
-    // Subtract attacker losses
-    villageData.troops.spear -= attackerLosses.spear;
-    villageData.troops.sword -= attackerLosses.sword;
-    villageData.troops.axe -= attackerLosses.axe;
+                    // Update attacker's troops
+                    villageData.troops.spear -= attackerLosses.spear;
+                    villageData.troops.sword -= attackerLosses.sword;
+                    villageData.troops.axe -= attackerLosses.axe;
 
-    // Defender's resources (scouted values)
-    const scouted = {
-        wood: v.wood || 0,
-        stone: v.stone || 0,
-        iron: v.iron || 0
-    };
+                    // Defender's resources (scouted values)
+                    const scouted = {
+                        wood: v.wood || 0,
+                        stone: v.stone || 0,
+                        iron: v.iron || 0
+                    };
 
-    // Calculate total carrying capacity
-    const totalRemainingTroops = remainingSpear + remainingSword + remainingAxe;
-    const capacityPerResource = totalRemainingTroops * 30;
+                    // Calculate total carrying capacity of remaining troops (30 units per troop)
+                    const totalRemainingAttackerTroops = (spear - attackerLosses.spear) + (sword - attackerLosses.sword) + (axe - attackerLosses.axe);
+                    const totalCapacity = totalRemainingAttackerTroops * 30; // Each troop carries 30 units of resources
 
-    // Distribute plunder fairly (could be improved later to prioritize)
-    const plundered = {
-        wood: Math.min(capacityPerResource, scouted.wood),
-        stone: Math.min(capacityPerResource, scouted.stone),
-        iron: Math.min(capacityPerResource, scouted.iron)
-    };
+                    // Distribute plunder based on capacity and available resources
+                    const plundered = { wood: 0, stone: 0, iron: 0 };
+                    let remainingCapacity = totalCapacity;
 
-    // Add plunder to attacker's village
-    villageData.wood += plundered.wood;
-    villageData.stone += plundered.stone;
-    villageData.iron += plundered.iron;
-    villageData.score += 20;
+                    // Prioritize resources with a simple greedy approach (e.g., wood, then stone, then iron)
+                    const resourcesArray = [
+                        { name: 'wood', amount: scouted.wood },
+                        { name: 'stone', amount: scouted.stone },
+                        { name: 'iron', amount: scouted.iron }
+                    ];
 
-    // Battle report
-    const report = `
+                    for (const res of resourcesArray) {
+                        if (remainingCapacity <= 0) break;
+                        const takeAmount = Math.min(res.amount, remainingCapacity);
+                        plundered[res.name] = takeAmount;
+                        remainingCapacity -= takeAmount;
+                    }
+
+                    // Add plunder to attacker's village
+                    villageData.wood += plundered.wood;
+                    villageData.stone += plundered.stone;
+                    villageData.iron += plundered.iron;
+                    villageData.score += 20;
+
+                    // Battle report for attacker
+                    const report = `
 🛡️ Battle Report: Victory!
-You attacked ${v.username}
-———————————————
-👥 Enemy Troops: Spear: ${defenderSpear}, Sword: ${defenderSword}, Axe: ${defenderAxe}
+You attacked ${v.username}'s village.
+-------------------------------
 💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
 ⚔️ Your Losses: Spear: ${attackerLosses.spear}, Sword: ${attackerLosses.sword}, Axe: ${attackerLosses.axe}
-🔍 Scouted Resources: Wood: ${scouted.wood}, Stone: ${scouted.stone}, Iron: ${scouted.iron}
-🎯 Plundered: Wood: ${plundered.wood}, Stone: ${plundered.stone}, Iron: ${plundered.iron}
-    `;
-    alert(report);
+👥 Enemy Troops Defeated: Spear: ${initialDefenderSpear}, Sword: ${initialDefenderSword}, Axe: ${initialDefenderAxe} (All wiped out!)
+🎯 Plundered: Wood: ${Math.round(plundered.wood)}, Stone: ${Math.round(plundered.stone)}, Iron: ${Math.round(plundered.iron)}
+`;
+                    alert(report);
 
-    // Update defender's document
-    await updateDoc(doc(db, "villages", v.id), {
-        "troops.spear": 0,
-        "troops.sword": 0,
-        "troops.axe": 0,
-        wood: Math.max(0, scouted.wood - plundered.wood),
-        stone: Math.max(0, scouted.stone - plundered.stone),
-        iron: Math.max(0, scouted.iron - plundered.iron),
-        lastBattleMessage: `Your village was attacked by ${villageData.username} and lost the battle.`
-    });
+                    // Update defender's document in Firestore
+                    await updateDoc(doc(db, "villages", v.id), {
+                        "troops.spear": 0, // All defender troops lost
+                        "troops.sword": 0,
+                        "troops.axe": 0,
+                        wood: Math.max(0, scouted.wood - plundered.wood),
+                        stone: Math.max(0, scouted.stone - plundered.stone),
+                        iron: Math.max(0, scouted.iron - plundered.iron),
+                        lastBattleMessage: `Your village was attacked by ${villageData.username} and lost the battle! You lost all your troops and some resources.`
+                    });
 
-    } else {
-        // ❌ Defeat
-        villageData.troops.spear -= spear;
-        villageData.troops.sword -= sword;
-        villageData.troops.axe -= axe;
-        villageData.score = Math.max(0, villageData.score - 5);
+                } else {
+                    // ❌ Defeat
+                    villageData.troops.spear -= spear; // All attacking troops lost on defeat
+                    villageData.troops.sword -= sword;
+                    villageData.troops.axe -= axe;
+                    villageData.score = Math.max(0, villageData.score - 5); // Deduct score
 
-        const report = `
-🛡️ Battle Report: Defeat
-You attacked ${v.username}
-———————————————
-👥 Enemy Troops: Spear: ${defenderSpear}, Sword: ${defenderSword}, Axe: ${defenderAxe}
+                    const report = `
+🛡️ Battle Report: Defeat!
+You attacked ${v.username}'s village.
+-------------------------------
 💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
-☠️ All your troops were lost!
-        `;
-        alert(report);
+☠️ All your attacking troops were lost!
+👥 Enemy Troops Remaining: Spear: ${defenderSpear}, Sword: ${defenderSword}, Axe: ${defenderAxe}
+`;
+                    alert(report);
 
-        await updateDoc(doc(db, "villages", v.id), {
-            lastBattleMessage: `Your village was attacked by ${villageData.username} and defended successfully.`
-        });
-    }
+                    // Update defender's document for battle message
+                    await updateDoc(doc(db, "villages", v.id), {
+                        lastBattleMessage: `Your village was attacked by ${villageData.username} and defended successfully!`
+                    });
+                }
 
-    await saveVillageData();
-    updateUI();
-});
-
+                await saveVillageData(); // Save attacker's updated data
+                updateUI();
+                loadWorldMap(); // Refresh map to show any troop changes or score changes on tiles
+            });
 
             world.appendChild(el);
         });
@@ -474,7 +533,7 @@ function initPanZoom(viewport, content) {
     viewport.addEventListener("wheel", e => {
         e.preventDefault();
         const delta = -e.deltaY * 0.001;
-        const newScale = Math.min(Math.max(0.5, scale + delta), 2.5);
+        const newScale = Math.min(Math.max(0.5, scale + delta), 2.5); // Clamp scale between 0.5 and 2.5
         const rect = viewport.getBoundingClientRect();
         const offsetX = (e.clientX - rect.left - originX) / scale;
         const offsetY = (e.clientY - rect.top - originY) / scale;
@@ -493,39 +552,57 @@ function initPanZoom(viewport, content) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             if (lastTouchDistance !== null) {
                 const delta = distance - lastTouchDistance;
-                const newScale = Math.min(Math.max(0.5, scale + delta * 0.005), 2.5);
+                const newScale = Math.min(Math.max(0.5, scale + delta * 0.005), 2.5); // Clamp scale
                 scale = newScale;
                 setTransform();
             }
             lastTouchDistance = distance;
+        } else if (e.touches.length === 1 && panning) { // Handle single touch pan after two-finger zoom
+            const touch = e.touches[0];
+            originX = touch.clientX - startX;
+            originY = touch.clientY - startY;
+            setTransform();
         }
     }, { passive: false });
 
     viewport.addEventListener("touchend", () => {
         lastTouchDistance = null;
+        panning = false; // Reset panning state on touch end
     });
 
     const pointerDown = e => {
         panning = true;
-        startX = (e.clientX ?? e.touches[0].clientX) - originX;
-        startY = (e.clientY ?? e.touches[0].clientY) - originY;
+        // Get clientX/Y from event or first touch
+        const clientX = e.clientX ?? e.touches[0].clientX;
+        const clientY = e.clientY ?? e.touches[0].clientY;
+        startX = clientX - originX;
+        startY = clientY - originY;
     };
     const pointerMove = e => {
         if (!panning) return;
-        originX = (e.clientX ?? e.touches[0].clientX) - startX;
-        originY = (e.clientY ?? e.touches[0].clientY) - startY;
+        // Prevent default only if event has a preventDefault method (e.g., for touch events)
+        if (e.cancelable) e.preventDefault();
+
+        // Get clientX/Y from event or first touch
+        const clientX = e.clientX ?? e.touches[0].clientX;
+        const clientY = e.clientY ?? e.touches[0].clientY;
+        originX = clientX - startX;
+        originY = clientY - startY;
         setTransform();
     };
     const pointerUp = () => (panning = false);
 
+    // Mouse events
     viewport.addEventListener("mousedown", pointerDown);
-    viewport.addEventListener("touchstart", pointerDown);
     window.addEventListener("mousemove", pointerMove);
-    window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("mouseup", pointerUp);
+
+    // Touch events
+    viewport.addEventListener("touchstart", pointerDown, { passive: false });
+    window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("touchend", pointerUp);
 
-    setTransform();
+    setTransform(); // Initial transform
 }
 
 // 🔹 Logout
@@ -534,12 +611,12 @@ function bindLogout() {
     if (logoutBtn) {
         logoutBtn.addEventListener("click", async () => {
             try {
-                await saveVillageData();
+                await saveVillageData(); // Ensure data is saved before logging out
                 await auth.signOut();
-                window.location.href = "index.html";
+                window.location.href = "index.html"; // Redirect to login page
             } catch (err) {
                 console.error("Logout Error:", err);
-                alert("Failed to logout. Try again.");
+                alert("Failed to logout. Please try again.");
             }
         });
     }
