@@ -1,7 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"; // Import Timestamp for type checking
 import {
     getFirestore, doc, getDoc, setDoc, collection,
     query, orderBy, limit, onSnapshot, getDocs
@@ -24,7 +24,7 @@ const db = getFirestore();
 // 🔹 State
 let user = null;
 let villageData = null;
-let villageDataLoaded = false; // Flag to indicate if initial data is loaded and processed
+let villageDataLoaded = false; // Flag to indicate if initial data is loaded and processed by onSnapshot
 
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
@@ -38,32 +38,33 @@ document.addEventListener("DOMContentLoaded", () => {
         user = loggedInUser;
 
         // 🔹 Set up the Real-time listener FIRST.
-        // This listener will handle the initial UI population AND subsequent updates.
-        // It will fire immediately with the current data in Firestore.
-        onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
+        // This listener will be the authoritative source for UI updates.
+        const villageDocRef = doc(db, "villages", user.uid);
+        onSnapshot(villageDocRef, (docSnap) => {
             if (!docSnap.exists()) {
                 console.error("Village document does not exist for user:", user.uid);
-                // Handle case where document might be deleted or not yet created (though loadVillageData handles create)
+                // If it doesn't exist, it means calculateOfflineResourcesAndSave (which creates it) hasn't finished yet,
+                // or there's a serious data problem. We can't proceed without initial data.
                 return;
             }
 
-            const updatedData = docSnap.data();
+            // Always update local villageData with the freshest data from Firestore
+            villageData = docSnap.data();
 
-            // Only update local villageData if it's the initial load (villageDataLoaded is false)
-            // OR if the incoming data is newer (e.g., from another source, like battle)
-            // This prevents the flicker by ensuring we get the authoritative data from Firestore.
-            if (!villageDataLoaded || updatedData.lastLogin && villageData.lastLogin && updatedData.lastLogin.toMillis() > villageData.lastLogin.toMillis()) {
-                 villageData = { ...villageData, ...updatedData };
-            } else if (!villageDataLoaded) { // First time loading, regardless of timestamp comparison
-                villageData = { ...villageData, ...updatedData };
+            // Set villageDataLoaded to true once we receive the first valid snapshot.
+            // This ensures all other game loops and functions can safely use villageData.
+            if (!villageDataLoaded) {
+                villageDataLoaded = true;
+                // Start game loops and other components only once initial data is loaded
+                startGameLoops();
+                loadLeaderboard();
+                loadWorldMap();
+                bindUpgradeButtons();
+                bindTrainButtons();
+                bindLogout();
             }
 
-
-            // Set this flag AFTER the initial data has been processed by the snapshot.
-            // This ensures subsequent save calls won't hit the warning.
-            villageDataLoaded = true;
-            
-            updateUI(); // Always update UI when snapshot provides new data
+            updateUI(); // Update UI whenever Firestore data changes
 
             // Handle battle messages
             if (villageData.lastBattleMessage) {
@@ -72,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // Clear from Firestore and locally after showing
                 (async () => {
                     try {
-                        await updateDoc(doc(db, "villages", user.uid), {
+                        await updateDoc(villageDocRef, {
                             lastBattleMessage: null
                         });
                         delete villageData.lastBattleMessage; // Clear locally too
@@ -81,86 +82,88 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 })();
             }
+        }, (error) => {
+            console.error("Error listening to village data:", error);
+            alert("Failed to load village data in real-time. Please refresh.");
         });
 
-        // Now, load village data. This will fetch data, calculate offline gains,
-        // and save it. The onSnapshot listener (set up above) will then pick up
-        // these changes and update the UI.
-        await loadVillageData();
-
-
-        // ✅ These must be outside the snapshot listener and after village data is loaded
-        // These will now start *after* the initial snapshot has loaded and updateUI has run once.
-        startGameLoops();
-        loadLeaderboard();
-        loadWorldMap();
-        bindUpgradeButtons();
-        bindTrainButtons();
-        bindLogout();
+        // Immediately trigger the load and calculation of offline resources.
+        // This function will also perform the initial save to Firestore.
+        // The onSnapshot listener (set up above) will then pick up this updated data.
+        await calculateOfflineResourcesAndSave();
     });
 });
 
-// 🔹 Load or Create Village
-async function loadVillageData() {
+// 🔹 Function to calculate offline resources and save the updated state
+async function calculateOfflineResourcesAndSave() {
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
 
-    let dataToSave = {}; // Prepare data for the initial save
+    let dataForFirestore = {}; // This will be the data we send to Firestore
 
     if (snapshot.exists()) {
-        const currentData = snapshot.data();
+        const currentDataInFirestore = snapshot.data();
 
-        // Convert Firestore Timestamp to milliseconds for calculation
-        // Ensure lastLogin exists, if not, treat as current time
-        const lastLoginMillis = currentData.lastLogin ? currentData.lastLogin.toMillis() : Date.now();
+        // --- FIX: Handle lastLogin type (number or Timestamp) ---
+        let lastLoginMillis;
+        if (typeof currentDataInFirestore.lastLogin === 'number') {
+            lastLoginMillis = currentDataInFirestore.lastLogin;
+        } else if (currentDataInFirestore.lastLogin instanceof Timestamp) { // Check if it's a Firestore Timestamp object
+            lastLoginMillis = currentDataInFirestore.lastLogin.toMillis();
+        } else {
+            // Fallback for missing or unexpected lastLogin types
+            console.warn("lastLogin field missing or invalid type, defaulting to Date.now().", currentDataInFirestore.lastLogin);
+            lastLoginMillis = Date.now();
+        }
+        // --- END FIX ---
+
         const currentTimeMillis = Date.now();
         const timeElapsedSeconds = Math.floor((currentTimeMillis - lastLoginMillis) / 1000);
 
-        // Populate villageData locally (don't overwrite completely, merge relevant parts)
+        // Create a working copy of the data from Firestore for calculations
         // Ensure all required fields exist (even if document exists from older version)
-        villageData = {
-            username: currentData.username || user.email.split("@")[0],
-            userId: currentData.userId || user.uid,
-            wood: currentData.wood ?? 100,
-            stone: currentData.stone ?? 100,
-            iron: currentData.iron ?? 100,
-            score: currentData.score ?? 0,
-            x: currentData.x ?? Math.floor(Math.random() * 3000),
-            y: currentData.y ?? Math.floor(Math.random() * 3000),
-            buildings: currentData.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 },
-            troops: currentData.troops || { spear: 0, sword: 0, axe: 0 },
-            lastBattleMessage: currentData.lastBattleMessage || null
+        let workingVillageData = {
+            username: currentDataInFirestore.username || user.email.split("@")[0],
+            userId: currentDataInFirestore.userId || user.uid,
+            wood: currentDataInFirestore.wood ?? 100,
+            stone: currentDataInFirestore.stone ?? 100,
+            iron: currentDataInFirestore.iron ?? 100,
+            score: currentDataInFirestore.score ?? 0,
+            x: currentDataInFirestore.x ?? Math.floor(Math.random() * 3000),
+            y: currentDataInFirestore.y ?? Math.floor(Math.random() * 3000),
+            buildings: currentDataInFirestore.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 },
+            troops: currentDataInFirestore.troops || { spear: 0, sword: 0, axe: 0 },
+            lastBattleMessage: currentDataInFirestore.lastBattleMessage || null
         };
-
 
         // Calculate offline resources if time has passed
         if (timeElapsedSeconds > 0) {
-            const woodPerSecond = (villageData.buildings.lumber * 5) / 5;
-            const stonePerSecond = (villageData.buildings.quarry * 5) / 5;
-            const ironPerSecond = (villageData.buildings.iron * 5) / 5;
+            const woodPerSecond = (workingVillageData.buildings.lumber * 5) / 5;
+            const stonePerSecond = (workingVillageData.buildings.quarry * 5) / 5;
+            const ironPerSecond = (workingVillageData.buildings.iron * 5) / 5;
 
             const generatedWood = woodPerSecond * timeElapsedSeconds;
             const generatedStone = stonePerSecond * timeElapsedSeconds;
             const generatedIron = ironPerSecond * timeElapsedSeconds;
 
-            villageData.wood += generatedWood;
-            villageData.stone += generatedStone;
-            villageData.iron += generatedIron;
+            workingVillageData.wood += generatedWood;
+            workingVillageData.stone += generatedStone;
+            workingVillageData.iron += generatedIron;
 
             if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
                 alert(`Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
             }
         }
         
-        // Prepare data for saving, ensuring lastLogin is updated to serverTimestamp
-        dataToSave = {
-            ...villageData,
-            lastLogin: serverTimestamp() // Use serverTimestamp for accuracy
+        // Prepare this working data for saving to Firestore
+        dataForFirestore = {
+            ...workingVillageData,
+            lastLogin: serverTimestamp() // Always update lastLogin to serverTimestamp for the next calculation
         };
 
     } else {
-        // First time user setup
-        villageData = {
+        // First time user setup - create initial village data
+        dataForFirestore = {
             username: user.email.split("@")[0],
             userId: user.uid,
             wood: 100,
@@ -170,62 +173,54 @@ async function loadVillageData() {
             x: Math.floor(Math.random() * 3000),
             y: Math.floor(Math.random() * 3000),
             buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
-            troops: { spear: 0, sword: 0, axe: 0 }
-        };
-        
-        // Prepare data for saving, ensuring lastLogin is updated to serverTimestamp
-        dataToSave = {
-            ...villageData,
-            lastLogin: serverTimestamp() // Use serverTimestamp for new users
+            troops: { spear: 0, sword: 0, axe: 0 },
+            lastLogin: serverTimestamp() // Set initial lastLogin to serverTimestamp
         };
     }
 
-    // Perform the initial save with the calculated offline gains and updated lastLogin.
-    // The onSnapshot listener (set up in onAuthStateChanged) will then pick up
-    // these changes and update the UI.
+    // Ensure lastBattleMessage is handled consistently (null vs undefined for Firestore)
+    if (dataForFirestore.lastBattleMessage === undefined) {
+        delete dataForFirestore.lastBattleMessage;
+    } else if (dataForFirestore.lastBattleMessage === null) {
+        // Keep null if explicitly set to null, Firestore accepts null
+    }
+
+    // Perform the save to Firestore. This will trigger the onSnapshot listener.
     try {
-        // Ensure lastBattleMessage is handled consistently (null vs undefined for Firestore)
-        if (dataToSave.lastBattleMessage === undefined) {
-            delete dataToSave.lastBattleMessage;
-        } else if (dataToSave.lastBattleMessage === null) {
-            // Keep null if explicitly set to null, Firestore accepts null
-        }
-
-        await setDoc(doc(db, "villages", user.uid), dataToSave, { merge: true });
+        await setDoc(ref, dataForFirestore, { merge: true });
+        console.log("Village data (including offline gains) saved to Firestore.");
     } catch (err) {
-        console.error("Initial village data save failed:", err);
-        alert("Error initializing your village data.");
+        console.error("Failed to save initial/offline village data:", err);
+        alert("Error saving your village data.");
     }
-
-    // The 'villageDataLoaded' flag will now be set by the onSnapshot listener itself,
-    // once it successfully receives the initial data from Firestore.
-    // This ensures villageDataLoaded is true ONLY when villageData is truly synchronized from Firestore.
-    // updateUI(); // <-- REMOVE THIS LINE (No direct UI update here, let onSnapshot handle it)
+    // No direct updateUI() or setting villageDataLoaded here; onSnapshot handles it.
 }
 
 
-// 🔹 Save Village
+// 🔹 Save Village (for general game actions like upgrades, training, etc.)
 async function saveVillageData() {
-    // This check is now less critical for the initial load, as villageDataLoaded is set by onSnapshot.
-    // It still serves to prevent calls if user/data isn't fully ready later.
     if (!user || !villageDataLoaded) {
+        // This warning should now only appear if saveVillageData is called before
+        // onSnapshot has fully initialized villageData and set villageDataLoaded.
         console.warn("Attempted to save village data before user or data loaded.");
         return;
     }
 
     // Always update lastLogin timestamp to serverTimestamp when saving
-    villageData.lastLogin = serverTimestamp(); // Update local object first
+    // The villageData object is already updated locally by ongoing game actions
+    villageData.lastLogin = serverTimestamp(); 
 
     // Deep copy to ensure no undefined fields are present for Firestore write
     const dataToSave = JSON.parse(JSON.stringify(villageData));
     
-    // Explicitly handle lastBattleMessage to be null if undefined, as Firestore doesn't like undefined
+    // Explicitly handle lastBattleMessage to be null if undefined
     if (dataToSave.lastBattleMessage === undefined) {
-        delete dataToSave.lastBattleMessage; // Remove the field if it's undefined
+        delete dataToSave.lastBattleMessage;
     }
 
     try {
         await setDoc(doc(db, "villages", user.uid), dataToSave, { merge: true });
+        console.log("Village data saved due to user action.");
     } catch (err) {
         console.error("Save failed:", err);
         alert("Error saving your village.");
@@ -233,10 +228,10 @@ async function saveVillageData() {
 }
 
 // 🔹 UI Update
+// (No changes needed, as it correctly reads from the global villageData)
 function updateUI() {
     if (!villageData) return;
 
-    // Use Math.floor for resources as they are integers
     document.getElementById("wood-count").innerText = Math.floor(villageData.wood ?? 0);
     document.getElementById("stone-count").innerText = Math.floor(villageData.stone ?? 0);
     document.getElementById("iron-count").innerText = Math.floor(villageData.iron ?? 0);
@@ -314,30 +309,22 @@ function recruitTroop(type) {
 
     const cost = costs[type];
 
-    // Check if resources are sufficient
-    const hasEnough = Object.entries(cost).every(([resource, amount]) => {
-        return villageData[resource] >= amount;
-    });
-
-    if (!hasEnough) {
+    if (!Object.entries(cost).every(([resource, amount]) => villageData[resource] >= amount)) {
         alert(`Not enough resources to train a ${type}.`);
         return;
     }
 
-    // Deduct the resources
     Object.entries(cost).forEach(([resource, amount]) => {
         villageData[resource] -= amount;
     });
 
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
-    // villageData.score += 5;
-    saveVillageData(); // Save changes
+    saveVillageData();
     updateUI();
     alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
 }
 
-
-// 🔹 Resource Loop (updates UI and local data, but saves only on user actions or logout)
+// 🔹 Resource Loop
 function startGameLoops() {
     setInterval(() => {
         if (!villageDataLoaded) return; // Only run if initial data is loaded
@@ -375,22 +362,22 @@ async function loadWorldMap() {
     const world = document.getElementById("map-world");
     if (!wrapper || !world) return;
 
-    world.innerHTML = ""; // Clear existing map tiles
+    world.innerHTML = "";
 
     try {
         const snapshot = await getDocs(collection(db, "villages"));
 
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
-            v.id = docSnap.id; // Get the document ID for updating
+            v.id = docSnap.id;
 
-            if (!v.x || !v.y) return; // Skip if coordinates are missing
+            if (!v.x || !v.y) return;
 
             const el = document.createElement("div");
             el.className = "village-tile";
             if (v.userId === user.uid) {
                 el.classList.add("your-village");
-                el.setAttribute("title", "Your Village"); // Add tooltip for own village
+                el.setAttribute("title", "Your Village");
             }
 
             el.style.left = `${v.x}px`;
@@ -433,12 +420,11 @@ async function loadWorldMap() {
                 let remainingAxe = axe;
 
                 if (attackerStrength > defenderStrength) {
-                    // 🎉 Victory
                     const initialDefenderSpear = v.troops?.spear || 0;
                     const initialDefenderSword = v.troops?.sword || 0;
                     const initialDefenderAxe = v.troops?.axe || 0;
 
-                    let damageToAttackerTroops = defenderStrength; // Total power to be absorbed by attacker's troops
+                    let damageToAttackerTroops = defenderStrength;
                     const attackerLosses = { spear: 0, sword: 0, axe: 0 };
 
                     const calculateLoss = (currentCount, troopPower) => {
@@ -451,13 +437,10 @@ async function loadWorldMap() {
                     attackerLosses.sword = calculateLoss(sword, 2);
                     attackerLosses.spear = calculateLoss(spear, 1);
 
-
-                    // Update attacker's troops
                     villageData.troops.spear -= attackerLosses.spear;
                     villageData.troops.sword -= attackerLosses.sword;
                     villageData.troops.axe -= attackerLosses.axe;
 
-                    // Defender's resources (scouted values)
                     const scouted = {
                         wood: v.wood || 0,
                         stone: v.stone || 0,
@@ -465,7 +448,7 @@ async function loadWorldMap() {
                     };
 
                     const totalRemainingAttackerTroops = (spear - attackerLosses.spear) + (sword - attackerLosses.sword) + (axe - attackerLosses.axe);
-                    const totalCapacity = totalRemainingAttackerTroops * 30; // Each troop carries 30 units of resources
+                    const totalCapacity = totalRemainingAttackerTroops * 30;
 
                     const plundered = { wood: 0, stone: 0, iron: 0 };
                     let remainingCapacity = totalCapacity;
@@ -483,7 +466,6 @@ async function loadWorldMap() {
                         remainingCapacity -= takeAmount;
                     }
 
-                    // Add plunder to attacker's village
                     villageData.wood += plundered.wood;
                     villageData.stone += plundered.stone;
                     villageData.iron += plundered.iron;
