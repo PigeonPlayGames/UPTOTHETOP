@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Top Tribe - Headquarters</title>
+  <link rel="stylesheet" href="tribal.css" />
+  <script defer type="module" src="tribal.js"></script>
+</head>
+<body>
+  <nav>
+    <h1>Top Tribe</h1>
+    <button id="logout-btn" style="display:none;">Logout</button>
+  </nav>
+
+  <div class="resources-bar">
+    <span><img src="paintwood.png" alt="Wood Icon" /> Wood: <span id="wood-count">0</span></span>
+    <span><img src="paintstone.png" alt="Stone Icon" /> Stone: <span id="stone-count">0</span></span>
+    <span><img src="paintiron.png" alt="Iron Icon" /> Iron: <span id="iron-count">0</span></span>
+    <span>Score: <span id="player-score">0</span></span>
+  </div>
+
+  <main>
+    <section id="hq-page">
+      <div class="page-header">
+        <h2>Building Upgrades</h2>
+        <button id="back-to-village-btn" class="nav-button">Back to Village</button>
+      </div>
+
+      <div class="building-upgrade-list">
+        <div class="building">
+          <p>Headquarters (Level <span id="hq-level">1</span>)</p>
+          <p class="upgrade-cost">Upgrade Cost: Wood: <span id="hq-wood-cost">0</span>, Stone: <span id="hq-stone-cost">0</span>, Iron: <span id="hq-iron-cost">0</span></p>
+          <button class="upgrade-btn" data-building="hq">Upgrade</button>
+        </div>
+
+        <div class="building">
+          <p>Lumber Mill (Level <span id="lumber-level">1</span>)</p>
+          <p class="upgrade-cost">Upgrade Cost: Wood: <span id="lumber-wood-cost">0</span>, Stone: <span id="lumber-stone-cost">0</span>, Iron: <span id="lumber-iron-cost">0</span></p>
+          <button class="upgrade-btn" data-building="lumber">Upgrade</button>
+        </div>
+
+        <div class="building">
+          <p>Quarry (Level <span id="quarry-level">1</span>)</p>
+          <p class="upgrade-cost">Upgrade Cost: Wood: <span id="quarry-wood-cost">0</span>, Stone: <span id="quarry-stone-cost">0</span>, Iron: <span id="quarry-iron-cost">0</span></p>
+          <button class="upgrade-btn" data-building="quarry">Upgrade</button>
+        </div>
+
+        <div class="building">
+          <p>Iron Mine (Level <span id="iron-level">1</span>)</p>
+          <p class="upgrade-cost">Upgrade Cost: Wood: <span id="iron-wood-cost">0</span>, Stone: <span id="iron-stone-cost">0</span>, Iron: <span id="iron-iron-cost">0</span></p>
+          <button class="upgrade-btn" data-building="iron">Upgrade</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
