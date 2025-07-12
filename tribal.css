@@ -53,19 +53,6 @@ nav button:hover {
     }
 }
 
-/* ─────────────────── TROOPS SECTION ─────────────────── */
-.troop {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.troop-icon {
-  width: 30px;
-  height: 30px;
-}
-
 /* ─────────────────── VILLAGE SECTION ─────────────────── */
 #village {
     text-align: center;
@@ -75,8 +62,15 @@ nav button:hover {
 #village-map-container {
     position: relative; /* This is crucial: sets the positioning context for its children */
     width: 100%; /* Adjust as needed, or set a fixed width */
-    max-width: 800px; /* Example max width for the village image */
-    padding-bottom: 56.25%; /* 16:9 aspect ratio (height / width * 100%). Adjust based on your village_level1.png aspect ratio */
+    max-width: 600px; /* Adjusted max width for the village image, common for mobile-first designs */
+    /*
+     * IMPORTANT: Adjust this padding-bottom value to match the aspect ratio of your 'village_level1.png'
+     * Calculation: (image_height / image_width) * 100%
+     * Example: if image is 800px wide x 600px tall (4:3 aspect ratio), padding-bottom would be (600/800)*100 = 75%.
+     * From your screenshot, it looks more like 1:1 or slightly taller, let's assume 1:1 for now (100%).
+     * Please measure your image to get the exact value.
+     */
+    padding-bottom: 100%; /* Assuming your village_level1.png is roughly square (1:1 aspect ratio) */
     margin: 20px auto; /* Center the container */
     background-image: url("village_level1.png");
     background-size: contain; /* Ensures the entire image is visible within the container */
@@ -89,21 +83,25 @@ nav button:hover {
 
 .building-overlay {
     position: absolute; /* Allows precise placement over the image */
-    background: rgba(0, 0, 0, 0.6); /* Semi-transparent background for readability */
+    background: rgba(0, 0, 0, 0.7); /* Semi-transparent background for readability, slightly darker */
     color: #fff;
-    padding: 5px 8px;
+    padding: 4px 7px; /* Slightly smaller padding */
     border-radius: 8px;
-    font-size: 12px;
+    font-size: 11px; /* Smaller font for general text */
     text-align: center;
     cursor: pointer;
     white-space: nowrap; /* Prevents text wrapping */
-    box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.4);
     transition: transform 0.2s ease-in-out; /* Smooth hover effect */
     display: flex; /* Use flexbox for internal alignment */
     flex-direction: column; /* Stack content vertically */
     align-items: center; /* Center content horizontally */
     justify-content: center; /* Center content vertically */
+    /* Add a min-width/max-width to control overall size */
+    min-width: 60px;
+    max-width: 100px; /* Keep overlays relatively small */
+    box-sizing: border-box; /* Include padding/border in width */
 }
 
 .building-overlay:hover {
@@ -111,88 +109,160 @@ nav button:hover {
 }
 
 .building-overlay p {
-    margin: 2px 0; /* Reduce margin for compact display */
-    line-height: 1.2;
+    margin: 1px 0; /* Even smaller margin */
+    line-height: 1.1; /* Tighter line spacing */
 }
 
 .building-overlay .upgrade-cost {
-    font-size: 10px; /* Smaller font for cost */
+    font-size: 9px; /* Smaller font for cost */
     opacity: 0.8;
 }
 
 .building-overlay button {
     background: #8d6e63;
     border: none;
-    padding: 4px 8px; /* Smaller padding for button */
+    padding: 3px 6px; /* Smaller padding for button */
     color: #fff;
-    font-size: 11px; /* Smaller font for button */
+    font-size: 10px; /* Smaller font for button */
     cursor: pointer;
     border-radius: 4px;
-    margin-top: 5px; /* Space between text and button */
+    margin-top: 3px; /* Space between text and button */
+    transition: background 0.2s;
 }
 .building-overlay button:hover {
     background: #5c3b1e;
 }
 
 /* Specific positioning for each building overlay */
-/* YOU WILL NEED TO ADJUST THESE VALUES based on your village_level1.png */
+/* IMPORTANT: YOU WILL NEED TO ADJUST THESE VALUES PRECISELY based on your village_level1.png
+   These are *rough estimates* based on your screenshot. */
 #hq-overlay {
-    top: 30%; /* Example: adjust to Headquarters location */
-    left: 50%;
-    transform: translateX(-50%); /* Center horizontally */
+    top: 35%; /* Adjust based on your image */
+    left: 45%; /* Adjust based on your image */
+    transform: translate(-50%, -50%); /* Centers the overlay itself at the specified top/left point */
 }
 
 #lumber-overlay {
-    top: 55%; /* Example: adjust to Lumber Mill location */
-    left: 20%;
+    top: 55%; /* Adjust based on your image */
+    left: 20%; /* Adjust based on your image */
+    transform: translate(-50%, -50%);
 }
 
 #quarry-overlay {
-    top: 60%; /* Example: adjust to Quarry location */
-    left: 80%;
-    transform: translateX(-100%); /* Align to the right edge of its content */
+    top: 55%; /* Adjust based on your image */
+    left: 80%; /* Adjust based on your image */
+    transform: translate(-50%, -50%);
 }
 
 #iron-overlay {
-    top: 80%; /* Example: adjust to Iron Mine location */
-    left: 40%;
+    top: 75%; /* Adjust based on your image */
+    left: 48%; /* Adjust based on your image */
+    transform: translate(-50%, -50%);
+}
+
+
+/* ─────────────────── TROOPS SECTION ─────────────────── */
+#troops {
+    padding: 20px;
+    margin: 20px auto; /* Center the section and add vertical space */
+    max-width: 600px; /* Limit width to match village, for consistency */
+    background: #d7ccc8; /* Give it a background for better visual separation */
+    border-radius: 10px;
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
+    text-align: center; /* Center the section title */
+    box-sizing: border-box; /* Include padding in total width */
+}
+
+#troops h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+/* Arrange individual troop types */
+#troops .troop {
+    display: flex;
+    flex-direction: column; /* Stack details for each troop type on mobile */
+    align-items: center;
+    gap: 5px; /* Smaller gap for stacked items */
+    margin-bottom: 15px; /* Space between troop types */
+    padding: 10px;
+    background: #fff3e0; /* Lighter background for individual troop cards */
+    border-radius: 8px;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+}
+
+#troops .troop p {
+    margin: 0; /* Remove default paragraph margins */
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.troop-icon {
+  width: 40px; /* Slightly larger icons */
+  height: 40px;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+#troops .troop button {
+    width: auto; /* Allow button to size naturally */
+    min-width: 140px; /* Ensure a minimum width */
+    padding: 8px 12px;
+    background: #8d6e63;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-top: 8px; /* Space from text above */
+}
+#troops .troop button:hover {
+    background: #5c3b1e;
 }
 
 
 /* ─────────────────── GAME DISPLAY (Map + Leaderboard) ─────────────────── */
 #game-display {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 20px;
+    flex-wrap: wrap; /* Allows items to wrap to next line if space is limited */
+    justify-content: center; /* Centers items horizontally */
+    align-items: flex-start; /* Aligns items to the top of the flex container */
+    gap: 20px; /* Space between map and leaderboard */
     padding: 20px;
+    box-sizing: border-box; /* Include padding in element's total width/height */
 }
+
 @media (max-width: 768px) {
     #game-display {
-        flex-direction: column;
-        align-items: center;
+        flex-direction: column; /* Stack map and leaderboard vertically on small screens */
+        align-items: center; /* Center items when stacked */
     }
 }
 
 /* ─────────────── WORLD MAP (pan / zoom) ─────────────── */
 #world-map {
-    flex: 1 1 400px;
-    max-width: 600px;
+    flex: 1 1 400px; /* Flex-grow, flex-shrink, and base width */
+    max-width: 600px; /* Max width for the map container */
+    width: 100%; /* Crucial: Ensures it takes full available width of its parent on small screens */
     text-align: center;
     padding: 20px;
+    box-sizing: border-box; /* Include padding in total width */
+    background: #fff3e0; /* Add a background to the map section */
+    border-radius: 10px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
 }
 
 /* visible viewport */
 #map-wrapper {
-    width: 100vw;
-    height: 300px;             /* adjust if you want taller */
+    /* Changed width from 100vw to 100% */
+    width: 100%; /* Important: Takes 100% of #world-map's width (its parent) */
+    height: 300px;
     overflow: hidden;
     position: relative;
-    touch-action: none;        /* allow custom touch gestures */
+    touch-action: none; /* Allow custom touch gestures */
     background: #c8b9a7;
     border-radius: 10px;
-    touch-action: none;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
 }
 
 /* giant scrollable surface */
@@ -204,6 +274,7 @@ nav button:hover {
     top: 0;
     background: url("World_Map.png") top left / cover no-repeat;
     transform-origin: 0 0;
+    will-change: transform; /* Hint to the browser for performance */
 }
 
 
@@ -232,21 +303,31 @@ nav button:hover {
 
 /* ─────────────────── LEADERBOARD ─────────────────── */
 #leaderboard {
-    flex: 1 1 300px;
-    max-width: 400px;
+    flex: 1 1 300px; /* Flex-grow, flex-shrink, and base width */
+    max-width: 400px; /* Max width for the leaderboard container */
+    width: 100%; /* Crucial: Ensures it takes full available width of its parent on small screens */
     text-align: center;
     padding: 20px;
+    box-sizing: border-box; /* Include padding in total width */
+    background: #fff3e0; /* Add a background to the leaderboard section */
+    border-radius: 10px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
 }
 #leaderboard-list {
     list-style: none;
     padding: 0;
 }
 #leaderboard-list li {
-    background: #fff3e0;
+    background: #fff; /* Lighter background for list items */
     margin: 5px auto;
     padding: 10px;
     width: 100%;
     max-width: 250px;
     border-radius: 5px;
-    box-shadow: 1px 1px 5px rgba(0 0 0 / 20%);
+    box-shadow: 1px 1px 5px rgba(0, 0, 0 / 10%); /* Lighter shadow */
+}
+
+/* Hide the old village-image div which is now a background */
+#village-image {
+    display: none;
 }
