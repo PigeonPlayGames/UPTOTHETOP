@@ -71,42 +71,93 @@ nav button:hover {
     text-align: center;
     padding: 20px;
 }
-.building {
-    background: #d7ccc8;
-    padding: 15px;
-    margin: 10px;
-    border-radius: 10px;
-    display: inline-block;
-    width: 200px;
-    box-shadow: 2px 2px 8px rgba(0 0 0 / 20%);
+
+#village-map-container {
+    position: relative; /* This is crucial: sets the positioning context for its children */
+    width: 100%; /* Adjust as needed, or set a fixed width */
+    max-width: 800px; /* Example max width for the village image */
+    padding-bottom: 56.25%; /* 16:9 aspect ratio (height / width * 100%). Adjust based on your village_level1.png aspect ratio */
+    margin: 20px auto; /* Center the container */
+    background-image: url("village_level1.png");
+    background-size: contain; /* Ensures the entire image is visible within the container */
+    background-repeat: no-repeat;
+    background-position: center;
+    box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.3);
+    border-radius: 15px;
+    overflow: hidden; /* Important for containing absolutely positioned children */
 }
-.building button {
+
+.building-overlay {
+    position: absolute; /* Allows precise placement over the image */
+    background: rgba(0, 0, 0, 0.6); /* Semi-transparent background for readability */
+    color: #fff;
+    padding: 5px 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    text-align: center;
+    cursor: pointer;
+    white-space: nowrap; /* Prevents text wrapping */
+    box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transition: transform 0.2s ease-in-out; /* Smooth hover effect */
+    display: flex; /* Use flexbox for internal alignment */
+    flex-direction: column; /* Stack content vertically */
+    align-items: center; /* Center content horizontally */
+    justify-content: center; /* Center content vertically */
+}
+
+.building-overlay:hover {
+    transform: scale(1.05); /* Slightly enlarge on hover */
+}
+
+.building-overlay p {
+    margin: 2px 0; /* Reduce margin for compact display */
+    line-height: 1.2;
+}
+
+.building-overlay .upgrade-cost {
+    font-size: 10px; /* Smaller font for cost */
+    opacity: 0.8;
+}
+
+.building-overlay button {
     background: #8d6e63;
     border: none;
-    padding: 8px 12px;
+    padding: 4px 8px; /* Smaller padding for button */
     color: #fff;
-    font-size: 14px;
+    font-size: 11px; /* Smaller font for button */
     cursor: pointer;
-    border-radius: 5px;
+    border-radius: 4px;
+    margin-top: 5px; /* Space between text and button */
 }
-.building button:hover {
+.building-overlay button:hover {
     background: #5c3b1e;
 }
 
-#village-image {
-    position: absolute;
-    top: 50%;
+/* Specific positioning for each building overlay */
+/* YOU WILL NEED TO ADJUST THESE VALUES based on your village_level1.png */
+#hq-overlay {
+    top: 30%; /* Example: adjust to Headquarters location */
     left: 50%;
-    width: 400px; /* adjust to fit your image size */
-    height: auto;
-    transform: translate(-50%, -50%); /* center on map */
-    background-image: url("village_level1.png");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    z-index: 2; /* higher than map, lower than UI */
-    pointer-events: none; /* so it doesn't block UI interactions */
+    transform: translateX(-50%); /* Center horizontally */
 }
+
+#lumber-overlay {
+    top: 55%; /* Example: adjust to Lumber Mill location */
+    left: 20%;
+}
+
+#quarry-overlay {
+    top: 60%; /* Example: adjust to Quarry location */
+    left: 80%;
+    transform: translateX(-100%); /* Align to the right edge of its content */
+}
+
+#iron-overlay {
+    top: 80%; /* Example: adjust to Iron Mine location */
+    left: 40%;
+}
+
 
 /* ─────────────────── GAME DISPLAY (Map + Leaderboard) ─────────────────── */
 #game-display {
@@ -145,7 +196,6 @@ nav button:hover {
 }
 
 /* giant scrollable surface */
-
 #map-world {
     width: 3000px;
     height: 3000px;
