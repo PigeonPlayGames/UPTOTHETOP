@@ -151,7 +151,7 @@ async function calculateOfflineResourcesAndSave() {
             workingVillageData.iron += generatedIron;
 
             if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
-                alert(`Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
+                alert(`My Lord Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
             }
         }
         
