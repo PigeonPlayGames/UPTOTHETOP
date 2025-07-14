@@ -28,6 +28,24 @@ let villageDataLoaded = false; // Flag to indicate if initial data is loaded and
 
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
+    // --- Windmill Animation Logic (New) ---
+    const windmillBlades = document.getElementById('windmill-blades');
+    const numberOfFrames = 8; // You have 8 images (0 to 7)
+    let currentFrame = 0;
+    const animationSpeed = 100; // Milliseconds per frame (adjust for faster/slower spin)
+
+    function animateWindmill() {
+        if (windmillBlades) { // Ensure the element exists before trying to update its src
+            windmillBlades.src = `windmill_frame_${currentFrame}.png`;
+            currentFrame = (currentFrame + 1) % numberOfFrames; // Cycle through frames 0-7
+        }
+    }
+
+    // Start the windmill animation as soon as the DOM is ready
+    setInterval(animateWindmill, animationSpeed);
+    // --- End Windmill Animation Logic ---
+
+
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
             alert("You must be logged in to play!");
@@ -246,7 +264,12 @@ function updateUI() {
     document.getElementById("sword-count").textContent = villageData.troops.sword;
     document.getElementById("axe-count").textContent = villageData.troops.axe;
 
-    document.querySelectorAll(".building").forEach(buildingElement => {
+    // This querySelectorAll(".building") might not find elements if they're not directly
+    // marked with the class "building" or if the "building-overlay" elements are dynamic.
+    // Based on your HTML, it seems you use "building-overlay" as the container.
+    // You might want to adjust this to: document.querySelectorAll(".building-overlay")
+    // or ensure your building elements also have a "building" class.
+    document.querySelectorAll(".building-overlay").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
         const level = villageData.buildings[type];
         const cost = level * 50;
