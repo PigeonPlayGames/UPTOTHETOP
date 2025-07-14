@@ -81,6 +81,33 @@ nav button:hover {
     overflow: hidden; /* Important for containing absolutely positioned children */
 }
 
+/* --- Windmill Styles --- */
+#windmill-container {
+    position: absolute; /* Allows precise placement over the image */
+    top: 25%; /* Adjust this percentage to move the windmill up/down */
+    left: 70%; /* Adjust this percentage to move the windmill left/right */
+    transform: translate(-50%, -50%); /* Centers the windmill container at the specified top/left point */
+    width: 100px; /* Set the desired width of your windmill (container) */
+    height: 100px; /* Set the desired height of your windmill (container) */
+    overflow: hidden; /* Ensures image doesn't overflow container */
+    z-index: 5; /* Adjust if it needs to be above or below other elements. Make sure it's higher than building overlays if it should be on top. */
+}
+
+#windmill-blades {
+    width: 100%; /* Make the image fill its container */
+    height: 100%;
+    display: block; /* Removes extra space below image */
+    /* If your windmill images have a lot of empty space around the blades,
+       you might want to use object-fit to control how they scale.
+       For a spinning animation, usually the image should perfectly fit
+       the container or be slightly larger to crop out edges.
+       object-fit: contain; // Scales down to fit, maintaining aspect ratio
+       object-fit: cover;  // Scales up to cover, cropping if necessary
+    */
+}
+/* --- End Windmill Styles --- */
+
+
 .building-overlay {
     position: absolute; /* Allows precise placement over the image */
     background: rgba(0, 0, 0, 0.7); /* Semi-transparent background for readability, slightly darker */
@@ -135,7 +162,7 @@ nav button:hover {
 
 /* Specific positioning for each building overlay */
 /* IMPORTANT: YOU WILL NEED TO ADJUST THESE VALUES PRECISELY based on your village_level1.png
-   These are *rough estimates* based on your screenshot. */
+    These are *rough estimates* based on your screenshot. */
 #hq-overlay {
     top: 35%; /* Adjust based on your image */
     left: 45%; /* Adjust based on your image */
