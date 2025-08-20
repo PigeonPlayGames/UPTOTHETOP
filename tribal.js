@@ -2,7 +2,7 @@
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-functions.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"; // Import Timestamp for type checking
+import { updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 import {
     getFirestore, doc, getDoc, setDoc, collection,
     query, orderBy, limit, onSnapshot, getDocs
@@ -21,30 +21,27 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
-// Initialize Firebase Functions client
-const functions = getFunctions(app); // ⭐ ADDED: Initialize Firebase Functions ⭐
+const functions = getFunctions(app); // Initialized Firebase Functions client
 
 // 🔹 State
 let user = null;
 let villageData = null;
-let villageDataLoaded = false; // Flag to indicate if initial data is loaded and processed by onSnapshot
+let villageDataLoaded = false;
 
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
-    // --- Windmill Animation Logic (New) ---
+    // --- Windmill Animation Logic ---
     const windmillBlades = document.getElementById('windmill-blades');
-    const numberOfFrames = 8; // You have 8 images (0 to 7)
+    const numberOfFrames = 8;
     let currentFrame = 0;
-    const animationSpeed = 100; // Milliseconds per frame (adjust for faster/slower spin)
+    const animationSpeed = 100;
 
     function animateWindmill() {
-        if (windmillBlades) { // Ensure the element exists before trying to update its src
+        if (windmillBlades) {
             windmillBlades.src = `windmill_frame_${currentFrame}.png`;
-            currentFrame = (currentFrame + 1) % numberOfFrames; // Cycle through frames 0-7
+            currentFrame = (currentFrame + 1) % numberOfFrames;
         }
     }
-
-    // Start the windmill animation as soon as the DOM is ready
     setInterval(animateWindmill, animationSpeed);
     // --- End Windmill Animation Logic ---
 
@@ -57,47 +54,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         user = loggedInUser;
-
-        // 🔹 Set up the Real-time listener FIRST.
-        // This listener will be the authoritative source for UI updates.
         const villageDocRef = doc(db, "villages", user.uid);
+
         onSnapshot(villageDocRef, (docSnap) => {
             if (!docSnap.exists()) {
                 console.error("Village document does not exist for user:", user.uid);
-                // If it doesn't exist, it means calculateOfflineResourcesAndSave (which creates it) hasn't finished yet,
-                // or there's a serious data problem. We can't proceed without initial data.
                 return;
             }
 
-            // Always update local villageData with the freshest data from Firestore
             villageData = docSnap.data();
 
-            // Set villageDataLoaded to true once we receive the first valid snapshot.
-            // This ensures all other game loops and functions can safely use villageData.
             if (!villageDataLoaded) {
                 villageDataLoaded = true;
-                // Start game loops and other components only once initial data is loaded
-                startGameLoops();
-                loadLeaderboard();
-                loadWorldMap();
-                bindUpgradeButtons();
-                bindTrainButtons();
-                bindLogout();
+                startGame(); // Consolidated game initialization
             }
 
-            updateUI(); // Update UI whenever Firestore data changes
+            updateUI();
 
-            // Handle battle messages
             if (villageData.lastBattleMessage) {
                 alert(villageData.lastBattleMessage);
-
-                // Clear from Firestore and locally after showing
                 (async () => {
                     try {
                         await updateDoc(villageDocRef, {
                             lastBattleMessage: null
                         });
-                        delete villageData.lastBattleMessage; // Clear locally too
+                        delete villageData.lastBattleMessage;
                     } catch (error) {
                         console.error("Failed to clear battle message:", error);
                     }
@@ -108,41 +89,41 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("Failed to load village data in real-time. Please refresh.");
         });
 
-        // Immediately trigger the load and calculation of offline resources.
-        // This function will also perform the initial save to Firestore.
-        // The onSnapshot listener (set up above) will then pick up this updated data.
         await calculateOfflineResourcesAndSave();
     });
 });
+
+// ⭐ NEW FUNCTION: Consolidates all game initialization logic
+function startGame() {
+    startGameLoops();
+    loadLeaderboard();
+    loadWorldMap();
+    bindUpgradeButtons();
+    bindTrainButtons();
+    bindLogout();
+}
+// ⭐ END NEW FUNCTION ⭐
 
 // 🔹 Function to calculate offline resources and save the updated state
 async function calculateOfflineResourcesAndSave() {
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
-
-    let dataForFirestore = {}; // This will be the data we send to Firestore
+    let dataForFirestore = {};
 
     if (snapshot.exists()) {
         const currentDataInFirestore = snapshot.data();
-
-        // --- FIX: Handle lastLogin type (number or Timestamp) ---
         let lastLoginMillis;
         if (typeof currentDataInFirestore.lastLogin === 'number') {
             lastLoginMillis = currentDataInFirestore.lastLogin;
-        } else if (currentDataInFirestore.lastLogin instanceof Timestamp) { // Check if it's a Firestore Timestamp object
+        } else if (currentDataInFirestore.lastLogin instanceof Timestamp) {
             lastLoginMillis = currentDataInFirestore.lastLogin.toMillis();
         } else {
-            // Fallback for missing or unexpected lastLogin types
             console.warn("lastLogin field missing or invalid type, defaulting to Date.now().", currentDataInFirestore.lastLogin);
             lastLoginMillis = Date.now();
         }
-        // --- END FIX ---
 
         const currentTimeMillis = Date.now();
         const timeElapsedSeconds = Math.floor((currentTimeMillis - lastLoginMillis) / 1000);
-
-        // Create a working copy of the data from Firestore for calculations
-        // Ensure all required fields exist (even if document exists from older version)
         let workingVillageData = {
             username: currentDataInFirestore.username || user.email.split("@")[0],
             userId: currentDataInFirestore.userId || user.uid,
@@ -157,7 +138,6 @@ async function calculateOfflineResourcesAndSave() {
             lastBattleMessage: currentDataInFirestore.lastBattleMessage || null
         };
 
-        // Calculate offline resources if time has passed
         if (timeElapsedSeconds > 0) {
             const woodPerSecond = (workingVillageData.buildings.lumber * 5) / 5;
             const stonePerSecond = (workingVillageData.buildings.quarry * 5) / 5;
@@ -176,14 +156,11 @@ async function calculateOfflineResourcesAndSave() {
             }
         }
 
-        // Prepare this working data for saving to Firestore
         dataForFirestore = {
             ...workingVillageData,
-            lastLogin: serverTimestamp() // Always update lastLogin to serverTimestamp for the next calculation
+            lastLogin: serverTimestamp()
         };
-
     } else {
-        // First time user setup - create initial village data
         dataForFirestore = {
             username: user.email.split("@")[0],
             userId: user.uid,
@@ -195,18 +172,16 @@ async function calculateOfflineResourcesAndSave() {
             y: Math.floor(Math.random() * 3000),
             buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
             troops: { spear: 0, sword: 0, axe: 0 },
-            lastLogin: serverTimestamp() // Set initial lastLogin to serverTimestamp
+            lastLogin: serverTimestamp()
         };
     }
 
-    // Ensure lastBattleMessage is handled consistently (null vs undefined for Firestore)
     if (dataForFirestore.lastBattleMessage === undefined) {
         delete dataForFirestore.lastBattleMessage;
     } else if (dataForFirestore.lastBattleMessage === null) {
-        // Keep null if explicitly set to null, Firestore accepts null
+        // Keep null if explicitly set to null
     }
 
-    // Perform the save to Firestore. This will trigger the onSnapshot listener.
     try {
         await setDoc(ref, dataForFirestore, { merge: true });
         console.log("Village data (including offline gains) saved to Firestore.");
@@ -214,27 +189,19 @@ async function calculateOfflineResourcesAndSave() {
         console.error("Failed to save initial/offline village data:", err);
         alert("Error saving your village data.");
     }
-    // No direct updateUI() or setting villageDataLoaded here; onSnapshot handles it.
 }
 
 
 // 🔹 Save Village (for general game actions like upgrades, training, etc.)
 async function saveVillageData() {
     if (!user || !villageDataLoaded) {
-        // This warning should now only appear if saveVillageData is called before
-        // onSnapshot has fully initialized villageData and set villageDataLoaded.
         console.warn("Attempted to save village data before user or data loaded.");
         return;
     }
 
-    // Always update lastLogin timestamp to serverTimestamp when saving
-    // The villageData object is already updated locally by ongoing game actions
     villageData.lastLogin = serverTimestamp();
-
-    // Deep copy to ensure no undefined fields are present for Firestore write
     const dataToSave = JSON.parse(JSON.stringify(villageData));
 
-    // Explicitly handle lastBattleMessage to be null if undefined
     if (dataToSave.lastBattleMessage === undefined) {
         delete dataToSave.lastBattleMessage;
     }
@@ -249,7 +216,6 @@ async function saveVillageData() {
 }
 
 // 🔹 UI Update
-// (No changes needed, as it correctly reads from the global villageData)
 function updateUI() {
     if (!villageData) return;
 
@@ -267,11 +233,6 @@ function updateUI() {
     document.getElementById("sword-count").textContent = villageData.troops.sword;
     document.getElementById("axe-count").textContent = villageData.troops.axe;
 
-    // This querySelectorAll(".building") might not find elements if they're not directly
-    // marked with the class "building" or if the "building-overlay" elements are dynamic.
-    // Based on your HTML, it seems you use "building-overlay" as the container.
-    // You might want to adjust this to: document.querySelectorAll(".building-overlay")
-    // or ensure your building elements also have a "building" class.
     document.querySelectorAll(".building-overlay").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
         const level = villageData.buildings[type];
@@ -318,7 +279,7 @@ function upgradeBuilding(building) {
         villageData.iron -= cost;
         villageData.buildings[building]++;
         villageData.score += 10;
-        saveVillageData(); // Save changes
+        saveVillageData();
         updateUI();
     } else {
         alert("Not enough resources!");
@@ -353,7 +314,7 @@ function recruitTroop(type) {
 // 🔹 Resource Loop
 function startGameLoops() {
     setInterval(() => {
-        if (!villageDataLoaded) return; // Only run if initial data is loaded
+        if (!villageDataLoaded) return;
         villageData.wood += villageData.buildings.lumber * 5;
         villageData.stone += villageData.buildings.quarry * 5;
         villageData.iron += villageData.buildings.iron * 5;
@@ -392,7 +353,6 @@ async function loadWorldMap() {
 
     try {
         const snapshot = await getDocs(collection(db, "villages"));
-
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
             v.id = docSnap.id;
@@ -435,32 +395,21 @@ async function loadWorldMap() {
                     return alert("Not enough troops in your village to send that many.");
                 }
 
-                // ⭐ MODIFIED: Call Cloud Function for Battle Logic ⭐
                 try {
                     const processAttackCallable = httpsCallable(functions, 'processAttack');
                     const result = await processAttackCallable({
                         defenderId: v.id,
                         sentTroops: { spear, sword, axe }
                     });
-
-                    // Display the battle report message returned by the Cloud Function
                     alert(result.data.message);
-
-                    // The onSnapshot listener will update your UI when your villageData changes in Firestore.
-                    // We just need to reload the world map to reflect any changes to other villages.
                     loadWorldMap();
-
                 } catch (error) {
-                    console.error("Error during attack:", error.code, error.message);
-                    // Display a user-friendly error message if the Cloud Function fails
+                    console.error("Error during attack:", error);
                     alert(`Attack failed: ${error.message}`);
                 }
-                // ⭐ END MODIFIED SECTION ⭐
             });
-
             world.appendChild(el);
         });
-
         centerOnPlayer(wrapper, world, villageData.x, villageData.y);
         initPanZoom(wrapper, world);
     } catch (err) {
@@ -539,7 +488,6 @@ function initPanZoom(viewport, content) {
     const pointerMove = e => {
         if (!panning) return;
         if (e.cancelable) e.preventDefault();
-
         const clientX = e.clientX ?? e.touches[0].clientX;
         const clientY = e.clientY ?? e.touches[0].clientY;
         originX = clientX - startX;
@@ -551,7 +499,6 @@ function initPanZoom(viewport, content) {
     viewport.addEventListener("mousedown", pointerDown);
     window.addEventListener("mousemove", pointerMove);
     window.addEventListener("mouseup", pointerUp);
-
     viewport.addEventListener("touchstart", pointerDown, { passive: false });
     window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("touchend", pointerUp);
