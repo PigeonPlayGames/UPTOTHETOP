@@ -8,7 +8,9 @@ import {
     query, orderBy, limit, onSnapshot, getDocs
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
-// 🔹 Firebase Config (as before)
+// 🔹 Firebase Config
+// NOTE: It is recommended to store this in a secure environment variable on a real server,
+// but for a client-side game, this is common practice.
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
     authDomain: "up-to-battle.firebaseapp.com",
@@ -28,6 +30,66 @@ let user = null;
 let villageData = null;
 let villageDataLoaded = false;
 
+// 🔹 Custom Modal UI (replacing alert and confirm)
+const showMessage = (title, message) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-container';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>${title}</h3>
+            <p>${message}</p>
+            <button class="modal-close-btn">OK</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+        modal.remove();
+    };
+
+    modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+};
+
+const showConfirm = (title, message) => {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'modal-container';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="modal-buttons">
+                    <button class="modal-confirm-btn">Confirm</button>
+                    <button class="modal-cancel-btn">Cancel</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('.modal-confirm-btn').addEventListener('click', () => {
+            modal.remove();
+            resolve(true);
+        });
+
+        modal.querySelector('.modal-cancel-btn').addEventListener('click', () => {
+            modal.remove();
+            resolve(false);
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+                resolve(false);
+            }
+        });
+    });
+};
+
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
     // --- Windmill Animation Logic ---
@@ -45,10 +107,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(animateWindmill, animationSpeed);
     // --- End Windmill Animation Logic ---
 
-
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
-            alert("You must be logged in to play!");
+            showMessage("Login Required", "You must be logged in to play!");
             window.location.href = "index.html";
             return;
         }
@@ -72,7 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
             updateUI();
 
             if (villageData.lastBattleMessage) {
-                alert(villageData.lastBattleMessage);
+                showMessage("Battle Report", villageData.lastBattleMessage);
                 (async () => {
                     try {
                         await updateDoc(villageDocRef, {
@@ -86,7 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }, (error) => {
             console.error("Error listening to village data:", error);
-            alert("Failed to load village data in real-time. Please refresh.");
+            showMessage("Error", "Failed to load village data in real-time. Please refresh.");
         });
 
         await calculateOfflineResourcesAndSave();
@@ -152,7 +213,7 @@ async function calculateOfflineResourcesAndSave() {
             workingVillageData.iron += generatedIron;
 
             if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
-                alert(`My Lord Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
+                showMessage("Welcome back!", `My Lord, while you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
             }
         }
 
@@ -187,7 +248,7 @@ async function calculateOfflineResourcesAndSave() {
         console.log("Village data (including offline gains) saved to Firestore.");
     } catch (err) {
         console.error("Failed to save initial/offline village data:", err);
-        alert("Error saving your village data.");
+        showMessage("Error", "Error saving your village data.");
     }
 }
 
@@ -211,7 +272,7 @@ async function saveVillageData() {
         console.log("Village data saved due to user action.");
     } catch (err) {
         console.error("Save failed:", err);
-        alert("Error saving your village.");
+        showMessage("Error", "Error saving your village.");
     }
 }
 
@@ -282,7 +343,7 @@ function upgradeBuilding(building) {
         saveVillageData();
         updateUI();
     } else {
-        alert("Not enough resources!");
+        showMessage("Upgrade Failed", "Not enough resources!");
     }
 }
 
@@ -297,7 +358,7 @@ function recruitTroop(type) {
     const cost = costs[type];
 
     if (!Object.entries(cost).every(([resource, amount]) => villageData[resource] >= amount)) {
-        alert(`Not enough resources to train a ${type}.`);
+        showMessage("Recruit Failed", `Not enough resources to train a ${type}.`);
         return;
     }
 
@@ -308,7 +369,7 @@ function recruitTroop(type) {
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
     saveVillageData();
     updateUI();
-    alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
+    showMessage("Recruited", `${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
 }
 
 // 🔹 Resource Loop
@@ -373,40 +434,35 @@ async function loadWorldMap() {
 
             el.addEventListener("click", async () => {
                 if (v.userId === user.uid) {
-                    alert("This is your own village. You cannot attack yourself!");
+                    showMessage("Action Denied", "This is your own village. You cannot attack yourself!");
                     return;
                 }
 
-                const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
-                if (!confirmAttack) return;
+                const confirmed = await showConfirm(
+                    "Confirm Attack",
+                    `Attack ${v.username}'s village (Score: ${v.score})?`
+                );
+                if (!confirmed) return;
 
-                const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
-                const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
-                const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
-                const totalSent = spear + sword + axe;
+                const sentTroops = {
+                    spear: parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0,
+                    sword: parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0,
+                    axe: parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0,
+                };
+                const totalSent = sentTroops.spear + sentTroops.sword + sentTroops.axe;
 
-                if (totalSent <= 0) return alert("You must send at least 1 troop to attack.");
+                if (totalSent <= 0) return showMessage("Invalid Action", "You must send at least 1 troop to attack.");
 
                 if (
-                    spear > villageData.troops.spear ||
-                    sword > villageData.troops.sword ||
-                    axe > villageData.troops.axe
+                    sentTroops.spear > villageData.troops.spear ||
+                    sentTroops.sword > villageData.troops.sword ||
+                    sentTroops.axe > villageData.troops.axe
                 ) {
-                    return alert("Not enough troops in your village to send that many.");
+                    return showMessage("Invalid Troops", "Not enough troops in your village to send that many.");
                 }
 
-                try {
-                    const processAttackCallable = httpsCallable(functions, 'processAttack');
-                    const result = await processAttackCallable({
-                        defenderId: v.id,
-                        sentTroops: { spear, sword, axe }
-                    });
-                    alert(result.data.message);
-                    loadWorldMap();
-                } catch (error) {
-                    console.error("Error during attack:", error);
-                    alert(`Attack failed: ${error.message}`);
-                }
+                // Call the new, secure attack function
+                await attackPlayer(v.id, sentTroops);
             });
             world.appendChild(el);
         });
@@ -414,10 +470,27 @@ async function loadWorldMap() {
         initPanZoom(wrapper, world);
     } catch (err) {
         console.error("Error loading world map:", err);
-        alert("Failed to load world map.");
+        showMessage("Error", "Failed to load world map.");
     }
 }
 
+// 🔹 NEW: Function to call the Cloud Function to process an attack
+async function attackPlayer(defenderId, sentTroops) {
+    // ⚠️ TODO: You must implement the 'attackPlayer' Cloud Function on your backend
+    // This frontend code will not work without it.
+    try {
+        const attackFunction = httpsCallable(functions, 'attackPlayer');
+        const result = await attackFunction({
+            defenderId: defenderId,
+            sentTroops: sentTroops
+        });
+        showMessage("Battle Report", result.data.message);
+        loadWorldMap(); // Reload map to show updated data
+    } catch (error) {
+        console.error("Error during attack:", error);
+        showMessage("Attack Failed", error.message);
+    }
+}
 
 function centerOnPlayer(wrapper, world, x, y) {
     const wrapperRect = wrapper.getBoundingClientRect();
@@ -517,7 +590,7 @@ function bindLogout() {
                 window.location.href = "index.html"; // Redirect to login page
             } catch (err) {
                 console.error("Logout Error:", err);
-                alert("Failed to logout. Please try again.");
+                showMessage("Logout Failed", "Failed to logout. Please try again.");
             }
         });
     }
