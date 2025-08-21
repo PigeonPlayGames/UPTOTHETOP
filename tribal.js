@@ -479,7 +479,7 @@ async function attackPlayer(defenderId, sentTroops) {
     // ⚠️ TODO: You must implement the 'attackPlayer' Cloud Function on your backend
     // This frontend code will not work without it.
     try {
-        const attackFunction = httpsCallable(functions, 'attackPlayer');
+        const attackFunction = httpsCallable(functions, 'processAttack');
         const result = await attackFunction({
             defenderId: defenderId,
             sentTroops: sentTroops
