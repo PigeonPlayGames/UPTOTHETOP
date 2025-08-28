@@ -376,13 +376,13 @@ async function loadWorldMap() {
                     return;
                 }
                 
-                // ⭐ AMENDED LOGIC: New robust user check
-                if (!user || !auth.currentUser) {
+                // ⭐ New, more robust user authentication check ⭐
+                if (!auth.currentUser) {
                     alert("Attack failed: You are not authenticated. Please refresh the page.");
-                    console.error("Attack failed: User object is null or not authenticated.");
+                    console.error("Attack failed: User is not authenticated.");
                     return;
                 }
-
+                
                 const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
                 if (!confirmAttack) return;
 
