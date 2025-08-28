@@ -381,43 +381,53 @@ async function loadWorldMap() {
                     return;
                 }
                 
-                // ⭐ This is the most crucial part of the fix
-                if (!auth.currentUser) {
-                    alert("Attack failed: You are not authenticated. Please refresh the page.");
-                    console.error("Attack failed: User is not authenticated.");
-                    return;
-                }
+                // ⭐ This is the new, definitive fix for the race condition
+                const attackFunction = async () => {
+                    if (!auth.currentUser) {
+                        console.error("Authentication error: User is not authenticated. Retrying...");
+                        // Retry after a short delay
+                        setTimeout(attackFunction, 100);
+                        return;
+                    }
 
-                const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
-                if (!confirmAttack) return;
+                    const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
+                    if (!confirmAttack) return;
 
-                const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
-                const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
-                const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
-                const totalSent = spear + sword + axe;
+                    const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
+                    const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
+                    const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
+                    const totalSent = spear + sword + axe;
 
-                if (totalSent <= 0) return alert("You must send at least 1 troop to attack.");
+                    if (totalSent <= 0) {
+                        alert("You must send at least 1 troop to attack.");
+                        return;
+                    }
 
-                if (
-                    spear > villageData.troops.spear ||
-                    sword > villageData.troops.sword ||
-                    axe > villageData.troops.axe
-                ) {
-                    return alert("Not enough troops in your village to send that many.");
-                }
+                    if (
+                        spear > villageData.troops.spear ||
+                        sword > villageData.troops.sword ||
+                        axe > villageData.troops.axe
+                    ) {
+                        alert("Not enough troops in your village to send that many.");
+                        return;
+                    }
 
-                try {
-                    const processAttackCallable = httpsCallable(functions, 'processAttack');
-                    const result = await processAttackCallable({
-                        defenderId: v.id,
-                        sentTroops: { spear, sword, axe }
-                    });
-                    alert(result.data.message);
-                    loadWorldMap();
-                } catch (error) {
-                    console.error("Error during attack:", error);
-                    alert(`Attack failed: ${error.message}`);
-                }
+                    try {
+                        const processAttackCallable = httpsCallable(functions, 'processAttack');
+                        const result = await processAttackCallable({
+                            defenderId: v.id,
+                            sentTroops: { spear, sword, axe }
+                        });
+                        alert(result.data.message);
+                        loadWorldMap();
+                    } catch (error) {
+                        console.error("Error during attack:", error);
+                        alert(`Attack failed: ${error.message}`);
+                    }
+                };
+
+                // Start the attack process
+                attackFunction();
             });
             world.appendChild(el);
         });
