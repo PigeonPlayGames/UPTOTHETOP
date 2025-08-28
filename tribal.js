@@ -344,6 +344,11 @@ function loadLeaderboard() {
 
 // 🔹 World Map
 async function loadWorldMap() {
+    if (!villageDataLoaded) { // Prevent function from running prematurely
+        console.warn("Village data not yet loaded, skipping world map creation.");
+        return;
+    }
+    
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
     if (!wrapper || !world) return;
@@ -376,13 +381,13 @@ async function loadWorldMap() {
                     return;
                 }
                 
-                // ⭐ New, more robust user authentication check ⭐
+                // ⭐ This is the most crucial part of the fix
                 if (!auth.currentUser) {
                     alert("Attack failed: You are not authenticated. Please refresh the page.");
                     console.error("Attack failed: User is not authenticated.");
                     return;
                 }
-                
+
                 const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
                 if (!confirmAttack) return;
 
