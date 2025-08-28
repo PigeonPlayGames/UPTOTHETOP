@@ -1,4 +1,3 @@
-
 // 🔹 Firebase Setup
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-functions.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
@@ -45,7 +44,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     setInterval(animateWindmill, animationSpeed);
     // --- End Windmill Animation Logic ---
-
 
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
@@ -373,6 +371,12 @@ async function loadWorldMap() {
             el.setAttribute("data-score", v.score ?? 0);
 
             el.addEventListener("click", async () => {
+                // ⭐ AMEND 1: Add a definitive user check here
+                if (!user || user.uid !== auth.currentUser.uid) {
+                    alert("Authentication error: Please reload the page.");
+                    return;
+                }
+                
                 if (v.userId === user.uid) {
                     alert("This is your own village. You cannot attack yourself!");
                     return;
