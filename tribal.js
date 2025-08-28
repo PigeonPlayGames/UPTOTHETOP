@@ -371,14 +371,15 @@ async function loadWorldMap() {
             el.setAttribute("data-score", v.score ?? 0);
 
             el.addEventListener("click", async () => {
-                // ⭐ AMEND 1: Add a definitive user check here
-                if (!user || user.uid !== auth.currentUser.uid) {
-                    alert("Authentication error: Please reload the page.");
+                if (v.userId === user.uid) {
+                    alert("This is your own village. You cannot attack yourself!");
                     return;
                 }
                 
-                if (v.userId === user.uid) {
-                    alert("This is your own village. You cannot attack yourself!");
+                // ⭐ AMENDED LOGIC: New robust user check
+                if (!user || !auth.currentUser) {
+                    alert("Attack failed: You are not authenticated. Please refresh the page.");
+                    console.error("Attack failed: User object is null or not authenticated.");
                     return;
                 }
 
