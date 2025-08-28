@@ -1,14 +1,14 @@
 // 🔹 Firebase Setup
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-functions.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 import { updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-functions.js";
 import {
     getFirestore, doc, getDoc, setDoc, collection,
     query, orderBy, limit, onSnapshot, getDocs
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
-// 🔹 Firebase Config (as before)
+// 🔹 Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
     authDomain: "up-to-battle.firebaseapp.com",
@@ -21,7 +21,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
-const functions = getFunctions(app); // Initialized Firebase Functions client
+const functions = getFunctions(app);
 
 // 🔹 State
 let user = null;
@@ -53,8 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         user = loggedInUser;
-        const villageDocRef = doc(db, "villages", user.uid);
 
+        // 🔹 Set up the Real-time listener FIRST.
+        const villageDocRef = doc(db, "villages", user.uid);
         onSnapshot(villageDocRef, (docSnap) => {
             if (!docSnap.exists()) {
                 console.error("Village document does not exist for user:", user.uid);
@@ -65,7 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!villageDataLoaded) {
                 villageDataLoaded = true;
-                startGame(); // Consolidated game initialization
+                startGame();
             }
 
             updateUI();
@@ -74,9 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 alert(villageData.lastBattleMessage);
                 (async () => {
                     try {
-                        await updateDoc(villageDocRef, {
-                            lastBattleMessage: null
-                        });
+                        await updateDoc(villageDocRef, { lastBattleMessage: null });
                         delete villageData.lastBattleMessage;
                     } catch (error) {
                         console.error("Failed to clear battle message:", error);
@@ -92,7 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-// ⭐ NEW FUNCTION: Consolidates all game initialization logic
+// 🔹 Consolidates all game initialization logic
 function startGame() {
     startGameLoops();
     loadLeaderboard();
@@ -101,7 +100,6 @@ function startGame() {
     bindTrainButtons();
     bindLogout();
 }
-// ⭐ END NEW FUNCTION ⭐
 
 // 🔹 Function to calculate offline resources and save the updated state
 async function calculateOfflineResourcesAndSave() {
@@ -111,6 +109,7 @@ async function calculateOfflineResourcesAndSave() {
 
     if (snapshot.exists()) {
         const currentDataInFirestore = snapshot.data();
+
         let lastLoginMillis;
         if (typeof currentDataInFirestore.lastLogin === 'number') {
             lastLoginMillis = currentDataInFirestore.lastLogin;
@@ -123,6 +122,7 @@ async function calculateOfflineResourcesAndSave() {
 
         const currentTimeMillis = Date.now();
         const timeElapsedSeconds = Math.floor((currentTimeMillis - lastLoginMillis) / 1000);
+
         let workingVillageData = {
             username: currentDataInFirestore.username || user.email.split("@")[0],
             userId: currentDataInFirestore.userId || user.uid,
@@ -151,7 +151,7 @@ async function calculateOfflineResourcesAndSave() {
             workingVillageData.iron += generatedIron;
 
             if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
-                alert(`My Lord Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
+                alert(`Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
             }
         }
 
@@ -159,6 +159,7 @@ async function calculateOfflineResourcesAndSave() {
             ...workingVillageData,
             lastLogin: serverTimestamp()
         };
+
     } else {
         dataForFirestore = {
             username: user.email.split("@")[0],
@@ -177,8 +178,6 @@ async function calculateOfflineResourcesAndSave() {
 
     if (dataForFirestore.lastBattleMessage === undefined) {
         delete dataForFirestore.lastBattleMessage;
-    } else if (dataForFirestore.lastBattleMessage === null) {
-        // Keep null if explicitly set to null
     }
 
     try {
@@ -190,7 +189,6 @@ async function calculateOfflineResourcesAndSave() {
     }
 }
 
-
 // 🔹 Save Village (for general game actions like upgrades, training, etc.)
 async function saveVillageData() {
     if (!user || !villageDataLoaded) {
@@ -199,6 +197,7 @@ async function saveVillageData() {
     }
 
     villageData.lastLogin = serverTimestamp();
+
     const dataToSave = JSON.parse(JSON.stringify(villageData));
 
     if (dataToSave.lastBattleMessage === undefined) {
@@ -232,7 +231,7 @@ function updateUI() {
     document.getElementById("sword-count").textContent = villageData.troops.sword;
     document.getElementById("axe-count").textContent = villageData.troops.axe;
 
-    document.querySelectorAll(".building-overlay").forEach(buildingElement => {
+    document.querySelectorAll(".building").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
         const level = villageData.buildings[type];
         const cost = level * 50;
@@ -268,10 +267,8 @@ function bindTrainButtons() {
 // 🔹 Upgrade Logic
 function upgradeBuilding(building) {
     if (!villageDataLoaded) return;
-
     const level = villageData.buildings[building];
     const cost = level * 50;
-
     if (villageData.wood >= cost && villageData.stone >= cost && villageData.iron >= cost) {
         villageData.wood -= cost;
         villageData.stone -= cost;
@@ -292,18 +289,14 @@ function recruitTroop(type) {
         sword: { iron: 100 },
         axe: { stone: 100 }
     };
-
     const cost = costs[type];
-
     if (!Object.entries(cost).every(([resource, amount]) => villageData[resource] >= amount)) {
         alert(`Not enough resources to train a ${type}.`);
         return;
     }
-
     Object.entries(cost).forEach(([resource, amount]) => {
         villageData[resource] -= amount;
     });
-
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
     saveVillageData();
     updateUI();
@@ -325,7 +318,6 @@ function startGameLoops() {
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
-
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
@@ -344,90 +336,36 @@ function loadLeaderboard() {
 
 // 🔹 World Map
 async function loadWorldMap() {
-    if (!villageDataLoaded) { // Prevent function from running prematurely
+    if (!villageDataLoaded) {
         console.warn("Village data not yet loaded, skipping world map creation.");
         return;
     }
-    
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
     if (!wrapper || !world) return;
-
     world.innerHTML = "";
-
     try {
         const snapshot = await getDocs(collection(db, "villages"));
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
             v.id = docSnap.id;
-
             if (!v.x || !v.y) return;
-
             const el = document.createElement("div");
             el.className = "village-tile";
             if (v.userId === user.uid) {
                 el.classList.add("your-village");
                 el.setAttribute("title", "Your Village");
             }
-
             el.style.left = `${v.x}px`;
             el.style.top = `${v.y}px`;
             el.setAttribute("data-username", v.username || "Unknown");
             el.setAttribute("data-score", v.score ?? 0);
-
             el.addEventListener("click", async () => {
                 if (v.userId === user.uid) {
                     alert("This is your own village. You cannot attack yourself!");
                     return;
                 }
-                
-                // ⭐ This is the new, definitive fix for the race condition
-                const attackFunction = async () => {
-                    if (!auth.currentUser) {
-                        console.error("Authentication error: User is not authenticated. Retrying...");
-                        // Retry after a short delay
-                        setTimeout(attackFunction, 100);
-                        return;
-                    }
-
-                    const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
-                    if (!confirmAttack) return;
-
-                    const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
-                    const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
-                    const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
-                    const totalSent = spear + sword + axe;
-
-                    if (totalSent <= 0) {
-                        alert("You must send at least 1 troop to attack.");
-                        return;
-                    }
-
-                    if (
-                        spear > villageData.troops.spear ||
-                        sword > villageData.troops.sword ||
-                        axe > villageData.troops.axe
-                    ) {
-                        alert("Not enough troops in your village to send that many.");
-                        return;
-                    }
-
-                    try {
-                        const processAttackCallable = httpsCallable(functions, 'processAttack');
-                        const result = await processAttackCallable({
-                            defenderId: v.id,
-                            sentTroops: { spear, sword, axe }
-                        });
-                        alert(result.data.message);
-                        loadWorldMap();
-                    } catch (error) {
-                        console.error("Error during attack:", error);
-                        alert(`Attack failed: ${error.message}`);
-                    }
-                };
-
-                // Start the attack process
-                attackFunction();
+                sendAttack({ ...v, id: docSnap.id });
             });
             world.appendChild(el);
         });
@@ -439,6 +377,33 @@ async function loadWorldMap() {
     }
 }
 
+// 🔹 Securely call the Cloud Function to process an attack
+async function sendAttack(defenderData) {
+    const confirmAttack = confirm(`Attack ${defenderData.username}'s village (Score: ${defenderData.score})?`);
+    if (!confirmAttack) return;
+    const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
+    const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
+    const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
+    const totalSent = spear + sword + axe;
+    if (totalSent <= 0) return alert("You must send at least 1 troop to attack.");
+    if (spear > villageData.troops.spear || sword > villageData.troops.sword || axe > villageData.troops.axe) {
+        return alert("Not enough troops in your village to send that many.");
+    }
+    try {
+        const processAttack = httpsCallable(functions, 'processAttack');
+        const result = await processAttack({
+            defenderId: defenderData.id,
+            spear: spear,
+            sword: sword,
+            axe: axe
+        });
+        console.log("Attack result:", result.data);
+        alert(result.data.message);
+    } catch (error) {
+        console.error("Attack failed:", error);
+        alert("Attack failed: " + error.message);
+    }
+}
 
 function centerOnPlayer(wrapper, world, x, y) {
     const wrapperRect = wrapper.getBoundingClientRect();
@@ -455,10 +420,8 @@ function initPanZoom(viewport, content) {
     let originY = parseFloat(content.dataset.initialY) || 0;
     let startX = 0, startY = 0;
     let panning = false;
-
     const setTransform = () =>
         content.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
-
     viewport.addEventListener("wheel", e => {
         e.preventDefault();
         const delta = -e.deltaY * 0.001;
@@ -471,7 +434,6 @@ function initPanZoom(viewport, content) {
         scale = newScale;
         setTransform();
     }, { passive: false });
-
     let lastTouchDistance = null;
     viewport.addEventListener("touchmove", (e) => {
         if (e.touches.length === 2) {
@@ -493,12 +455,10 @@ function initPanZoom(viewport, content) {
             setTransform();
         }
     }, { passive: false });
-
     viewport.addEventListener("touchend", () => {
         lastTouchDistance = null;
         panning = false;
     });
-
     const pointerDown = e => {
         panning = true;
         const clientX = e.clientX ?? e.touches[0].clientX;
@@ -516,14 +476,12 @@ function initPanZoom(viewport, content) {
         setTransform();
     };
     const pointerUp = () => (panning = false);
-
     viewport.addEventListener("mousedown", pointerDown);
     window.addEventListener("mousemove", pointerMove);
     window.addEventListener("mouseup", pointerUp);
     viewport.addEventListener("touchstart", pointerDown, { passive: false });
     window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("touchend", pointerUp);
-
     setTransform();
 }
 
@@ -533,9 +491,9 @@ function bindLogout() {
     if (logoutBtn) {
         logoutBtn.addEventListener("click", async () => {
             try {
-                await saveVillageData(); // Ensure data is saved before logging out
+                await saveVillageData();
                 await auth.signOut();
-                window.location.href = "index.html"; // Redirect to login page
+                window.location.href = "index.html";
             } catch (err) {
                 console.error("Logout Error:", err);
                 alert("Failed to logout. Please try again.");
