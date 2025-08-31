@@ -28,6 +28,30 @@ app.use(async (req, res, next) => {
     }
 });
 
+// Route to handle saving village data
+app.post('/saveVillage', async (req, res) => {
+    const userId = req.user.uid; // Get user ID from authenticated user
+    const villageDataToSave = req.body;
+
+    // Basic validation (you might want more comprehensive validation here)
+    if (!villageDataToSave) {
+        return res.status(400).json({ error: 'Missing village data.' });
+    }
+
+    const db = admin.firestore();
+
+    try {
+        // Save the village data to Firestore under the authenticated user's ID
+        await db.collection('villages').doc(userId).set(villageDataToSave, { merge: true }); // Use merge: true to avoid overwriting the whole document
+
+        res.status(200).json({ success: true, message: 'Village data saved successfully.' });
+
+    } catch (error) {
+        console.error('Error saving village data:', error);
+        res.status(500).json({ error: error.message || 'An unexpected error occurred while saving village data.' });
+    }
+});
+
 
 app.post('/attack', async (req, res) => {
     const attackerId = req.user.uid; // Get attacker ID from authenticated user
