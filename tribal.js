@@ -1,8 +1,7 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-functions.js";
+import { updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 import {
     getFirestore, doc, getDoc, setDoc, collection,
     query, orderBy, limit, onSnapshot, getDocs
@@ -21,7 +20,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
-const functions = getFunctions(app);
 
 // 🔹 State
 let user = null;
@@ -30,21 +28,6 @@ let villageDataLoaded = false;
 
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
-    // --- Windmill Animation Logic ---
-    const windmillBlades = document.getElementById('windmill-blades');
-    const numberOfFrames = 8;
-    let currentFrame = 0;
-    const animationSpeed = 100;
-
-    function animateWindmill() {
-        if (windmillBlades) {
-            windmillBlades.src = `windmill_frame_${currentFrame}.png`;
-            currentFrame = (currentFrame + 1) % numberOfFrames;
-        }
-    }
-    setInterval(animateWindmill, animationSpeed);
-    // --- End Windmill Animation Logic ---
-
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
             alert("You must be logged in to play!");
@@ -53,115 +36,70 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         user = loggedInUser;
+        await loadVillageData();
 
-        // 🔹 Set up the Real-time listener FIRST.
-        const villageDocRef = doc(db, "villages", user.uid);
-        onSnapshot(villageDocRef, (docSnap) => {
-            if (!docSnap.exists()) {
-                console.error("Village document does not exist for user:", user.uid);
-                return;
-            }
+        // 🔹 Real-time listener for changes to this user's village (e.g., after battle)
+        onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
+            if (!docSnap.exists() || !villageData) return;
 
-            villageData = docSnap.data();
-
-            if (!villageDataLoaded) {
-                villageDataLoaded = true;
-                startGame();
-            }
+            const updatedData = docSnap.data();
+            villageData.troops = updatedData.troops;
+            villageData.lastBattleMessage = updatedData.lastBattleMessage;
 
             updateUI();
 
             if (villageData.lastBattleMessage) {
                 alert(villageData.lastBattleMessage);
+
+                // Clear from Firestore so it's not shown again
                 (async () => {
                     try {
-                        await updateDoc(villageDocRef, { lastBattleMessage: null });
-                        delete villageData.lastBattleMessage;
+                        await updateDoc(doc(db, "villages", user.uid), {
+                            lastBattleMessage: null
+                        });
                     } catch (error) {
                         console.error("Failed to clear battle message:", error);
                     }
                 })();
             }
-        }, (error) => {
-            console.error("Error listening to village data:", error);
-            alert("Failed to load village data in real-time. Please refresh.");
         });
 
-        await calculateOfflineResourcesAndSave();
+        // ✅ These must be outside the snapshot listener
+        startGameLoops();
+        loadLeaderboard();
+        loadWorldMap();
+        bindUpgradeButtons();
+        bindTrainButtons();
+        bindLogout();
     });
 });
 
-// 🔹 Consolidates all game initialization logic
-function startGame() {
-    startGameLoops();
-    loadLeaderboard();
-    loadWorldMap();
-    bindUpgradeButtons();
-    bindTrainButtons();
-    bindLogout();
-}
 
-// 🔹 Function to calculate offline resources and save the updated state
-async function calculateOfflineResourcesAndSave() {
+// 🔹 Load or Create Village
+async function loadVillageData() {
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
-    let dataForFirestore = {};
 
     if (snapshot.exists()) {
-        const currentDataInFirestore = snapshot.data();
+        villageData = snapshot.data();
 
-        let lastLoginMillis;
-        if (typeof currentDataInFirestore.lastLogin === 'number') {
-            lastLoginMillis = currentDataInFirestore.lastLogin;
-        } else if (currentDataInFirestore.lastLogin instanceof Timestamp) {
-            lastLoginMillis = currentDataInFirestore.lastLogin.toMillis();
-        } else {
-            console.warn("lastLogin field missing or invalid type, defaulting to Date.now().", currentDataInFirestore.lastLogin);
-            lastLoginMillis = Date.now();
-        }
+        // ✅ Ensure all required fields exist (even if document exists)
+        villageData.buildings = villageData.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 };
+        villageData.troops = villageData.troops || { spear: 0, sword: 0, axe: 0 };
+        villageData.wood = villageData.wood ?? 100;
+        villageData.stone = villageData.stone ?? 100;
+        villageData.iron = villageData.iron ?? 100;
+        villageData.score = villageData.score ?? 0;
+        villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
+        villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
+        
 
-        const currentTimeMillis = Date.now();
-        const timeElapsedSeconds = Math.floor((currentTimeMillis - lastLoginMillis) / 1000);
-
-        let workingVillageData = {
-            username: currentDataInFirestore.username || user.email.split("@")[0],
-            userId: currentDataInFirestore.userId || user.uid,
-            wood: currentDataInFirestore.wood ?? 100,
-            stone: currentDataInFirestore.stone ?? 100,
-            iron: currentDataInFirestore.iron ?? 100,
-            score: currentDataInFirestore.score ?? 0,
-            x: currentDataInFirestore.x ?? Math.floor(Math.random() * 3000),
-            y: currentDataInFirestore.y ?? Math.floor(Math.random() * 3000),
-            buildings: currentDataInFirestore.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 },
-            troops: currentDataInFirestore.troops || { spear: 0, sword: 0, axe: 0 },
-            lastBattleMessage: currentDataInFirestore.lastBattleMessage || null
-        };
-
-        if (timeElapsedSeconds > 0) {
-            const woodPerSecond = (workingVillageData.buildings.lumber * 5) / 5;
-            const stonePerSecond = (workingVillageData.buildings.quarry * 5) / 5;
-            const ironPerSecond = (workingVillageData.buildings.iron * 5) / 5;
-
-            const generatedWood = woodPerSecond * timeElapsedSeconds;
-            const generatedStone = stonePerSecond * timeElapsedSeconds;
-            const generatedIron = ironPerSecond * timeElapsedSeconds;
-
-            workingVillageData.wood += generatedWood;
-            workingVillageData.stone += generatedStone;
-            workingVillageData.iron += generatedIron;
-
-            if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
-                alert(`Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
-            }
-        }
-
-        dataForFirestore = {
-            ...workingVillageData,
-            lastLogin: serverTimestamp()
-        };
+        // ✅ Save any missing data back to Firestore
+        await saveVillageData();
 
     } else {
-        dataForFirestore = {
+        // First time user setup
+        villageData = {
             username: user.email.split("@")[0],
             userId: user.uid,
             wood: 100,
@@ -171,55 +109,48 @@ async function calculateOfflineResourcesAndSave() {
             x: Math.floor(Math.random() * 3000),
             y: Math.floor(Math.random() * 3000),
             buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
-            troops: { spear: 0, sword: 0, axe: 0 },
-            lastLogin: serverTimestamp()
+            troops: { spear: 0, sword: 0, axe: 0 }
         };
+        await saveVillageData();
     }
 
-    if (dataForFirestore.lastBattleMessage === undefined) {
-        delete dataForFirestore.lastBattleMessage;
+    villageDataLoaded = true;
+    updateUI();
+
+    if (villageData.lastBattleMessage) {
+        alert(villageData.lastBattleMessage);
+        delete villageData.lastBattleMessage; // Clear it after showing
+        await saveVillageData();
     }
 
-    try {
-        await setDoc(ref, dataForFirestore, { merge: true });
-        console.log("Village data (including offline gains) saved to Firestore.");
-    } catch (err) {
-        console.error("Failed to save initial/offline village data:", err);
-        alert("Error saving your village data.");
-    }
 }
 
-// 🔹 Save Village (for general game actions like upgrades, training, etc.)
+
+// 🔹 Save Village
 async function saveVillageData() {
-    if (!user || !villageDataLoaded) {
-        console.warn("Attempted to save village data before user or data loaded.");
-        return;
-    }
+    if (!user || !villageDataLoaded) return;
 
-    villageData.lastLogin = serverTimestamp();
-
-    const dataToSave = JSON.parse(JSON.stringify(villageData));
-
-    if (dataToSave.lastBattleMessage === undefined) {
-        delete dataToSave.lastBattleMessage;
+    // 🔹 Clean out any undefined fields (Firestore doesn't allow them)
+    if (villageData.lastBattleMessage === undefined) {
+        delete villageData.lastBattleMessage;
     }
 
     try {
-        await setDoc(doc(db, "villages", user.uid), dataToSave, { merge: true });
-        console.log("Village data saved due to user action.");
+        await setDoc(doc(db, "villages", user.uid), villageData);
     } catch (err) {
         console.error("Save failed:", err);
         alert("Error saving your village.");
     }
 }
 
+
 // 🔹 UI Update
 function updateUI() {
     if (!villageData) return;
 
-    document.getElementById("wood-count").innerText = Math.floor(villageData.wood ?? 0);
-    document.getElementById("stone-count").innerText = Math.floor(villageData.stone ?? 0);
-    document.getElementById("iron-count").innerText = Math.floor(villageData.iron ?? 0);
+    document.getElementById("wood-count").innerText = villageData.wood ?? 0;
+    document.getElementById("stone-count").innerText = villageData.stone ?? 0;
+    document.getElementById("iron-count").innerText = villageData.iron ?? 0;
     document.getElementById("player-score").innerText = villageData.score ?? 0;
 
     document.getElementById("hq-level").innerText = villageData.buildings.hq;
@@ -252,7 +183,7 @@ function bindUpgradeButtons() {
     });
 }
 
-// 🔹 Train Troop Buttons
+// 🔹 Train Troop Buttons (✅ fixed to use .train-btn and data-type)
 function bindTrainButtons() {
     document.querySelectorAll(".train-btn").forEach(button => {
         const type = button.getAttribute("data-type");
@@ -267,8 +198,10 @@ function bindTrainButtons() {
 // 🔹 Upgrade Logic
 function upgradeBuilding(building) {
     if (!villageDataLoaded) return;
+
     const level = villageData.buildings[building];
     const cost = level * 50;
+
     if (villageData.wood >= cost && villageData.stone >= cost && villageData.iron >= cost) {
         villageData.wood -= cost;
         villageData.stone -= cost;
@@ -280,6 +213,7 @@ function upgradeBuilding(building) {
     } else {
         alert("Not enough resources!");
     }
+
 }
 
 // 🔹 Recruit Logic
@@ -287,21 +221,33 @@ function recruitTroop(type) {
     const costs = {
         spear: { wood: 100 },
         sword: { iron: 100 },
-        axe: { stone: 100 }
+        axe:   { stone: 100 }
     };
+
     const cost = costs[type];
-    if (!Object.entries(cost).every(([resource, amount]) => villageData[resource] >= amount)) {
+
+    // Check if resources are sufficient
+    const hasEnough = Object.entries(cost).every(([resource, amount]) => {
+        return villageData[resource] >= amount;
+    });
+
+    if (!hasEnough) {
         alert(`Not enough resources to train a ${type}.`);
         return;
     }
+
+    // Deduct the resources
     Object.entries(cost).forEach(([resource, amount]) => {
         villageData[resource] -= amount;
     });
+
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
+    // commenteed out villageData.score += 5;
     saveVillageData();
     updateUI();
     alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
 }
+
 
 // 🔹 Resource Loop
 function startGameLoops() {
@@ -310,6 +256,7 @@ function startGameLoops() {
         villageData.wood += villageData.buildings.lumber * 5;
         villageData.stone += villageData.buildings.quarry * 5;
         villageData.iron += villageData.buildings.iron * 5;
+        saveVillageData();
         updateUI();
     }, 5000);
 }
@@ -318,13 +265,10 @@ function startGameLoops() {
 function loadLeaderboard() {
     const leaderboardList = document.getElementById("leaderboard-list");
     leaderboardList.innerHTML = "<li>Loading...</li>";
+
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
-        if (snapshot.empty) {
-            leaderboardList.innerHTML = "<li>No players yet!</li>";
-            return;
-        }
         snapshot.forEach(doc => {
             const data = doc.data();
             const li = document.createElement("li");
@@ -334,41 +278,108 @@ function loadLeaderboard() {
     });
 }
 
-// 🔹 World Map
 async function loadWorldMap() {
-    if (!villageDataLoaded) {
-        console.warn("Village data not yet loaded, skipping world map creation.");
-        return;
-    }
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
     if (!wrapper || !world) return;
+
     world.innerHTML = "";
+
     try {
         const snapshot = await getDocs(collection(db, "villages"));
+
         snapshot.forEach(docSnap => {
             const v = docSnap.data();
             v.id = docSnap.id;
+
             if (!v.x || !v.y) return;
+
             const el = document.createElement("div");
             el.className = "village-tile";
             if (v.userId === user.uid) {
                 el.classList.add("your-village");
-                el.setAttribute("title", "Your Village");
             }
+
             el.style.left = `${v.x}px`;
             el.style.top = `${v.y}px`;
             el.setAttribute("data-username", v.username || "Unknown");
             el.setAttribute("data-score", v.score ?? 0);
+
             el.addEventListener("click", async () => {
                 if (v.userId === user.uid) {
-                    alert("This is your own village. You cannot attack yourself!");
+                    alert("This is your own village.");
                     return;
                 }
-                sendAttack({ ...v, id: docSnap.id });
-            });
+            
+                const confirmAttack = confirm(`Attack ${v.username}'s village?`);
+                if (!confirmAttack) return;
+            
+                const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
+                const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
+                const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
+                const totalSent = spear + sword + axe;
+            
+                if (totalSent <= 0) return alert("You must send at least 1 troop.");
+            
+                if (
+                    spear > villageData.troops.spear ||
+                    sword > villageData.troops.sword ||
+                    axe > villageData.troops.axe
+                ) {
+                    return alert("Not enough troops.");
+                }
+            
+                // Get the user's ID token for authentication
+                const idToken = await user.getIdToken();
+            
+                const attackData = {
+                    attackerId: user.uid,
+                    defenderId: v.id,
+                    troops: {
+                        spearman: spear, // Use 'spearman' to match the server-side code
+                        swordsman: sword, // Use 'swordsman'
+                        axe: axe         // Use 'axe'
+                    }
+                };
+            
+                try {
+                    const response = await fetch('https://us-central1-up-to-battle.cloudfunctions.net/game/attack', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${idToken}` // Include the ID token
+                        },
+                        body: JSON.stringify(attackData),
+                    });
+            
+                    const battleReport = await response.json();
+            
+                    if (response.ok) {
+                        // Process the battle report received from the server
+                        let reportMessage = `🛡️ Battle Report: ${battleReport.outcome}\n`;
+                        if (battleReport.plunder) {
+                            reportMessage += `🎯 Plundered: Wood: ${battleReport.plunder.wood}, Stone: ${battleReport.plunder.stone}, Iron: ${battleReport.plunder.iron}`;
+                        }
+                        alert(reportMessage);
+            
+                        // The server updates the data in Firestore, so we might just need to
+                        // rely on the snapshot listener to update the UI
+                    } else {
+                        // Handle errors from the server
+                        alert(`Attack failed: ${battleReport.error || response.statusText}`);
+                    }
+            
+                } catch (error) {
+                    console.error('Error during attack:', error);
+                    alert('An error occurred during the attack.');
+                }
+            
+});
+
+
             world.appendChild(el);
         });
+
         centerOnPlayer(wrapper, world, villageData.x, villageData.y);
         initPanZoom(wrapper, world);
     } catch (err) {
@@ -377,33 +388,6 @@ async function loadWorldMap() {
     }
 }
 
-// 🔹 Securely call the Cloud Function to process an attack
-async function sendAttack(defenderData) {
-    const confirmAttack = confirm(`Attack ${defenderData.username}'s village (Score: ${defenderData.score})?`);
-    if (!confirmAttack) return;
-    const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
-    const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
-    const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
-    const totalSent = spear + sword + axe;
-    if (totalSent <= 0) return alert("You must send at least 1 troop to attack.");
-    if (spear > villageData.troops.spear || sword > villageData.troops.sword || axe > villageData.troops.axe) {
-        return alert("Not enough troops in your village to send that many.");
-    }
-    try {
-        const processAttack = httpsCallable(functions, 'processAttack');
-        const result = await processAttack({
-            defenderId: defenderData.id,
-            spear: spear,
-            sword: sword,
-            axe: axe
-        });
-        console.log("Attack result:", result.data);
-        alert(result.data.message);
-    } catch (error) {
-        console.error("Attack failed:", error);
-        alert("Attack failed: " + error.message);
-    }
-}
 
 function centerOnPlayer(wrapper, world, x, y) {
     const wrapperRect = wrapper.getBoundingClientRect();
@@ -420,8 +404,10 @@ function initPanZoom(viewport, content) {
     let originY = parseFloat(content.dataset.initialY) || 0;
     let startX = 0, startY = 0;
     let panning = false;
+
     const setTransform = () =>
         content.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
+
     viewport.addEventListener("wheel", e => {
         e.preventDefault();
         const delta = -e.deltaY * 0.001;
@@ -434,6 +420,7 @@ function initPanZoom(viewport, content) {
         scale = newScale;
         setTransform();
     }, { passive: false });
+
     let lastTouchDistance = null;
     viewport.addEventListener("touchmove", (e) => {
         if (e.touches.length === 2) {
@@ -448,40 +435,33 @@ function initPanZoom(viewport, content) {
                 setTransform();
             }
             lastTouchDistance = distance;
-        } else if (e.touches.length === 1 && panning) {
-            const touch = e.touches[0];
-            originX = touch.clientX - startX;
-            originY = touch.clientY - startY;
-            setTransform();
         }
     }, { passive: false });
+
     viewport.addEventListener("touchend", () => {
         lastTouchDistance = null;
-        panning = false;
     });
+
     const pointerDown = e => {
         panning = true;
-        const clientX = e.clientX ?? e.touches[0].clientX;
-        const clientY = e.clientY ?? e.touches[0].clientY;
-        startX = clientX - originX;
-        startY = clientY - originY;
+        startX = (e.clientX ?? e.touches[0].clientX) - originX;
+        startY = (e.clientY ?? e.touches[0].clientY) - originY;
     };
     const pointerMove = e => {
         if (!panning) return;
-        if (e.cancelable) e.preventDefault();
-        const clientX = e.clientX ?? e.touches[0].clientX;
-        const clientY = e.clientY ?? e.touches[0].clientY;
-        originX = clientX - startX;
-        originY = clientY - startY;
+        originX = (e.clientX ?? e.touches[0].clientX) - startX;
+        originY = (e.clientY ?? e.touches[0].clientY) - startY;
         setTransform();
     };
     const pointerUp = () => (panning = false);
+
     viewport.addEventListener("mousedown", pointerDown);
+    viewport.addEventListener("touchstart", pointerDown);
     window.addEventListener("mousemove", pointerMove);
-    window.addEventListener("mouseup", pointerUp);
-    viewport.addEventListener("touchstart", pointerDown, { passive: false });
     window.addEventListener("touchmove", pointerMove, { passive: false });
+    window.addEventListener("mouseup", pointerUp);
     window.addEventListener("touchend", pointerUp);
+
     setTransform();
 }
 
@@ -496,7 +476,7 @@ function bindLogout() {
                 window.location.href = "index.html";
             } catch (err) {
                 console.error("Logout Error:", err);
-                alert("Failed to logout. Please try again.");
+                alert("Failed to logout. Try again.");
             }
         });
     }
