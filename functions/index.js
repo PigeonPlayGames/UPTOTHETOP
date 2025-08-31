@@ -7,7 +7,15 @@ const app = express();
 
 // Add CORS middleware
 const cors = require('cors');
-app.use(cors({ origin: true }));
+// Configure CORS to allow requests from your GitHub Pages domain and localhost
+const corsOptions = {
+  origin: ['https://pigeonplaygames.github.io/UPTOTHETOP/', 'http://localhost:5000'], // Replace with your actual GitHub Pages domain and local testing port
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  allowedHeaders: 'Content-Type,Authorization',
+};
+app.use(cors(corsOptions));
+
+
 
 // Middleware to authenticate requests (for use with fetch)
 app.use(async (req, res, next) => {
