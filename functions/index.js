@@ -1,59 +1,87 @@
-// functions/index.js
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
-
+const { onRequest } = require("firebase-functions/v2/https");
+const admin = require("firebase-admin");
 admin.initializeApp();
-const db = admin.firestore();
 
-exports.processAttack = functions.https.onCall(async (data, context) => {
-    // 1. Authenticate the user calling the function
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+const express = require('express');
+const app = express();
+
+// Add CORS middleware
+const cors = require('cors');
+app.use(cors({ origin: true }));
+
+// Middleware to authenticate requests (for use with fetch)
+app.use(async (req, res, next) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+
+    if (!idToken) {
+        res.status(401).json({ error: 'Unauthorized: No token provided.' });
+        return;
     }
 
-    const attackerUid = context.auth.uid;
-    const defenderUid = data.defenderId;
-    const { spear, sword, axe } = data.sentTroops; // Troops sent by attacker
-
-    if (attackerUid === defenderUid) {
-        throw new functions.https.HttpsError('invalid-argument', 'Cannot attack your own village.');
-    }
-
-    if (spear < 0 || sword < 0 || axe < 0) {
-        throw new functions.https.HttpsError('invalid-argument', 'Troop counts cannot be negative.');
-    }
-
-    if ((spear + sword + axe) <= 0) {
-        throw new functions.https.HttpsError('invalid-argument', 'You must send at least 1 troop to attack.');
-    }
-
-    // Use a transaction to ensure atomicity for both attacker and defender data
     try {
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        req.user = decodedToken; // Attach user info to the request
+        next(); // Continue to the next middleware or route handler
+    } catch (error) {
+        console.error('Error verifying ID token:', error);
+        res.status(401).json({ error: 'Unauthorized: Invalid token.' });
+    }
+});
+
+
+app.post('/attack', async (req, res) => {
+    const attackerId = req.user.uid; // Get attacker ID from authenticated user
+    const defenderId = req.body.defenderId;
+    const troops = req.body.troops;
+
+    // Basic validation
+    if (!defenderId || !troops) {
+        return res.status(400).json({ error: 'Missing required attack information.' });
+    }
+
+    if (attackerId === defenderId) {
+        return res.status(400).json({ error: 'Cannot attack your own village.' });
+    }
+
+    if ((troops.spearman || 0) < 0 || (troops.swordsman || 0) < 0 || (troops.axe || 0) < 0) {
+        return res.status(400).json({ error: 'Troop counts cannot be negative.' });
+    }
+
+    if (((troops.spearman || 0) + (troops.swordsman || 0) + (troops.axe || 0)) <= 0) {
+        return res.status(400).json({ error: 'You must send at least 1 troop to attack.' });
+    }
+
+
+    const db = admin.firestore();
+
+    try {
+        // Use a transaction to ensure atomicity for both attacker and defender data
         await db.runTransaction(async (transaction) => {
-            const attackerDocRef = db.collection('villages').doc(attackerUid);
-            const defenderDocRef = db.collection('villages').doc(defenderUid);
+            const attackerDocRef = db.collection('villages').doc(attackerId);
+            const defenderDocRef = db.collection('villages').doc(defenderId);
 
             const attackerSnap = await transaction.get(attackerDocRef);
             const defenderSnap = await transaction.get(defenderDocRef);
 
             if (!attackerSnap.exists || !defenderSnap.exists) {
-                throw new functions.https.HttpsError('not-found', 'Attacker or defender village not found.');
+                throw new Error('Attacker or defender village not found.'); // Use standard Error in transactions
             }
 
             const attackerData = attackerSnap.data();
             const defenderData = defenderSnap.data();
 
-            // Check if attacker has enough troops *before* battle
+             // Check if attacker has enough troops *before* battle
             if (
-                attackerData.troops.spear < spear ||
-                attackerData.troops.sword < sword ||
-                attackerData.troops.axe < axe
+                (attackerData.troops.spear || 0) < (troops.spearman || 0) ||
+                (attackerData.troops.sword || 0) < (troops.swordsman || 0) ||
+                (attackerData.troops.axe || 0) < (troops.axe || 0)
             ) {
-                throw new functions.https.HttpsError('failed-precondition', 'Not enough troops in your village to send that many.');
+                throw new Error('Not enough troops in your village to send that many.'); // Use standard Error in transactions
             }
 
+
             // Calculate strengths
-            const attackerStrength = spear * 1 + sword * 2 + axe * 3;
+            const attackerStrength = (troops.spearman || 0) * 1 + (troops.swordsman || 0) * 2 + (troops.axe || 0) * 3;
             const defenderStrength =
                 (defenderData.troops?.spear || 0) * 1 +
                 (defenderData.troops?.sword || 0) * 2 +
@@ -81,27 +109,29 @@ exports.processAttack = functions.https.onCall(async (data, context) => {
             let defenderCurrentStone = defenderData.stone || 0;
             let defenderCurrentIron = defenderData.iron || 0;
 
+
             if (attackerStrength > defenderStrength) {
                 // Attacker wins
                 // Calculate attacker losses
                 let damageToAttackerTroops = defenderStrength;
                 const attackerLosses = { spear: 0, sword: 0, axe: 0 };
 
-                const calculateLoss = (currentCount, troopPower) => {
-                    const loss = Math.min(currentCount, Math.floor(damageToAttackerTroops / troopPower));
+                const calculateLoss = (currentCount, troopPower, sentCount) => {
+                     const loss = Math.min(sentCount, Math.floor(damageToAttackerTroops / troopPower));
                     damageToAttackerTroops -= loss * troopPower;
                     return loss;
                 };
 
-                attackerLosses.axe = calculateLoss(axe, 3);
-                attackerLosses.sword = calculateLoss(sword, 2);
-                attackerLosses.spear = calculateLoss(spear, 1);
+                attackerLosses.axe = calculateLoss((troops.axe || 0), 3, (troops.axe || 0));
+                attackerLosses.sword = calculateLoss((troops.swordsman || 0), 2, (troops.swordsman || 0));
+                attackerLosses.spear = calculateLoss((troops.spearman || 0), 1, (troops.spearman || 0));
+
 
                 attackerResult.troopsLost = attackerLosses;
                 attackerResult.scoreChange = 20;
 
                 // Calculate plunder
-                const totalRemainingAttackerTroops = (spear - attackerLosses.spear) + (sword - attackerLosses.sword) + (axe - attackerLosses.axe);
+                const totalRemainingAttackerTroops = ((troops.spearman || 0) - attackerLosses.spear) + ((troops.swordsman || 0) - attackerLosses.sword) + ((troops.axe || 0) - attackerLosses.axe);
                 const totalCapacity = totalRemainingAttackerTroops * 30; // Assuming 30 capacity per remaining troop
 
                 let plundered = { wood: 0, stone: 0, iron: 0 };
@@ -124,22 +154,23 @@ exports.processAttack = functions.https.onCall(async (data, context) => {
                 attackerResult.stoneGained = plundered.stone;
                 attackerResult.ironGained = plundered.iron;
 
-                attackerResult.message = `🛡️ Battle Report: Victory!\nYou attacked ${defenderData.username}'s village.\n-------------------------------\n💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}\n⚔️ Your Losses: Spear: ${attackerLosses.spear}, Sword: ${attackerLosses.sword}, Axe: ${attackerLosses.axe}\n👥 Enemy Troops Defeated: Spear: ${defenderData.troops.spear || 0}, Sword: ${defenderData.troops.sword || 0}, Axe: ${defenderData.troops.axe || 0} (All wiped out!)\n🎯 Plundered: Wood: ${Math.round(plundered.wood)}, Stone: ${Math.round(plundered.stone)}, Iron: ${Math.round(plundered.iron)}`;
+                 attackerResult.message = `🛡️ Battle Report: Victory!\nYou attacked ${defenderData.username}'s village.\n-------------------------------\n💥 Your Troops Sent: Spear: ${troops.spearman || 0}, Sword: ${troops.swordsman || 0}, Axe: ${troops.axe || 0}\n⚔️ Your Losses: Spear: ${attackerLosses.spear}, Sword: ${attackerLosses.sword}, Axe: ${attackerLosses.axe}\n👥 Enemy Troops Defeated: Spear: ${defenderData.troops.spear || 0}, Sword: ${defenderData.troops.sword || 0}, Axe: ${defenderData.troops.axe || 0} (All wiped out!)\n🎯 Plundered: Wood: ${Math.round(plundered.wood)}, Stone: ${Math.round(plundered.stone)}, Iron: ${Math.round(plundered.iron)}`;
                 defenderResult.message = `Your village was attacked by ${attackerData.username} and lost the battle! You lost all your troops and some resources.`;
                 defenderResult.troopsLost = { spear: defenderData.troops?.spear || 0, sword: defenderData.troops?.sword || 0, axe: defenderData.troops?.axe || 0 };
                 defenderResult.woodLost = plundered.wood;
                 defenderResult.stoneLost = plundered.stone;
                 defenderResult.ironLost = plundered.iron;
 
+
             } else {
                 // Attacker loses
-                attackerResult.troopsLost = { spear: spear, sword: sword, axe: axe }; // All attacking troops lost
+                attackerResult.troopsLost = { spear: (troops.spearman || 0), sword: (troops.swordsman || 0), axe: (troops.axe || 0) }; // All attacking troops lost
                 attackerResult.scoreChange = -5; // Reduce score for defeat
 
-                attackerResult.message = `🛡️ Battle Report: Defeat!\nYou attacked ${defenderData.username}'s village.\n-------------------------------\n💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}\n☠️ All your attacking troops were lost!\n👥 Enemy Troops Remaining: Spear: ${defenderData.troops?.spear || 0}, Sword: ${defenderData.troops.sword || 0}, Axe: ${defenderData.troops.axe || 0}`;
+                attackerResult.message = `🛡️ Battle Report: Defeat!\nYou attacked ${defenderData.username}'s village.\n-------------------------------\n💥 Your Troops Sent: Spear: ${troops.spearman || 0}, Sword: ${troops.swordsman || 0}, Axe: ${troops.axe || 0}\n☠️ All your attacking troops were lost!\n👥 Enemy Troops Remaining: Spear: ${defenderData.troops?.spear || 0}, Sword: ${defenderData.troops.sword || 0}, Axe: ${defenderData.troops.axe || 0}`;
                 defenderResult.message = `Your village was attacked by ${attackerData.username} and defended successfully!`;
                 // Defender keeps all troops and resources
-                defenderResult.troopsLost = { spear: 0, sword: 0, axe: 0 };
+                 defenderResult.troopsLost = { spear: 0, sword: 0, axe: 0 };
                 defenderResult.woodLost = 0;
                 defenderResult.stoneLost = 0;
                 defenderResult.ironLost = 0;
@@ -147,13 +178,13 @@ exports.processAttack = functions.https.onCall(async (data, context) => {
 
             // Update attacker's data
             transaction.update(attackerDocRef, {
-                'troops.spear': attackerData.troops.spear - attackerResult.troopsLost.spear,
-                'troops.sword': attackerData.troops.sword - attackerResult.troopsLost.sword,
-                'troops.axe': attackerData.troops.axe - attackerResult.troopsLost.axe,
-                wood: attackerData.wood + attackerResult.woodGained,
-                stone: attackerData.stone + attackerResult.stoneGained,
-                iron: attackerData.iron + attackerResult.ironGained,
-                score: Math.max(0, attackerData.score + attackerResult.scoreChange),
+                'troops.spear': (attackerData.troops.spear || 0) - attackerResult.troopsLost.spear,
+                'troops.sword': (attackerData.troops.sword || 0) - attackerResult.troopsLost.sword,
+                'troops.axe': (attackerData.troops.axe || 0) - attackerResult.troopsLost.axe,
+                wood: (attackerData.wood || 0) + attackerResult.woodGained,
+                stone: (attackerData.stone || 0) + attackerResult.stoneGained,
+                iron: (attackerData.iron || 0) + attackerResult.ironGained,
+                score: Math.max(0, (attackerData.score || 0) + attackerResult.scoreChange),
                 lastBattleMessage: attackerResult.message
             });
 
@@ -161,22 +192,21 @@ exports.processAttack = functions.https.onCall(async (data, context) => {
             transaction.update(defenderDocRef, {
                 'troops.spear': (defenderData.troops?.spear || 0) - defenderResult.troopsLost.spear,
                 'troops.sword': (defenderData.troops?.sword || 0) - defenderResult.troopsLost.sword,
-                'troops.axe': (defenderData.troops?.axe || 0) - defenderResult.troops.axe, // Fix: Use defenderResult.troopsLost.axe here
-                wood: Math.max(0, defenderData.wood - defenderResult.woodLost),
-                stone: Math.max(0, defenderData.stone - defenderResult.stoneLost),
-                iron: Math.max(0, defenderData.iron - defenderResult.ironLost),
-                lastBattleMessage: defenderResult.message
+                'troops.axe': (defenderData.troops?.axe || 0) - defenderResult.troopsLost.axe,
+                wood: Math.max(0, (defenderData.wood || 0) - defenderResult.woodLost),
+                stone: Math.max(0, (defenderData.stone || 0) - defenderResult.stoneLost),
+                iron: Math.max(0, (defenderData.iron || 0) - defenderResult.ironLost),
+                 lastBattleMessage: defenderResult.message
             });
         });
 
-        return { success: true, message: "Battle processed successfully." };
+         res.json({ outcome: attackerStrength > defenderStrength ? 'Victory!' : 'Defeat!', plunder: attackerStrength > defenderStrength ? { wood: attackerResult.woodGained, stone: attackerResult.stoneGained, iron: attackerResult.ironGained } : null });
 
     } catch (error) {
         console.error("Error processing attack:", error);
-        if (error.code) {
-            throw error;
-        } else {
-            throw new functions.https.HttpsError('internal', 'An unexpected error occurred during the battle simulation.', error.message);
-        }
+        // Respond with a structured error
+        res.status(500).json({ error: error.message || 'An unexpected error occurred during the battle simulation.' });
     }
 });
+
+exports.game = onRequest(app); // Export the Express app as an onRequest function
