@@ -14,12 +14,18 @@ const corsOptions = {
   allowedHeaders: 'Content-Type,Authorization',
 };
 
+// Use CORS middleware for all routes that need it
 app.use(cors(corsOptions));
-
 
 
 // Middleware to authenticate requests (for use with fetch)
 app.use(async (req, res, next) => {
+    // Skip authentication for OPTIONS requests
+    if (req.method === 'OPTIONS') {
+        next();
+        return;
+    }
+
     const idToken = req.headers.authorization?.split('Bearer ')[1];
 
     if (!idToken) {
@@ -38,6 +44,7 @@ app.use(async (req, res, next) => {
 });
 
 // Route to handle saving village data
+app.options('/saveVillage', cors(corsOptions)); // Handle OPTIONS for saveVillage
 app.post('/saveVillage', async (req, res) => {
     const userId = req.user.uid; // Get user ID from authenticated user
     const villageDataToSave = req.body;
