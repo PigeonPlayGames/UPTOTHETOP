@@ -126,7 +126,7 @@ async function loadVillageData() {
 }
 
 
-// 🔹 Save Village
+// 🔹 Save Village (now calls a Cloud Function)
 async function saveVillageData() {
     if (!user || !villageDataLoaded) return;
 
@@ -136,7 +136,24 @@ async function saveVillageData() {
     }
 
     try {
-        await setDoc(doc(db, "villages", user.uid), villageData);
+        const idToken = await user.getIdToken(); // Get the user's ID token
+
+        const response = await fetch('https://us-central1-up-to-battle.cloudfunctions.net/game/saveVillage', { // Assuming a new endpoint /saveVillage
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}` // Include the ID token
+            },
+            body: JSON.stringify(villageData),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save village data.');
+        }
+
+        console.log("Village data saved successfully via Cloud Function.");
+
     } catch (err) {
         console.error("Save failed:", err);
         alert("Error saving your village.");
