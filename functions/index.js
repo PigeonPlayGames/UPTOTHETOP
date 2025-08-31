@@ -9,10 +9,11 @@ const app = express();
 const cors = require('cors');
 // Configure CORS to allow requests from your GitHub Pages domain and localhost
 const corsOptions = {
-  origin: ['https://pigeonplaygames.github.io/UPTOTHETOP/', 'http://localhost:5000'], // Replace with your actual GitHub Pages domain and local testing port
+  origin: ['https://uptothe.top'], // Use your live domain here
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   allowedHeaders: 'Content-Type,Authorization',
 };
+
 app.use(cors(corsOptions));
 
 
