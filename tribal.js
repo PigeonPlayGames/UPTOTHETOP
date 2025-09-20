@@ -1,13 +1,13 @@
 // 🔹 Firebase Setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-import { updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"; // Import Timestamp for type checking
 import {
     getFirestore, doc, getDoc, setDoc, collection,
     query, orderBy, limit, onSnapshot, getDocs
 } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
-// 🔹 Firebase Config
+// 🔹 Firebase Config (as before)
 const firebaseConfig = {
     apiKey: "AIzaSyBtkOSmD4meTdLdWbOfW53rM75lnYreSZo",
     authDomain: "up-to-battle.firebaseapp.com",
@@ -24,10 +24,28 @@ const db = getFirestore();
 // 🔹 State
 let user = null;
 let villageData = null;
-let villageDataLoaded = false;
+let villageDataLoaded = false; // Flag to indicate if initial data is loaded and processed by onSnapshot
 
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
+    // --- Windmill Animation Logic (New) ---
+    const windmillBlades = document.getElementById('windmill-blades');
+    const numberOfFrames = 8; // You have 8 images (0 to 7)
+    let currentFrame = 0;
+    const animationSpeed = 100; // Milliseconds per frame (adjust for faster/slower spin)
+
+    function animateWindmill() {
+        if (windmillBlades) { // Ensure the element exists before trying to update its src
+            windmillBlades.src = `windmill_frame_${currentFrame}.png`;
+            currentFrame = (currentFrame + 1) % numberOfFrames; // Cycle through frames 0-7
+        }
+    }
+
+    // Start the windmill animation as soon as the DOM is ready
+    setInterval(animateWindmill, animationSpeed);
+    // --- End Windmill Animation Logic ---
+
+
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
             alert("You must be logged in to play!");
@@ -36,70 +54,134 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         user = loggedInUser;
-        await loadVillageData();
 
-        // 🔹 Real-time listener for changes to this user's village (e.g., after battle)
-        onSnapshot(doc(db, "villages", user.uid), (docSnap) => {
-            if (!docSnap.exists() || !villageData) return;
+        // 🔹 Set up the Real-time listener FIRST.
+        // This listener will be the authoritative source for UI updates.
+        const villageDocRef = doc(db, "villages", user.uid);
+        onSnapshot(villageDocRef, (docSnap) => {
+            if (!docSnap.exists()) {
+                console.error("Village document does not exist for user:", user.uid);
+                // If it doesn't exist, it means calculateOfflineResourcesAndSave (which creates it) hasn't finished yet,
+                // or there's a serious data problem. We can't proceed without initial data.
+                return;
+            }
 
-            const updatedData = docSnap.data();
-            villageData.troops = updatedData.troops;
-            villageData.lastBattleMessage = updatedData.lastBattleMessage;
+            // Always update local villageData with the freshest data from Firestore
+            villageData = docSnap.data();
 
-            updateUI();
+            // Set villageDataLoaded to true once we receive the first valid snapshot.
+            // This ensures all other game loops and functions can safely use villageData.
+            if (!villageDataLoaded) {
+                villageDataLoaded = true;
+                // Start game loops and other components only once initial data is loaded
+                startGameLoops();
+                loadLeaderboard();
+                loadWorldMap();
+                bindUpgradeButtons();
+                bindTrainButtons();
+                bindLogout();
+            }
 
+            updateUI(); // Update UI whenever Firestore data changes
+
+            // Handle battle messages
             if (villageData.lastBattleMessage) {
                 alert(villageData.lastBattleMessage);
 
-                // Clear from Firestore so it's not shown again
+                // Clear from Firestore and locally after showing
                 (async () => {
                     try {
-                        await updateDoc(doc(db, "villages", user.uid), {
+                        await updateDoc(villageDocRef, {
                             lastBattleMessage: null
                         });
+                        delete villageData.lastBattleMessage; // Clear locally too
                     } catch (error) {
                         console.error("Failed to clear battle message:", error);
                     }
                 })();
             }
+        }, (error) => {
+            console.error("Error listening to village data:", error);
+            alert("Failed to load village data in real-time. Please refresh.");
         });
 
-        // ✅ These must be outside the snapshot listener
-        startGameLoops();
-        loadLeaderboard();
-        loadWorldMap();
-        bindUpgradeButtons();
-        bindTrainButtons();
-        bindLogout();
+        // Immediately trigger the load and calculation of offline resources.
+        // This function will also perform the initial save to Firestore.
+        // The onSnapshot listener (set up above) will then pick up this updated data.
+        await calculateOfflineResourcesAndSave();
     });
 });
 
-
-// 🔹 Load or Create Village
-async function loadVillageData() {
+// 🔹 Function to calculate offline resources and save the updated state
+async function calculateOfflineResourcesAndSave() {
     const ref = doc(db, "villages", user.uid);
     const snapshot = await getDoc(ref);
 
+    let dataForFirestore = {}; // This will be the data we send to Firestore
+
     if (snapshot.exists()) {
-        villageData = snapshot.data();
+        const currentDataInFirestore = snapshot.data();
 
-        // ✅ Ensure all required fields exist (even if document exists)
-        villageData.buildings = villageData.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 };
-        villageData.troops = villageData.troops || { spear: 0, sword: 0, axe: 0 };
-        villageData.wood = villageData.wood ?? 100;
-        villageData.stone = villageData.stone ?? 100;
-        villageData.iron = villageData.iron ?? 100;
-        villageData.score = villageData.score ?? 0;
-        villageData.x = villageData.x ?? Math.floor(Math.random() * 3000);
-        villageData.y = villageData.y ?? Math.floor(Math.random() * 3000);
+        // --- FIX: Handle lastLogin type (number or Timestamp) ---
+        let lastLoginMillis;
+        if (typeof currentDataInFirestore.lastLogin === 'number') {
+            lastLoginMillis = currentDataInFirestore.lastLogin;
+        } else if (currentDataInFirestore.lastLogin instanceof Timestamp) { // Check if it's a Firestore Timestamp object
+            lastLoginMillis = currentDataInFirestore.lastLogin.toMillis();
+        } else {
+            // Fallback for missing or unexpected lastLogin types
+            console.warn("lastLogin field missing or invalid type, defaulting to Date.now().", currentDataInFirestore.lastLogin);
+            lastLoginMillis = Date.now();
+        }
+        // --- END FIX ---
+
+        const currentTimeMillis = Date.now();
+        const timeElapsedSeconds = Math.floor((currentTimeMillis - lastLoginMillis) / 1000);
+
+        // Create a working copy of the data from Firestore for calculations
+        // Ensure all required fields exist (even if document exists from older version)
+        let workingVillageData = {
+            username: currentDataInFirestore.username || user.email.split("@")[0],
+            userId: currentDataInFirestore.userId || user.uid,
+            wood: currentDataInFirestore.wood ?? 100,
+            stone: currentDataInFirestore.stone ?? 100,
+            iron: currentDataInFirestore.iron ?? 100,
+            score: currentDataInFirestore.score ?? 0,
+            x: currentDataInFirestore.x ?? Math.floor(Math.random() * 3000),
+            y: currentDataInFirestore.y ?? Math.floor(Math.random() * 3000),
+            buildings: currentDataInFirestore.buildings || { hq: 1, lumber: 1, quarry: 1, iron: 1 },
+            troops: currentDataInFirestore.troops || { spear: 0, sword: 0, axe: 0 },
+            lastBattleMessage: currentDataInFirestore.lastBattleMessage || null
+        };
+
+        // Calculate offline resources if time has passed
+        if (timeElapsedSeconds > 0) {
+            const woodPerSecond = (workingVillageData.buildings.lumber * 5) / 5;
+            const stonePerSecond = (workingVillageData.buildings.quarry * 5) / 5;
+            const ironPerSecond = (workingVillageData.buildings.iron * 5) / 5;
+
+            const generatedWood = woodPerSecond * timeElapsedSeconds;
+            const generatedStone = stonePerSecond * timeElapsedSeconds;
+            const generatedIron = ironPerSecond * timeElapsedSeconds;
+
+            workingVillageData.wood += generatedWood;
+            workingVillageData.stone += generatedStone;
+            workingVillageData.iron += generatedIron;
+
+            if (generatedWood > 0 || generatedStone > 0 || generatedIron > 0) {
+                alert(`My Lord Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
+            }
+        }
         
-
-        // ✅ Save any missing data back to Firestore
-        await saveVillageData();
+        // Prepare this working data for saving to Firestore
+        dataForFirestore = {
+            ...workingVillageData,
+            lastLogin: serverTimestamp() // Always update lastLogin to serverTimestamp for the next calculation
+        };
 
     } else {
-        // First time user setup
-        villageData = {
+        // First time user setup - create initial village data
+        dataForFirestore = {
             username: user.email.split("@")[0],
             userId: user.uid,
             wood: 100,
@@ -109,65 +191,68 @@ async function loadVillageData() {
             x: Math.floor(Math.random() * 3000),
             y: Math.floor(Math.random() * 3000),
             buildings: { hq: 1, lumber: 1, quarry: 1, iron: 1 },
-            troops: { spear: 0, sword: 0, axe: 0 }
+            troops: { spear: 0, sword: 0, axe: 0 },
+            lastLogin: serverTimestamp() // Set initial lastLogin to serverTimestamp
         };
-        await saveVillageData();
     }
 
-    villageDataLoaded = true;
-    updateUI();
-
-    if (villageData.lastBattleMessage) {
-        alert(villageData.lastBattleMessage);
-        delete villageData.lastBattleMessage; // Clear it after showing
-        await saveVillageData();
+    // Ensure lastBattleMessage is handled consistently (null vs undefined for Firestore)
+    if (dataForFirestore.lastBattleMessage === undefined) {
+        delete dataForFirestore.lastBattleMessage;
+    } else if (dataForFirestore.lastBattleMessage === null) {
+        // Keep null if explicitly set to null, Firestore accepts null
     }
 
+    // Perform the save to Firestore. This will trigger the onSnapshot listener.
+    try {
+        await setDoc(ref, dataForFirestore, { merge: true });
+        console.log("Village data (including offline gains) saved to Firestore.");
+    } catch (err) {
+        console.error("Failed to save initial/offline village data:", err);
+        alert("Error saving your village data.");
+    }
+    // No direct updateUI() or setting villageDataLoaded here; onSnapshot handles it.
 }
 
 
-// 🔹 Save Village (now calls a Cloud Function)
+// 🔹 Save Village (for general game actions like upgrades, training, etc.)
 async function saveVillageData() {
-    if (!user || !villageDataLoaded) return;
+    if (!user || !villageDataLoaded) {
+        // This warning should now only appear if saveVillageData is called before
+        // onSnapshot has fully initialized villageData and set villageDataLoaded.
+        console.warn("Attempted to save village data before user or data loaded.");
+        return;
+    }
 
-    // 🔹 Clean out any undefined fields (Firestore doesn't allow them)
-    if (villageData.lastBattleMessage === undefined) {
-        delete villageData.lastBattleMessage;
+    // Always update lastLogin timestamp to serverTimestamp when saving
+    // The villageData object is already updated locally by ongoing game actions
+    villageData.lastLogin = serverTimestamp(); 
+
+    // Deep copy to ensure no undefined fields are present for Firestore write
+    const dataToSave = JSON.parse(JSON.stringify(villageData));
+    
+    // Explicitly handle lastBattleMessage to be null if undefined
+    if (dataToSave.lastBattleMessage === undefined) {
+        delete dataToSave.lastBattleMessage;
     }
 
     try {
-        const idToken = await user.getIdToken(); // Get the user's ID token
-
-        const response = await fetch('https://us-central1-up-to-battle.cloudfunctions.net/game/saveVillage', { // Assuming a new endpoint /saveVillage
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}` // Include the ID token
-            },
-            body: JSON.stringify(villageData),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to save village data.');
-        }
-
-        console.log("Village data saved successfully via Cloud Function.");
-
+        await setDoc(doc(db, "villages", user.uid), dataToSave, { merge: true });
+        console.log("Village data saved due to user action.");
     } catch (err) {
         console.error("Save failed:", err);
         alert("Error saving your village.");
     }
 }
 
-
 // 🔹 UI Update
+// (No changes needed, as it correctly reads from the global villageData)
 function updateUI() {
     if (!villageData) return;
 
-    document.getElementById("wood-count").innerText = villageData.wood ?? 0;
-    document.getElementById("stone-count").innerText = villageData.stone ?? 0;
-    document.getElementById("iron-count").innerText = villageData.iron ?? 0;
+    document.getElementById("wood-count").innerText = Math.floor(villageData.wood ?? 0);
+    document.getElementById("stone-count").innerText = Math.floor(villageData.stone ?? 0);
+    document.getElementById("iron-count").innerText = Math.floor(villageData.iron ?? 0);
     document.getElementById("player-score").innerText = villageData.score ?? 0;
 
     document.getElementById("hq-level").innerText = villageData.buildings.hq;
@@ -179,7 +264,12 @@ function updateUI() {
     document.getElementById("sword-count").textContent = villageData.troops.sword;
     document.getElementById("axe-count").textContent = villageData.troops.axe;
 
-    document.querySelectorAll(".building").forEach(buildingElement => {
+    // This querySelectorAll(".building") might not find elements if they're not directly
+    // marked with the class "building" or if the "building-overlay" elements are dynamic.
+    // Based on your HTML, it seems you use "building-overlay" as the container.
+    // You might want to adjust this to: document.querySelectorAll(".building-overlay")
+    // or ensure your building elements also have a "building" class.
+    document.querySelectorAll(".building-overlay").forEach(buildingElement => {
         const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
         const level = villageData.buildings[type];
         const cost = level * 50;
@@ -200,7 +290,7 @@ function bindUpgradeButtons() {
     });
 }
 
-// 🔹 Train Troop Buttons (✅ fixed to use .train-btn and data-type)
+// 🔹 Train Troop Buttons
 function bindTrainButtons() {
     document.querySelectorAll(".train-btn").forEach(button => {
         const type = button.getAttribute("data-type");
@@ -225,12 +315,11 @@ function upgradeBuilding(building) {
         villageData.iron -= cost;
         villageData.buildings[building]++;
         villageData.score += 10;
-        saveVillageData();
+        saveVillageData(); // Save changes
         updateUI();
     } else {
         alert("Not enough resources!");
     }
-
 }
 
 // 🔹 Recruit Logic
@@ -238,42 +327,33 @@ function recruitTroop(type) {
     const costs = {
         spear: { wood: 100 },
         sword: { iron: 100 },
-        axe:   { stone: 100 }
+        axe: { stone: 100 }
     };
 
     const cost = costs[type];
 
-    // Check if resources are sufficient
-    const hasEnough = Object.entries(cost).every(([resource, amount]) => {
-        return villageData[resource] >= amount;
-    });
-
-    if (!hasEnough) {
+    if (!Object.entries(cost).every(([resource, amount]) => villageData[resource] >= amount)) {
         alert(`Not enough resources to train a ${type}.`);
         return;
     }
 
-    // Deduct the resources
     Object.entries(cost).forEach(([resource, amount]) => {
         villageData[resource] -= amount;
     });
 
     villageData.troops[type] = (villageData.troops[type] || 0) + 1;
-    // commenteed out villageData.score += 5;
     saveVillageData();
     updateUI();
     alert(`${type.charAt(0).toUpperCase() + type.slice(1)} recruited!`);
 }
 
-
 // 🔹 Resource Loop
 function startGameLoops() {
     setInterval(() => {
-        if (!villageDataLoaded) return;
+        if (!villageDataLoaded) return; // Only run if initial data is loaded
         villageData.wood += villageData.buildings.lumber * 5;
         villageData.stone += villageData.buildings.quarry * 5;
         villageData.iron += villageData.buildings.iron * 5;
-        saveVillageData();
         updateUI();
     }, 5000);
 }
@@ -286,6 +366,10 @@ function loadLeaderboard() {
     const q = query(collection(db, "villages"), orderBy("score", "desc"), limit(10));
     onSnapshot(q, (snapshot) => {
         leaderboardList.innerHTML = "";
+        if (snapshot.empty) {
+            leaderboardList.innerHTML = "<li>No players yet!</li>";
+            return;
+        }
         snapshot.forEach(doc => {
             const data = doc.data();
             const li = document.createElement("li");
@@ -295,6 +379,7 @@ function loadLeaderboard() {
     });
 }
 
+// 🔹 World Map
 async function loadWorldMap() {
     const wrapper = document.getElementById("map-wrapper");
     const world = document.getElementById("map-world");
@@ -315,6 +400,7 @@ async function loadWorldMap() {
             el.className = "village-tile";
             if (v.userId === user.uid) {
                 el.classList.add("your-village");
+                el.setAttribute("title", "Your Village");
             }
 
             el.style.left = `${v.x}px`;
@@ -324,75 +410,143 @@ async function loadWorldMap() {
 
             el.addEventListener("click", async () => {
                 if (v.userId === user.uid) {
-                    alert("This is your own village.");
+                    alert("This is your own village. You cannot attack yourself!");
                     return;
                 }
-            
-                const confirmAttack = confirm(`Attack ${v.username}'s village?`);
+
+                const confirmAttack = confirm(`Attack ${v.username}'s village (Score: ${v.score})?`);
                 if (!confirmAttack) return;
-            
-                const spear = parseInt(prompt("Send how many Spear Fighters?"), 10) || 0;
-                const sword = parseInt(prompt("Send how many Swordsmen?"), 10) || 0;
-                const axe = parseInt(prompt("Send how many Axemen?"), 10) || 0;
+
+                const spear = parseInt(prompt("Send how many Spear Fighters (1 power)?"), 10) || 0;
+                const sword = parseInt(prompt("Send how many Swordsmen (2 power)?"), 10) || 0;
+                const axe = parseInt(prompt("Send how many Axemen (3 power)?"), 10) || 0;
                 const totalSent = spear + sword + axe;
-            
-                if (totalSent <= 0) return alert("You must send at least 1 troop.");
-            
+
+                if (totalSent <= 0) return alert("You must send at least 1 troop to attack.");
+
                 if (
                     spear > villageData.troops.spear ||
                     sword > villageData.troops.sword ||
                     axe > villageData.troops.axe
                 ) {
-                    return alert("Not enough troops.");
+                    return alert("Not enough troops in your village to send that many.");
                 }
-            
-                // Get the user's ID token for authentication
-                const idToken = await user.getIdToken();
-            
-                const attackData = {
-                    attackerId: user.uid,
-                    defenderId: v.id,
-                    troops: {
-                        spearman: spear, // Use 'spearman' to match the server-side code
-                        swordsman: sword, // Use 'swordsman'
-                        axe: axe         // Use 'axe'
-                    }
-                };
-            
-                try {
-                    const response = await fetch('https://us-central1-up-to-battle.cloudfunctions.net/game/attack', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${idToken}` // Include the ID token
-                        },
-                        body: JSON.stringify(attackData),
-                    });
-            
-                    const battleReport = await response.json();
-            
-                    if (response.ok) {
-                        // Process the battle report received from the server
-                        let reportMessage = `🛡️ Battle Report: ${battleReport.outcome}\n`;
-                        if (battleReport.plunder) {
-                            reportMessage += `🎯 Plundered: Wood: ${battleReport.plunder.wood}, Stone: ${battleReport.plunder.stone}, Iron: ${battleReport.plunder.iron}`;
-                        }
-                        alert(reportMessage);
-            
-                        // The server updates the data in Firestore, so we might just need to
-                        // rely on the snapshot listener to update the UI
-                    } else {
-                        // Handle errors from the server
-                        alert(`Attack failed: ${battleReport.error || response.statusText}`);
-                    }
-            
-                } catch (error) {
-                    console.error('Error during attack:', error);
-                    alert('An error occurred during the attack.');
-                }
-            
-});
 
+                const attackerStrength = spear * 1 + sword * 2 + axe * 3;
+                const defenderSpear = v.troops?.spear || 0;
+                const defenderSword = v.troops?.sword || 0;
+                const defenderAxe = v.troops?.axe || 0;
+                const defenderStrength = defenderSpear * 1 + defenderSword * 2 + defenderAxe * 3;
+
+                let remainingSpear = spear;
+                let remainingSword = sword;
+                let remainingAxe = axe;
+
+                if (attackerStrength > defenderStrength) {
+                    const initialDefenderSpear = v.troops?.spear || 0;
+                    const initialDefenderSword = v.troops?.sword || 0;
+                    const initialDefenderAxe = v.troops?.axe || 0;
+
+                    let damageToAttackerTroops = defenderStrength;
+                    const attackerLosses = { spear: 0, sword: 0, axe: 0 };
+
+                    const calculateLoss = (currentCount, troopPower) => {
+                        const loss = Math.min(currentCount, Math.floor(damageToAttackerTroops / troopPower));
+                        damageToAttackerTroops -= loss * troopPower;
+                        return loss;
+                    };
+
+                    attackerLosses.axe = calculateLoss(axe, 3);
+                    attackerLosses.sword = calculateLoss(sword, 2);
+                    attackerLosses.spear = calculateLoss(spear, 1);
+
+                    villageData.troops.spear -= attackerLosses.spear;
+                    villageData.troops.sword -= attackerLosses.sword;
+                    villageData.troops.axe -= attackerLosses.axe;
+
+                    const scouted = {
+                        wood: v.wood || 0,
+                        stone: v.stone || 0,
+                        iron: v.iron || 0
+                    };
+
+                    const totalRemainingAttackerTroops = (spear - attackerLosses.spear) + (sword - attackerLosses.sword) + (axe - attackerLosses.axe);
+                    const totalCapacity = totalRemainingAttackerTroops * 30;
+
+                    const plundered = { wood: 0, stone: 0, iron: 0 };
+                    let remainingCapacity = totalCapacity;
+
+                    const resourcesArray = [
+                        { name: 'wood', amount: scouted.wood },
+                        { name: 'stone', amount: scouted.stone },
+                        { name: 'iron', amount: scouted.iron }
+                    ];
+
+                    for (const res of resourcesArray) {
+                        if (remainingCapacity <= 0) break;
+                        const takeAmount = Math.min(res.amount, remainingCapacity);
+                        plundered[res.name] = takeAmount;
+                        remainingCapacity -= takeAmount;
+                    }
+
+                    villageData.wood += plundered.wood;
+                    villageData.stone += plundered.stone;
+                    villageData.iron += plundered.iron;
+                    villageData.score += 20;
+
+                    const report = `
+🛡️ Battle Report: Victory!
+You attacked ${v.username}'s village.
+-------------------------------
+💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
+⚔️ Your Losses: Spear: ${attackerLosses.spear}, Sword: ${attackerLosses.sword}, Axe: ${attackerLosses.axe}
+👥 Enemy Troops Defeated: Spear: ${initialDefenderSpear}, Sword: ${initialDefenderSword}, Axe: ${initialDefenderAxe} (All wiped out!)
+🎯 Plundered: Wood: ${Math.round(plundered.wood)}, Stone: ${Math.round(plundered.stone)}, Iron: ${Math.round(plundered.iron)}
+`;
+                    alert(report);
+
+                    // --- SECURITY WARNING: This direct write to DEFENDER's data is insecure ---
+                    // This will likely be blocked by the new security rules.
+                    // A Firebase Cloud Function is required for secure cross-user updates.
+                    await updateDoc(doc(db, "villages", v.id), {
+                        "troops.spear": 0,
+                        "troops.sword": 0,
+                        "troops.axe": 0,
+                        wood: Math.max(0, scouted.wood - plundered.wood),
+                        stone: Math.max(0, scouted.stone - plundered.stone),
+                        iron: Math.max(0, scouted.iron - plundered.iron),
+                        lastBattleMessage: `Your village was attacked by ${villageData.username} and lost the battle! You lost all your troops and some resources.`
+                    });
+
+                } else {
+                    // ❌ Defeat
+                    villageData.troops.spear -= spear;
+                    villageData.troops.sword -= sword;
+                    villageData.troops.axe -= axe;
+                    villageData.score = Math.max(0, villageData.score - 5);
+
+                    const report = `
+🛡️ Battle Report: Defeat!
+You attacked ${v.username}'s village.
+-------------------------------
+💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
+☠️ All your attacking troops were lost!
+👥 Enemy Troops Remaining: Spear: ${defenderSpear}, Sword: ${defenderSword}, Axe: ${defenderAxe}
+`;
+                    alert(report);
+
+                    // --- SECURITY WARNING: This direct write to DEFENDER's data is insecure ---
+                    // This will likely be blocked by the new security rules.
+                    // A Firebase Cloud Function is required for secure cross-user updates.
+                    await updateDoc(doc(db, "villages", v.id), {
+                        lastBattleMessage: `Your village was attacked by ${villageData.username} and defended successfully!`
+                    });
+                }
+
+                await saveVillageData(); // Save attacker's updated data
+                updateUI();
+                loadWorldMap();
+            });
 
             world.appendChild(el);
         });
@@ -452,31 +606,44 @@ function initPanZoom(viewport, content) {
                 setTransform();
             }
             lastTouchDistance = distance;
+        } else if (e.touches.length === 1 && panning) {
+            const touch = e.touches[0];
+            originX = touch.clientX - startX;
+            originY = touch.clientY - startY;
+            setTransform();
         }
     }, { passive: false });
 
     viewport.addEventListener("touchend", () => {
         lastTouchDistance = null;
+        panning = false;
     });
 
     const pointerDown = e => {
         panning = true;
-        startX = (e.clientX ?? e.touches[0].clientX) - originX;
-        startY = (e.clientY ?? e.touches[0].clientY) - originY;
+        const clientX = e.clientX ?? e.touches[0].clientX;
+        const clientY = e.clientY ?? e.touches[0].clientY;
+        startX = clientX - originX;
+        startY = clientY - originY;
     };
     const pointerMove = e => {
         if (!panning) return;
-        originX = (e.clientX ?? e.touches[0].clientX) - startX;
-        originY = (e.clientY ?? e.touches[0].clientY) - startY;
+        if (e.cancelable) e.preventDefault();
+
+        const clientX = e.clientX ?? e.touches[0].clientX;
+        const clientY = e.clientY ?? e.touches[0].clientY;
+        originX = clientX - startX;
+        originY = clientY - startY;
         setTransform();
     };
     const pointerUp = () => (panning = false);
 
     viewport.addEventListener("mousedown", pointerDown);
-    viewport.addEventListener("touchstart", pointerDown);
     window.addEventListener("mousemove", pointerMove);
-    window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("mouseup", pointerUp);
+
+    viewport.addEventListener("touchstart", pointerDown, { passive: false });
+    window.addEventListener("touchmove", pointerMove, { passive: false });
     window.addEventListener("touchend", pointerUp);
 
     setTransform();
@@ -488,12 +655,12 @@ function bindLogout() {
     if (logoutBtn) {
         logoutBtn.addEventListener("click", async () => {
             try {
-                await saveVillageData();
+                await saveVillageData(); // Ensure data is saved before logging out
                 await auth.signOut();
-                window.location.href = "index.html";
+                window.location.href = "index.html"; // Redirect to login page
             } catch (err) {
                 console.error("Logout Error:", err);
-                alert("Failed to logout. Try again.");
+                alert("Failed to logout. Please try again.");
             }
         });
     }
