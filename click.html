@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Click Race</title>
+    <!-- Load Tailwind CSS for modern aesthetics -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        .score-card {
+            border: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .score-card.global {
+            background-color: #ecfdf5; /* Light green for global */
+            border-color: #a7f3d0;
+        }
+        .score-card.personal {
+            background-color: #eff6ff; /* Light blue for personal */
+            border-color: #bfdbfe;
+        }
+        .score-value {
+            font-size: 3rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #10b981; /* Green for global */
+        }
+        .personal .score-value {
+            color: #3b82f6; /* Blue for personal */
+        }
+        #clickButton {
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        #clickButton:active {
+            transform: scale(0.98);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+    <!-- Load Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: The global variables are provided by the canvas environment.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth;
+        let userId = null;
+        let localPersonalClicks = 0; // Local counter to ensure quick UI response
+
+        // Set log level to see Firebase operations in the console
+        setLogLevel('Debug');
+
+        // --- Utility Functions ---
+        
+        // This function handles the complex logic of retrying API calls with exponential backoff
+        async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    return await fetchFn();
+                } catch (error) {
+                    if (i === maxRetries - 1) {
+                        console.error("Max retries reached. Failed to execute Firestore operation.", error);
+                        throw error;
+                    }
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    // Wait for the calculated delay
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        // --- Firebase Setup & Auth ---
+
+        async function initFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in using the provided custom token or anonymously
+                await new Promise(resolve => {
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            document.getElementById('userIdDisplay').textContent = userId;
+                            console.log("Firebase Auth Ready. User ID:", userId);
+                            // Once auth is ready, start listening to data and initialize state
+                            setupRealtimeListeners();
+                            await initializeUserAndGlobalState();
+                            document.getElementById('clickButton').disabled = false; // Enable button once ready
+                            resolve();
+                        } else {
+                            if (initialAuthToken) {
+                                console.log("Signing in with Custom Token...");
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                console.log("Signing in Anonymously...");
+                                await signInAnonymously(auth);
+                            }
+                        }
+                    });
+                });
+
+            } catch (error) {
+                document.getElementById('status').textContent = `Error initializing Firebase: ${error.message}`;
+                console.error("Firebase Init Error:", error);
+            }
+        }
+
+        // --- Firestore Paths and Initialization ---
+        
+        // Public data path: Shared across all users
+        const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
+        
+        // Helper functions to generate references dynamically after userId is set
+        const getGlobalDocRef = () => doc(db, globalGameStatePath);
+        const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
+        const getPersonalDocRef = () => doc(getPersonalCollectionRef(), userId);
+
+
+        async function initializeUserAndGlobalState() {
+            const globalDocRef = getGlobalDocRef();
+            const personalDocRef = getPersonalDocRef();
+
+            // 1. Initialize Global State if it doesn't exist
+            await fetchWithExponentialBackoff(async () => {
+                const globalSnap = await getDoc(globalDocRef);
+                if (!globalSnap.exists()) {
+                    console.log("Initializing global game state...");
+                    await setDoc(globalDocRef, { totalClicks: 0, lastUpdate: new Date().toISOString() });
+                }
+            });
+
+            // 2. Initialize Personal State (and sync local score)
+            await fetchWithExponentialBackoff(async () => {
+                const personalSnap = await getDoc(personalDocRef);
+                if (!personalSnap.exists()) {
+                    console.log("Initializing personal state...");
+                    // Using userId as document ID within the user_scores collection
+                    await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
+                    localPersonalClicks = 0;
+                } else {
+                    // Sync local score with saved score
+                    const data = personalSnap.data();
+                    localPersonalClicks = data.clicks || 0;
+                    updatePersonalScoreDisplay(localPersonalClicks);
+                }
+            });
+        }
+
+        // --- Real-time Listeners ---
+
+        function setupRealtimeListeners() {
+            const globalDocRef = getGlobalDocRef();
+            const personalDocRef = getPersonalDocRef();
+            
+            // 1. Listen for Global Clicks
+            onSnapshot(globalDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const totalClicks = data.totalClicks || 0;
+                    updateGlobalScoreDisplay(totalClicks);
+                    document.getElementById('status').textContent = 'Game is live!';
+                } else {
+                    updateGlobalScoreDisplay(0);
+                    document.getElementById('status').textContent = 'Waiting for global state initialization...';
+                }
+            }, (error) => {
+                console.error("Error listening to global state:", error);
+                document.getElementById('status').textContent = `Error: ${error.message}`;
+            });
+
+            // 2. Listen for Personal Clicks (updates if other devices/tabs change it)
+            onSnapshot(personalDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const clicks = data.clicks || 0;
+                    localPersonalClicks = clicks; // Keep local in sync
+                    updatePersonalScoreDisplay(clicks);
+                }
+            }, (error) => {
+                console.error("Error listening to personal state:", error);
+                // Status message for this specific error is usually handled by the main status element.
+            });
+        }
+
+        // --- UI Updates ---
+
+        function updateGlobalScoreDisplay(score) {
+            document.getElementById('globalScore').textContent = score.toLocaleString();
+        }
+
+        function updatePersonalScoreDisplay(score) {
+            document.getElementById('personalScore').textContent = score.toLocaleString();
+        }
+
+        // --- Game Logic ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            const clickButton = document.getElementById('clickButton');
+            clickButton.addEventListener('click', handleUserClick);
+        });
+
+        async function handleUserClick() {
+            if (!userId || !db) {
+                document.getElementById('status').textContent = 'Initialization in progress...';
+                return;
+            }
+
+            // 1. Update local UI immediately for responsiveness
+            localPersonalClicks++;
+            updatePersonalScoreDisplay(localPersonalClicks);
+
+            const globalDocRef = getGlobalDocRef();
+            const personalDocRef = getPersonalDocRef();
+
+            // 2. Update Firestore atomically (Global State)
+            await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
+                totalClicks: increment(1),
+                lastUpdate: new Date().toISOString()
+            })).catch(() => {
+                // If global update fails, revert local score change for consistency
+                localPersonalClicks--;
+                updatePersonalScoreDisplay(localPersonalClicks);
+                document.getElementById('status').textContent = 'Failed to update global score. Check console.';
+            });
+
+            // 3. Update Firestore (Personal State) - Uses the local counter value
+            await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
+                clicks: localPersonalClicks,
+                lastClicked: new Date().toISOString()
+            })).catch(() => {
+                document.getElementById('status').textContent = 'Failed to save personal score. Check console.';
+            });
+        }
+
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Multiplayer Click Challenge</h1>
+        <p id="status" class="text-center text-sm mb-4 text-red-500">Initializing Firebase...</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <!-- Global Score Card -->
+            <div class="score-card global">
+                <h2 class="text-lg font-medium text-gray-600">Total Clicks (All Players)</h2>
+                <div id="globalScore" class="score-value">0</div>
+                <p class="text-xs text-gray-500 mt-1">Updates in real-time for everyone.</p>
+            </div>
+
+            <!-- Personal Score Card -->
+            <div class="score-card personal">
+                <h2 class="text-lg font-medium text-gray-600">Your Personal Score</h2>
+                <div id="personalScore" class="score-value">0</div>
+                <p class="text-xs text-gray-500 mt-1">Your clicks, saved privately.</p>
+            </div>
+        </div>
+
+        <!-- Click Button -->
+        <div class="flex justify-center">
+            <button id="clickButton"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-12 rounded-full text-2xl shadow-lg transition duration-150 ease-in-out transform hover:scale-105 active:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50"
+                    disabled>
+                Click Me!
+            </button>
+        </div>
+
+        <!-- User ID Display -->
+        <div class="mt-8 pt-4 border-t border-gray-200 text-center">
+            <h3 class="text-sm font-semibold text-gray-600 mb-2">Your Unique Player ID:</h3>
+            <code id="userIdDisplay" class="text-xs bg-gray-100 p-2 rounded-lg text-gray-700 break-all">Awaiting Auth...</code>
+            <p class="text-xs mt-2 text-gray-500">Share this ID with a friend if you need to identify yourself in the public data!</p>
+        </div>
+    </div>
+</body>
+</html>
