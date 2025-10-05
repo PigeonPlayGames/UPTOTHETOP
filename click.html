@@ -7,7 +7,7 @@
     <!-- Load Tailwind CSS for modern aesthetics -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;display=swap');
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f7f7f7;
@@ -65,10 +65,28 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // IMPORTANT: The global variables are provided by the canvas environment.
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // IMPORTANT: The global variables are used for Canvas environment compatibility, 
+        // but are NOT needed when running on your own website with a hardcoded config.
+        const appId = 'up-to-battle-app'; // Use your project ID or similar constant
+        const initialAuthToken = null; 
+
+        // --- YOU MUST REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL FIREBASE CONFIG ---
+        const firebaseConfig = {
+            // Replace "YOUR_API_KEY" with your actual apiKey string
+            apiKey: "YOUR_API_KEY", 
+            // Replace "YOUR_PROJECT_ID" with your actual projectId string
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            // Replace "YOUR_PROJECT_ID" with your actual projectId string
+            projectId: "YOUR_PROJECT_ID", 
+            // Replace "YOUR_PROJECT_ID" with your actual projectId string
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            // Replace "YOUR_SENDER_ID" with your actual messagingSenderId string
+            messagingSenderId: "YOUR_SENDER_ID", 
+            // Replace "YOUR_APP_ID" with your actual appId string
+            appId: "YOUR_APP_ID"
+        };
+        // -------------------------------------------------------------------------
+
 
         let db, auth;
         let userId = null;
@@ -100,6 +118,11 @@
 
         async function initFirebase() {
             try {
+                // Check if the configuration object is still filled with placeholders
+                if (!firebaseConfig.projectId || firebaseConfig.projectId === "YOUR_PROJECT_ID") {
+                    throw new Error("Configuration is still using placeholder values. Please replace them with your actual Firebase config.");
+                }
+
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -137,10 +160,12 @@
         // --- Firestore Paths and Initialization ---
         
         // Public data path: Shared across all users
+        // NOTE: The hardcoded path is simplified for self-hosted apps since '__app_id' isn't available
         const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
         
         // Helper functions to generate references dynamically after userId is set
         const getGlobalDocRef = () => doc(db, globalGameStatePath);
+        // NOTE: The path for private data uses the authenticated user's ID (userId)
         const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
         const getPersonalDocRef = () => doc(getPersonalCollectionRef(), userId);
 
@@ -207,7 +232,6 @@
                 }
             }, (error) => {
                 console.error("Error listening to personal state:", error);
-                // Status message for this specific error is usually handled by the main status element.
             });
         }
 
