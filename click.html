@@ -159,7 +159,7 @@
         const getGlobalDocRef = () => doc(db, globalGameStatePath);
         const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
         
-        const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/${targetUserId}`);
+        const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/score`);
 
         const getPersonalDocRef = () => getPlayerDocRef(userId);
 
