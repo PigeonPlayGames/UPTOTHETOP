@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multiplayer Click Race with Attack</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;display=swap');
+        /* REMOVED: @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;display=swap'); */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f7f7f7;
@@ -72,12 +75,11 @@
         // Import runTransaction for a safe attack operation
         import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // IMPORTANT: The global variables are used for Canvas environment compatibility, 
-        // but are NOT needed when running on your own website with a hardcoded config.
-        const appId = 'up-to-battle-app'; // Use your project ID or similar constant
+        // FIX #1: Changed 'up-to-battle-app' to your new project ID for correct pathing.
+        const appId = 'tiny-tribes-19ec8'; 
         const initialAuthToken = null; 
 
-        // --- YOU HAVE REPLACED THE PLACEHOLDERS WITH MY FIREBASE CONFIG ---
+        // --- YOUR FIREBASE CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
             authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -86,19 +88,18 @@
             messagingSenderId: "746060276139",
             appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
             measurementId: "G-SFV5F5LG1V"
-        }
+        }; // CORRECT CLOSING BRACE
 
         // -------------------------------------------------------------------------
 
 
         let db, auth;
         let userId = null;
-        let localPersonalClicks = 0; // Local counter to ensure quick UI response
+        let localPersonalClicks = 0; 
 
-        // Set log level to see Firebase operations in the console
         setLogLevel('Debug');
 
-        // --- Utility Functions (Same as yours) ---
+        // --- Utility Functions (No Change) ---
         
         async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
             for (let i = 0; i < maxRetries; i++) {
@@ -110,13 +111,12 @@
                         throw error;
                     }
                     const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                    // Wait for the calculated delay
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
 
-        // --- Firebase Setup & Auth (Same as yours, removed custom token) ---
+        // --- Firebase Setup & Auth (No Change) ---
 
         async function initFirebase() {
             try {
@@ -136,8 +136,8 @@
                             console.log("Firebase Auth Ready. User ID:", userId);
                             setupRealtimeListeners();
                             await initializeUserAndGlobalState();
-                            document.getElementById('clickButton').disabled = false; // Enable click button
-                            document.getElementById('attackButton').disabled = false; // **NEW: Enable attack button**
+                            document.getElementById('clickButton').disabled = false;
+                            document.getElementById('attackButton').disabled = false;
                             resolve();
                         } else {
                             console.log("Signing in Anonymously...");
@@ -152,14 +152,13 @@
             }
         }
 
-        // --- Firestore Paths and Initialization (Same as yours) ---
+        // --- Firestore Paths and Initialization (Paths now use corrected appId) ---
         
         const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
         
         const getGlobalDocRef = () => doc(db, globalGameStatePath);
         const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
         
-        // Helper to get ANY player's personal score document reference
         const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/${targetUserId}`);
 
         const getPersonalDocRef = () => getPlayerDocRef(userId);
@@ -183,11 +182,9 @@
                 const personalSnap = await getDoc(personalDocRef);
                 if (!personalSnap.exists()) {
                     console.log("Initializing personal state...");
-                    // Using userId as document ID within the user_scores collection
                     await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
                     localPersonalClicks = 0;
                 } else {
-                    // Sync local score with saved score
                     const data = personalSnap.data();
                     localPersonalClicks = data.clicks || 0;
                     updatePersonalScoreDisplay(localPersonalClicks);
@@ -195,7 +192,7 @@
             });
         }
 
-        // --- Real-time Listeners and UI Updates (Same as yours) ---
+        // --- Real-time Listeners, UI Updates, and Game Logic (No Change) ---
 
         function setupRealtimeListeners() {
             const globalDocRef = getGlobalDocRef();
@@ -222,7 +219,7 @@
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     const clicks = data.clicks || 0;
-                    localPersonalClicks = clicks; // Keep local in sync
+                    localPersonalClicks = clicks; 
                     updatePersonalScoreDisplay(clicks);
                 }
             }, (error) => {
@@ -238,13 +235,10 @@
             document.getElementById('personalScore').textContent = score.toLocaleString();
         }
 
-        // --- Game Logic (Existing Click Function) ---
-
         document.addEventListener('DOMContentLoaded', () => {
             initFirebase();
             const clickButton = document.getElementById('clickButton');
             clickButton.addEventListener('click', handleUserClick);
-            // **NEW: Add listener for the Attack button**
             const attackButton = document.getElementById('attackButton');
             attackButton.addEventListener('click', handleUserAttack);
         });
@@ -254,30 +248,23 @@
                 document.getElementById('status').textContent = 'Initialization in progress...';
                 return;
             }
-             // For simplicity, we're keeping this as two separate updates for clicks, 
-             // but for a truly secure game, *both* updates (personal and global) 
-             // should ideally be in a batched write or transaction.
             const clickAmount = 1;
             
-            // 1. Update local UI immediately for responsiveness
             localPersonalClicks += clickAmount;
             updatePersonalScoreDisplay(localPersonalClicks);
 
             const globalDocRef = getGlobalDocRef();
             const personalDocRef = getPersonalDocRef();
 
-            // 2. Update Firestore atomically (Global State)
             await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
                 totalClicks: increment(clickAmount),
                 lastUpdate: new Date().toISOString()
             })).catch(() => {
-                // If global update fails, revert local score change for consistency
                 localPersonalClicks -= clickAmount;
                 updatePersonalScoreDisplay(localPersonalClicks);
                 document.getElementById('status').textContent = 'Failed to update global score. Check console.';
             });
 
-            // 3. Update Firestore (Personal State) - Uses the local counter value
             await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
                 clicks: localPersonalClicks,
                 lastClicked: new Date().toISOString()
@@ -286,9 +273,7 @@
             });
         }
         
-        // ====================================================================
-        // === NEW ATTACK LOGIC ===
-        // ====================================================================
+        // === ATTACK LOGIC (No Change) ===
         
         async function handleUserAttack() {
             if (!userId || !db) {
@@ -297,7 +282,7 @@
             }
             
             const targetId = document.getElementById('targetUserId').value.trim();
-            const attackPower = 5; // Fixed damage/reduction amount for now
+            const attackPower = 5; 
             
             if (!targetId || targetId === userId) {
                 alert("Please enter a valid Target Player ID (and not your own!).");
@@ -310,14 +295,7 @@
             const globalDocRef = getGlobalDocRef();
 
             try {
-                // Use a Firestore Transaction for Atomicity:
-                // This ensures that the reading of the target's score, 
-                // the calculation of the new score, and the writing of 
-                // both the new personal score and the global score are 
-                // treated as a single, atomic operation. This is crucial 
-                // for multiplayer games to prevent race conditions.
                 await runTransaction(db, async (transaction) => {
-                    // 1. Read the target player's document INSIDE the transaction
                     const targetSnap = await transaction.get(targetDocRef);
 
                     if (!targetSnap.exists()) {
@@ -327,13 +305,12 @@
                     const targetData = targetSnap.data();
                     const currentClicks = targetData.clicks || 0;
                     
-                    // Calculate the new score, preventing it from going below 0
                     const newClicks = Math.max(0, currentClicks - attackPower);
-                    const clicksReduced = currentClicks - newClicks; // The actual amount removed
+                    const clicksReduced = currentClicks - newClicks; 
                     
                     if (clicksReduced === 0) {
                         document.getElementById('status').textContent = `${targetId} already has 0 clicks. Attack failed.`;
-                        return; // Successfully abort the transaction
+                        return; 
                     }
                     
                     // 2. Update the target's score in the transaction
@@ -344,7 +321,6 @@
                     });
 
                     // 3. Update the global score by the amount reduced
-                    // NOTE: We use increment with a negative number
                     transaction.update(globalDocRef, {
                         totalClicks: increment(-clicksReduced),
                         lastUpdate: new Date().toISOString()
