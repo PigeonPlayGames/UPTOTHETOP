@@ -9,7 +9,6 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* REMOVED: @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;display=swap'); */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f7f7f7;
@@ -37,21 +36,21 @@
             transition: all 0.3s ease;
         }
         .score-card.global {
-            background-color: #ecfdf5; /* Light green for global */
+            background-color: #ecfdf5;
             border-color: #a7f3d0;
         }
         .score-card.personal {
-            background-color: #eff6ff; /* Light blue for personal */
+            background-color: #eff6ff;
             border-color: #bfdbfe;
         }
         .score-value {
             font-size: 3rem;
             font-weight: 700;
             line-height: 1;
-            color: #10b981; /* Green for global */
+            color: #10b981;
         }
         .personal .score-value {
-            color: #3b82f6; /* Blue for personal */
+            color: #3b82f6;
         }
         #clickButton {
             transition: transform 0.1s, box-shadow 0.1s;
@@ -60,7 +59,6 @@
             transform: scale(0.98);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
         }
-        /* Style for the new Attack button */
         #attackButton {
              transition: transform 0.1s, box-shadow 0.1s;
         }
@@ -72,14 +70,11 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Import runTransaction for a safe attack operation
         import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // FIX #1: Changed 'up-to-battle-app' to your new project ID for correct pathing.
         const appId = 'tiny-tribes-19ec8'; 
         const initialAuthToken = null; 
 
-        // --- YOUR FIREBASE CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
             authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -88,10 +83,7 @@
             messagingSenderId: "746060276139",
             appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
             measurementId: "G-SFV5F5LG1V"
-        }; // CORRECT CLOSING BRACE
-
-        // -------------------------------------------------------------------------
-
+        };
 
         let db, auth;
         let userId = null;
@@ -99,8 +91,6 @@
 
         setLogLevel('Debug');
 
-        // --- Utility Functions (No Change) ---
-        
         async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
             for (let i = 0; i < maxRetries; i++) {
                 try {
@@ -115,8 +105,6 @@
                 }
             }
         }
-
-        // --- Firebase Setup & Auth (No Change) ---
 
         async function initFirebase() {
             try {
@@ -151,15 +139,14 @@
                 console.error("Firebase Init Error:", error);
             }
         }
-
-        // --- Firestore Paths and Initialization (Paths now use corrected appId) ---
         
         const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
         
         const getGlobalDocRef = () => doc(db, globalGameStatePath);
         const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
         
-        const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/score`);
+        // FIX #3: Renamed the personal score document from 'score' to 'data' to enforce unique personal data pathing
+        const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 
         const getPersonalDocRef = () => getPlayerDocRef(userId);
 
@@ -192,13 +179,10 @@
             });
         }
 
-        // --- Real-time Listeners, UI Updates, and Game Logic (No Change) ---
-
         function setupRealtimeListeners() {
             const globalDocRef = getGlobalDocRef();
             const personalDocRef = getPersonalDocRef();
             
-            // 1. Listen for Global Clicks
             onSnapshot(globalDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -214,7 +198,6 @@
                 document.getElementById('status').textContent = `Error: ${error.message}`;
             });
 
-            // 2. Listen for Personal Clicks 
             onSnapshot(personalDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -273,8 +256,6 @@
             });
         }
         
-        // === ATTACK LOGIC (No Change) ===
-        
         async function handleUserAttack() {
             if (!userId || !db) {
                 document.getElementById('status').textContent = 'Initialization in progress...';
@@ -313,14 +294,12 @@
                         return; 
                     }
                     
-                    // 2. Update the target's score in the transaction
                     transaction.update(targetDocRef, {
                         clicks: newClicks,
                         lastAttackedBy: userId,
                         lastAttackedTime: new Date().toISOString()
                     });
 
-                    // 3. Update the global score by the amount reduced
                     transaction.update(globalDocRef, {
                         totalClicks: increment(-clicksReduced),
                         lastUpdate: new Date().toISOString()
