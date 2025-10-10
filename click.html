@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiplayer Click Race with Leaderboard</title>
+    <title>Multiplayer Click Race with Attack</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     
@@ -70,8 +70,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // ADDED 'query' and 'orderBy'
-        import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const appId = 'tiny-tribes-19ec8'; 
         const initialAuthToken = null; 
@@ -91,24 +90,8 @@
         let localPersonalClicks = 0; 
 
         setLogLevel('Debug');
-        
-        // --- Firestore Paths ---
-        // Global count remains in the same place
-        const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
-        const getGlobalDocRef = () => doc(db, globalGameStatePath);
-        
-        // NEW: Leaderboard collection reference for easy querying
-        const getLeaderboardDocRef = (targetUserId) => doc(db, "leaderboard_scores", targetUserId);
 
-        // The user's private document remains here for attack targeting
-        const getPrivateUserDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`);
-        const getPersonalDocRef = () => getPrivateUserDocRef(userId);
-
-
-        // ... (Utility functions, initFirebase, setupRealtimeListeners, UI updates remain largely the same) ...
-        
         async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
-            // ... (Same as before) ...
             for (let i = 0; i < maxRetries; i++) {
                 try {
                     return await fetchFn();
@@ -125,7 +108,10 @@
 
         async function initFirebase() {
             try {
-                // ... (Same as before) ...
+                if (!firebaseConfig.projectId || firebaseConfig.projectId === "YOUR_PROJECT_ID") {
+                    throw new Error("Configuration is still using placeholder values. Please replace them with your actual Firebase config.");
+                }
+
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -137,7 +123,6 @@
                             document.getElementById('userIdDisplay').textContent = userId;
                             console.log("Firebase Auth Ready. User ID:", userId);
                             setupRealtimeListeners();
-                            setupLeaderboardListener(); // NEW: Start Leaderboard listener
                             await initializeUserAndGlobalState();
                             document.getElementById('clickButton').disabled = false;
                             document.getElementById('attackButton').disabled = false;
@@ -148,18 +133,38 @@
                         }
                     });
                 });
+
             } catch (error) {
                 document.getElementById('status').textContent = `Error initializing Firebase: ${error.message}`;
                 console.error("Firebase Init Error:", error);
             }
         }
         
+        const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
+        
+        const getGlobalDocRef = () => doc(db, globalGameStatePath);
+        const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
+        
+        // FIX #3: Renamed the personal score document from 'score' to 'data' to enforce unique personal data pathing
+        const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
+
+        const getPersonalDocRef = () => getPlayerDocRef(userId);
+
+
         async function initializeUserAndGlobalState() {
-             // 1. Initialize Global State if it doesn't exist (same as before)
-            // ...
-            
-             // 2. Initialize Private Score State (same as before)
+            const globalDocRef = getGlobalDocRef();
             const personalDocRef = getPersonalDocRef();
+
+            // 1. Initialize Global State if it doesn't exist
+            await fetchWithExponentialBackoff(async () => {
+                const globalSnap = await getDoc(globalDocRef);
+                if (!globalSnap.exists()) {
+                    console.log("Initializing global game state...");
+                    await setDoc(globalDocRef, { totalClicks: 0, lastUpdate: new Date().toISOString() });
+                }
+            });
+
+            // 2. Initialize Personal State (and sync local score)
             await fetchWithExponentialBackoff(async () => {
                 const personalSnap = await getDoc(personalDocRef);
                 if (!personalSnap.exists()) {
@@ -172,67 +177,55 @@
                     updatePersonalScoreDisplay(localPersonalClicks);
                 }
             });
+        }
+
+        function setupRealtimeListeners() {
+            const globalDocRef = getGlobalDocRef();
+            const personalDocRef = getPersonalDocRef();
             
-            // 3. NEW: Initialize Leaderboard Document
-            const leaderboardDocRef = getLeaderboardDocRef(userId);
-            await fetchWithExponentialBackoff(async () => {
-                // Use setDoc with merge: true to avoid overwriting other fields if they exist
-                await setDoc(leaderboardDocRef, { 
-                    clicks: localPersonalClicks, 
-                    lastClicked: new Date().toISOString() 
-                }, { merge: true });
-            });
-        }
-        
-        // --- NEW LEADERBOARD LISTENER ---
-        function setupLeaderboardListener() {
-            const leaderboardCollectionRef = collection(db, "leaderboard_scores");
-            // Query sorted by 'clicks' descending
-            const leaderboardQuery = query(leaderboardCollectionRef, orderBy("clicks", "desc"));
-
-            onSnapshot(leaderboardQuery, (querySnapshot) => {
-                let leaderboardHTML = '';
-                let rank = 1;
-
-                if (querySnapshot.empty) {
-                    document.getElementById('leaderboardContainer').innerHTML = '<p class="text-center text-gray-500">No players yet. Click the button!</p>';
-                    return;
+            onSnapshot(globalDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const totalClicks = data.totalClicks || 0;
+                    updateGlobalScoreDisplay(totalClicks);
+                    document.getElementById('status').textContent = 'Game is live!';
+                } else {
+                    updateGlobalScoreDisplay(0);
+                    document.getElementById('status').textContent = 'Waiting for global state initialization...';
                 }
-
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    const clicks = data.clicks || 0;
-                    const playerID = doc.id; // The document ID is the Player ID
-
-                    // Highlight the current user
-                    const isCurrentUser = playerID === userId;
-                    const highlightClass = isCurrentUser ? 'bg-yellow-100 font-extrabold' : 'bg-white';
-
-                    leaderboardHTML += `
-                        <div class="flex justify-between items-center p-2 my-1 border rounded-lg ${highlightClass}">
-                            <span class="font-bold text-gray-700">${rank}. ${isCurrentUser ? 'YOU' : playerID.substring(0, 8) + '...'}</span>
-                            <span class="text-indigo-600 font-semibold">${clicks.toLocaleString()} Clicks</span>
-                        </div>
-                    `;
-                    rank++;
-                });
-
-                document.getElementById('leaderboardContainer').innerHTML = leaderboardHTML;
             }, (error) => {
-                console.error("Error listening to leaderboard:", error);
-                document.getElementById('leaderboardContainer').innerHTML = '<p class="text-center text-red-500">Failed to load leaderboard.</p>';
+                console.error("Error listening to global state:", error);
+                document.getElementById('status').textContent = `Error: ${error.message}`;
+            });
+
+            onSnapshot(personalDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const clicks = data.clicks || 0;
+                    localPersonalClicks = clicks; 
+                    updatePersonalScoreDisplay(clicks);
+                }
+            }, (error) => {
+                console.error("Error listening to personal state:", error);
             });
         }
 
+        function updateGlobalScoreDisplay(score) {
+            document.getElementById('globalScore').textContent = score.toLocaleString();
+        }
 
-        // ... (setupRealtimeListeners, UI updates functions remain largely the same) ...
-        function setupRealtimeListeners() { /* ... same as before ... */ }
-        function updateGlobalScoreDisplay(score) { /* ... same as before ... */ }
-        function updatePersonalScoreDisplay(score) { /* ... same as before ... */ }
-        document.addEventListener('DOMContentLoaded', () => { /* ... same as before ... */ });
+        function updatePersonalScoreDisplay(score) {
+            document.getElementById('personalScore').textContent = score.toLocaleString();
+        }
 
+        document.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            const clickButton = document.getElementById('clickButton');
+            clickButton.addEventListener('click', handleUserClick);
+            const attackButton = document.getElementById('attackButton');
+            attackButton.addEventListener('click', handleUserAttack);
+        });
 
-        // --- Click Logic Update (MUST update the Leaderboard doc too) ---
         async function handleUserClick() {
             if (!userId || !db) {
                 document.getElementById('status').textContent = 'Initialization in progress...';
@@ -240,15 +233,12 @@
             }
             const clickAmount = 1;
             
-            // 1. Update local UI
             localPersonalClicks += clickAmount;
             updatePersonalScoreDisplay(localPersonalClicks);
 
             const globalDocRef = getGlobalDocRef();
             const personalDocRef = getPersonalDocRef();
-            const leaderboardDocRef = getLeaderboardDocRef(userId); // NEW
 
-            // 2. Update Global State
             await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
                 totalClicks: increment(clickAmount),
                 lastUpdate: new Date().toISOString()
@@ -258,24 +248,14 @@
                 document.getElementById('status').textContent = 'Failed to update global score. Check console.';
             });
 
-            // 3. Update Private Score State
             await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
                 clicks: localPersonalClicks,
                 lastClicked: new Date().toISOString()
             })).catch(() => {
                 document.getElementById('status').textContent = 'Failed to save personal score. Check console.';
             });
-            
-            // 4. NEW: Update the Leaderboard Document
-            await fetchWithExponentialBackoff(() => updateDoc(leaderboardDocRef, {
-                clicks: localPersonalClicks, // Use the new score
-                lastClicked: new Date().toISOString()
-            })).catch(() => {
-                console.warn("Failed to update leaderboard score. This won't affect gameplay but leaderboard won't update.");
-            });
         }
         
-        // --- Attack Logic Update (MUST update the Leaderboard doc too) ---
         async function handleUserAttack() {
             if (!userId || !db) {
                 document.getElementById('status').textContent = 'Initialization in progress...';
@@ -292,17 +272,15 @@
 
             document.getElementById('status').textContent = `Attacking ${targetId}...`;
             
-            const targetDocRef = getPrivateUserDocRef(targetId); // Target's private score
-            const leaderboardDocRef = getLeaderboardDocRef(targetId); // Target's public leaderboard score
+            const targetDocRef = getPlayerDocRef(targetId);
             const globalDocRef = getGlobalDocRef();
 
             try {
                 await runTransaction(db, async (transaction) => {
                     const targetSnap = await transaction.get(targetDocRef);
-                    const leaderboardSnap = await transaction.get(leaderboardDocRef); // NEW: Read leaderboard doc
 
-                    if (!targetSnap.exists() || !leaderboardSnap.exists()) {
-                        throw new Error("Target player document not found.");
+                    if (!targetSnap.exists()) {
+                        throw new Error("Target player not found or document structure is incorrect.");
                     }
 
                     const targetData = targetSnap.data();
@@ -316,19 +294,12 @@
                         return; 
                     }
                     
-                    // 2. Update the target's Private score
                     transaction.update(targetDocRef, {
                         clicks: newClicks,
                         lastAttackedBy: userId,
                         lastAttackedTime: new Date().toISOString()
                     });
-                    
-                    // 3. NEW: Update the target's Leaderboard score
-                    transaction.update(leaderboardDocRef, {
-                        clicks: newClicks
-                    });
 
-                    // 4. Update the global score
                     transaction.update(globalDocRef, {
                         totalClicks: increment(-clicksReduced),
                         lastUpdate: new Date().toISOString()
@@ -388,11 +359,6 @@
         </div>
         <p class="text-center text-xs mt-2 text-gray-500">You must use another player's ID from the bottom of their screen.</p>
         
-        <hr class="my-6">
-        <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">Leaderboard</h2>
-        <div id="leaderboardContainer" class="bg-gray-50 p-4 rounded-lg shadow-md">
-            <p class="text-center text-gray-500" id="leaderboardStatus">Loading ranks...</p>
-        </div>
         <div class="mt-8 pt-4 border-t border-gray-200 text-center">
             <h3 class="text-sm font-semibold text-gray-600 mb-2">Your Unique Player ID:</h3>
             <code id="userIdDisplay" class="text-xs bg-gray-100 p-2 rounded-lg text-gray-700 break-all">Awaiting Auth...</code>
