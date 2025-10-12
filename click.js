@@ -1,9 +1,11 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- CONFIGURATION ---
 const appId = 'tiny-tribes-19ec8'; 
+const initialAuthToken = null; 
+
 const firebaseConfig = {
     apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
     authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -17,12 +19,11 @@ const firebaseConfig = {
 
 let db, auth;
 let userId = null;
-let localPersonalTroops = 0;
-let selectedTargetId = null; 
+let localPersonalClicks = 0; 
 
 setLogLevel('Debug');
 
-// --- Helper Functions ---
+// --- Utility Functions ---
 async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -41,6 +42,10 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 // --- Firebase Setup & Auth ---
 async function initFirebase() {
     try {
+        if (!firebaseConfig.projectId || firebaseConfig.projectId === "YOUR_PROJECT_ID") {
+            throw new Error("Configuration is still using placeholder values. Please replace them with your actual Firebase config.");
+        }
+
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
@@ -48,24 +53,17 @@ async function initFirebase() {
         await new Promise(resolve => {
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
-                    // User is successfully logged in (persistent UID is available)
                     userId = user.uid;
                     document.getElementById('userIdDisplay').textContent = userId;
                     console.log("Firebase Auth Ready. User ID:", userId);
                     setupRealtimeListeners();
                     await initializeUserAndGlobalState();
-                    setupMapListener();
                     document.getElementById('clickButton').disabled = false;
                     document.getElementById('attackButton').disabled = false;
-                    document.getElementById('status').textContent = 'Game is live!';
                     resolve();
                 } else {
-                    // User is NOT logged in. Disable all functionality.
-                    document.getElementById('status').textContent = 'Please log in to start playing!';
-                    document.getElementById('clickButton').disabled = true;
-                    document.getElementById('attackButton').disabled = true;
-                    console.log("Waiting for user to log in...");
-                    resolve();
+                    console.log("Signing in Anonymously...");
+                    await signInAnonymously(auth);
                 }
             });
         });
@@ -76,67 +74,42 @@ async function initFirebase() {
     }
 }
  
-// --- Firestore Paths ---
-// Path for Global State (complex structure)
+// --- Firestore Paths and Initialization ---
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
+ 
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
+const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
+ 
+// Document reference for ANY player's personal score (used for reading own score and targeting attacks)
+const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 
-// Path for Personal Troop Count (Private Data, complex structure)
-const getPlayerPrivateDataRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
-const getPersonalDocRef = () => getPlayerPrivateDataRef(userId);
-
-// FIX: Simple Public Location Path Structure (Top-level Collection for map data)
-// Path: public_locations (C) / {playerId} (D)
-const getPlayerLocationRef = (targetUserId) => doc(db, "public_locations", targetUserId); 
-const getAllLocationsCollection = () => collection(db, "public_locations");
+const getPersonalDocRef = () => getPlayerDocRef(userId);
 
 
-// --- Initialization Logic ---
 async function initializeUserAndGlobalState() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
-    const locationDocRef = getPlayerLocationRef(userId); 
 
     // 1. Initialize Global State
     await fetchWithExponentialBackoff(async () => {
         const globalSnap = await getDoc(globalDocRef);
         if (!globalSnap.exists()) {
             console.log("Initializing global game state...");
-            await setDoc(globalDocRef, { totalTroops: 0, lastUpdate: new Date().toISOString() }); 
+            await setDoc(globalDocRef, { totalClicks: 0, lastUpdate: new Date().toISOString() });
         }
     });
 
-    // 2. Initialize Personal Troop State
+    // 2. Initialize Personal State
     await fetchWithExponentialBackoff(async () => {
         const personalSnap = await getDoc(personalDocRef);
         if (!personalSnap.exists()) {
             console.log("Initializing personal state...");
-            // User's troops start at 0 on their first ever login
-            await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() }); 
-            localPersonalTroops = 0;
+            await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
+            localPersonalClicks = 0;
         } else {
-            // User data successfully loaded from persistent UID
             const data = personalSnap.data();
-            localPersonalTroops = data.clicks || 0;
-            updatePersonalScoreDisplay(localPersonalTroops);
-        }
-    });
-
-    // 3. Initialize or Update Player Location (using the fixed path)
-    await fetchWithExponentialBackoff(async () => {
-        const locationSnap = await getDoc(locationDocRef);
-        if (!locationSnap.exists()) {
-            console.log("Setting initial player location...");
-            
-            const x = Math.floor(Math.random() * 90) + 5; 
-            const y = Math.floor(Math.random() * 90) + 5;
-
-            await setDoc(locationDocRef, { 
-                x: x, 
-                y: y, 
-                userId: userId,
-                troops: localPersonalTroops 
-            });
+            localPersonalClicks = data.clicks || 0;
+            updatePersonalScoreDisplay(localPersonalClicks);
         }
     });
 }
@@ -146,28 +119,31 @@ function setupRealtimeListeners() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
     
-    // Global Troops Listener
+    // Global Clicks Listener
     onSnapshot(globalDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            const totalTroops = data.totalTroops || 0; 
-            updateGlobalScoreDisplay(totalTroops);
+            const totalClicks = data.totalClicks || 0;
+            updateGlobalScoreDisplay(totalClicks);
+            document.getElementById('status').textContent = 'Game is live!';
+        } else {
+            updateGlobalScoreDisplay(0);
+            document.getElementById('status').textContent = 'Waiting for global state initialization...';
         }
-    }, (error) => { 
+    }, (error) => {
         console.error("Error listening to global state:", error);
         document.getElementById('status').textContent = `Error: ${error.message}`;
     });
 
-    // Personal Troops Listener
+    // Personal Clicks Listener
     onSnapshot(personalDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            const troops = data.clicks || 0; 
-            localPersonalTroops = troops; 
-            updatePersonalScoreDisplay(troops);
-            updateLocationTroopCount(troops); // Updates the map token troop count
+            const clicks = data.clicks || 0;
+            localPersonalClicks = clicks; 
+            updatePersonalScoreDisplay(clicks);
         }
-    }, (error) => { 
+    }, (error) => {
         console.error("Error listening to personal state:", error);
     });
 }
@@ -180,117 +156,43 @@ function updatePersonalScoreDisplay(score) {
     document.getElementById('personalScore').textContent = score.toLocaleString();
 }
 
-// --- Map Logic ---
-async function updateLocationTroopCount(troops) {
-    if (!userId || !db) return;
-    const locationDocRef = getPlayerLocationRef(userId); 
-    await setDoc(locationDocRef, { troops: troops }, { merge: true });
-}
-
-
-function setupMapListener() {
-    const mapContainer = document.getElementById('gameMap');
-    const locationsCollection = getAllLocationsCollection(); 
-    
-    // Listen to ALL documents in the 'public_locations' collection
-    onSnapshot(locationsCollection, (querySnapshot) => {
-        mapContainer.innerHTML = ''; // Clear existing tokens
-
-        if (querySnapshot.empty) {
-            mapContainer.innerHTML = '<div id="mapStatus" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white font-bold text-lg">Waiting for players...</div>';
-            return;
-        }
-
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            const tokenUserId = data.userId;
-            
-            if (!data.x || !data.y) return;
-
-            const token = document.createElement('div');
-            const isTarget = tokenUserId === selectedTargetId; 
-            const isSelf = tokenUserId === userId;
-
-            token.className = `player-token ${isSelf ? 'self' : ''} ${isTarget ? 'target' : ''}`;
-            
-            // Adjust coordinates to match token center
-            token.style.left = `calc(${data.x}% - 10px)`; 
-            token.style.top = `calc(${data.y}% - 10px)`;
-            
-            token.setAttribute('data-user-id', tokenUserId);
-            
-            const label = document.createElement('span');
-            label.className = 'token-label';
-            label.textContent = `${data.troops}`;
-
-            token.appendChild(label);
-            mapContainer.appendChild(token);
-
-            if (!isSelf) {
-                token.addEventListener('click', () => handleTokenClick(tokenUserId));
-            }
-        });
-    }, (error) => {
-        console.error("Map listener error:", error);
-        document.getElementById('gameMap').innerHTML = `<div id="mapStatus" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white font-bold text-lg text-center">Map Error: Check Console/Rules</div>`;
-    });
-}
-
-function handleTokenClick(targetId) {
-    // 1. Clear previous target selection visually
-    const prevTargetToken = document.querySelector(`.player-token.target`);
-    if (prevTargetToken) {
-        prevTargetToken.classList.remove('target');
-    }
-
-    // 2. Select new target visually
-    const newTargetToken = document.querySelector(`.player-token[data-user-id="${targetId}"]`);
-    if (newTargetToken) {
-        newTargetToken.classList.add('target');
-    }
-
-    // 3. Update state
-    selectedTargetId = targetId;
-    document.getElementById('targetUserId').value = targetId;
-    document.getElementById('status').textContent = `Target selected: ${targetId.substring(0, 8)}... Ready to attack!`;
-}
-
-
 // --- Game Logic ---
 document.addEventListener('DOMContentLoaded', () => {
     initFirebase();
     const clickButton = document.getElementById('clickButton');
-    clickButton.addEventListener('click', handleRecruit);
+    clickButton.addEventListener('click', handleUserClick);
     const attackButton = document.getElementById('attackButton');
     attackButton.addEventListener('click', handleUserAttack);
 });
 
-async function handleRecruit() { 
+async function handleUserClick() {
     if (!userId || !db) {
         document.getElementById('status').textContent = 'Initialization in progress...';
         return;
     }
-    const troopAmount = 1; 
+    const clickAmount = 1;
     
-    localPersonalTroops += troopAmount; 
-    updatePersonalScoreDisplay(localPersonalTroops); 
+    // Optimistic UI update
+    localPersonalClicks += clickAmount;
+    updatePersonalScoreDisplay(localPersonalClicks);
 
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
 
     // 1. Update Global State
     await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
-        totalTroops: increment(troopAmount), 
+        totalClicks: increment(clickAmount),
         lastUpdate: new Date().toISOString()
     })).catch(() => {
-        localPersonalTroops -= troopAmount;
-        updatePersonalScoreDisplay(localPersonalTroops);
+        // Revert local UI on failure
+        localPersonalClicks -= clickAmount;
+        updatePersonalScoreDisplay(localPersonalClicks);
         document.getElementById('status').textContent = 'Failed to update global score. Check console.';
     });
 
-    // 2. Update Personal State (Saved persistently under UID)
+    // 2. Update Personal State
     await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
-        clicks: localPersonalTroops, 
+        clicks: localPersonalClicks,
         lastClicked: new Date().toISOString()
     })).catch(() => {
         document.getElementById('status').textContent = 'Failed to save personal score. Check console.';
@@ -298,25 +200,26 @@ async function handleRecruit() {
 }
  
 async function handleUserAttack() {
-    const targetId = selectedTargetId || document.getElementById('targetUserId').value.trim();
-    if (!targetId || targetId === userId) {
-        alert("Please select a target on the map first!");
-        return;
-    }
-
     if (!userId || !db) {
         document.getElementById('status').textContent = 'Initialization in progress...';
         return;
     }
     
+    const targetId = document.getElementById('targetUserId').value.trim();
     const attackPower = 5; 
     
-    document.getElementById('status').textContent = `Attacking ${targetId.substring(0, 8)}...`;
+    if (!targetId || targetId === userId) {
+        alert("Please enter a valid Target Player ID (and not your own!).");
+        return;
+    }
+
+    document.getElementById('status').textContent = `Attacking ${targetId}...`;
     
-    const targetDocRef = getPlayerPrivateDataRef(targetId);
+    const targetDocRef = getPlayerDocRef(targetId);
     const globalDocRef = getGlobalDocRef();
 
     try {
+        // Use a Firestore Transaction for Atomic Attack
         await runTransaction(db, async (transaction) => {
             const targetSnap = await transaction.get(targetDocRef);
 
@@ -325,30 +228,30 @@ async function handleUserAttack() {
             }
 
             const targetData = targetSnap.data();
-            const currentTroops = targetData.clicks || 0; 
+            const currentClicks = targetData.clicks || 0;
             
-            const newTroops = Math.max(0, currentTroops - attackPower);
-            const troopsReduced = currentTroops - newTroops; 
+            const newClicks = Math.max(0, currentClicks - attackPower);
+            const clicksReduced = currentClicks - newClicks; 
             
-            if (troopsReduced === 0) {
-                document.getElementById('status').textContent = `Target ${targetId.substring(0, 8)}... has 0 troops. Attack failed.`;
+            if (clicksReduced === 0) {
+                document.getElementById('status').textContent = `${targetId} already has 0 clicks. Attack failed.`;
                 return; 
             }
             
-            // 1. Update the target's score (troops)
+            // 1. Update the target's score
             transaction.update(targetDocRef, {
-                clicks: newTroops, 
+                clicks: newClicks,
                 lastAttackedBy: userId,
                 lastAttackedTime: new Date().toISOString()
             });
 
-            // 2. Update the global score (troops)
+            // 2. Update the global score
             transaction.update(globalDocRef, {
-                totalTroops: increment(-troopsReduced), 
+                totalClicks: increment(-clicksReduced),
                 lastUpdate: new Date().toISOString()
             });
 
-            document.getElementById('status').textContent = `Successfully reduced ${targetId.substring(0, 8)}...'s troops by ${troopsReduced}!`;
+            document.getElementById('status').textContent = `Successfully reduced ${targetId}'s score by ${clicksReduced}.`;
         });
 
     } catch (e) {
