@@ -17,7 +17,7 @@ const firebaseConfig = {
 
 let db, auth;
 let userId = null;
-let localPersonalTroops = 0; // Renamed from clicks
+let localPersonalTroops = 0;
 let selectedTargetId = null; 
 
 setLogLevel('Debug');
@@ -48,6 +48,7 @@ async function initFirebase() {
         await new Promise(resolve => {
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
+                    // User is successfully logged in (persistent UID is available)
                     userId = user.uid;
                     document.getElementById('userIdDisplay').textContent = userId;
                     console.log("Firebase Auth Ready. User ID:", userId);
@@ -56,10 +57,15 @@ async function initFirebase() {
                     setupMapListener();
                     document.getElementById('clickButton').disabled = false;
                     document.getElementById('attackButton').disabled = false;
+                    document.getElementById('status').textContent = 'Game is live!';
                     resolve();
                 } else {
-                    console.log("Signing in Anonymously...");
-                    await signInAnonymously(auth);
+                    // User is NOT logged in. Disable all functionality.
+                    document.getElementById('status').textContent = 'Please log in to start playing!';
+                    document.getElementById('clickButton').disabled = true;
+                    document.getElementById('attackButton').disabled = true;
+                    console.log("Waiting for user to log in...");
+                    resolve();
                 }
             });
         });
@@ -71,16 +77,16 @@ async function initFirebase() {
 }
  
 // --- Firestore Paths ---
-// Path: artifacts (C) / tiny-tribes-19ec8 (D) / public (C) / data (D) / game_state (C) / global_game_state (D)
+// Path for Global State (complex structure)
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
 
-// Path for personal troop count (Private Data)
+// Path for Personal Troop Count (Private Data, complex structure)
 const getPlayerPrivateDataRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 const getPersonalDocRef = () => getPlayerPrivateDataRef(userId);
 
-// FIX: Simplified Public Location Path Structure to a top-level collection.
-// Path: public_locations (C) / {playerId} (D) - This guarantees a valid 2-segment path.
+// FIX: Simple Public Location Path Structure (Top-level Collection for map data)
+// Path: public_locations (C) / {playerId} (D)
 const getPlayerLocationRef = (targetUserId) => doc(db, "public_locations", targetUserId); 
 const getAllLocationsCollection = () => collection(db, "public_locations");
 
@@ -105,9 +111,11 @@ async function initializeUserAndGlobalState() {
         const personalSnap = await getDoc(personalDocRef);
         if (!personalSnap.exists()) {
             console.log("Initializing personal state...");
-            await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
+            // User's troops start at 0 on their first ever login
+            await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() }); 
             localPersonalTroops = 0;
         } else {
+            // User data successfully loaded from persistent UID
             const data = personalSnap.data();
             localPersonalTroops = data.clicks || 0;
             updatePersonalScoreDisplay(localPersonalTroops);
@@ -144,7 +152,6 @@ function setupRealtimeListeners() {
             const data = docSnap.data();
             const totalTroops = data.totalTroops || 0; 
             updateGlobalScoreDisplay(totalTroops);
-            document.getElementById('status').textContent = 'Game is live!';
         }
     }, (error) => { 
         console.error("Error listening to global state:", error);
@@ -177,7 +184,6 @@ function updatePersonalScoreDisplay(score) {
 async function updateLocationTroopCount(troops) {
     if (!userId || !db) return;
     const locationDocRef = getPlayerLocationRef(userId); 
-    // Use setDoc with merge to only update the 'troops' field without touching x/y
     await setDoc(locationDocRef, { troops: troops }, { merge: true });
 }
 
@@ -202,9 +208,12 @@ function setupMapListener() {
             if (!data.x || !data.y) return;
 
             const token = document.createElement('div');
-            token.className = `player-token ${tokenUserId === userId ? 'self' : ''} ${tokenUserId === selectedTargetId ? 'target' : ''}`;
+            const isTarget = tokenUserId === selectedTargetId; 
+            const isSelf = tokenUserId === userId;
+
+            token.className = `player-token ${isSelf ? 'self' : ''} ${isTarget ? 'target' : ''}`;
             
-            // Adjust coordinates slightly to center the token based on 50% of its size (20px token = 10px offset)
+            // Adjust coordinates to match token center
             token.style.left = `calc(${data.x}% - 10px)`; 
             token.style.top = `calc(${data.y}% - 10px)`;
             
@@ -217,23 +226,30 @@ function setupMapListener() {
             token.appendChild(label);
             mapContainer.appendChild(token);
 
-            if (tokenUserId !== userId) {
+            if (!isSelf) {
                 token.addEventListener('click', () => handleTokenClick(tokenUserId));
             }
         });
+    }, (error) => {
+        console.error("Map listener error:", error);
+        document.getElementById('gameMap').innerHTML = `<div id="mapStatus" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white font-bold text-lg text-center">Map Error: Check Console/Rules</div>`;
     });
 }
 
 function handleTokenClick(targetId) {
+    // 1. Clear previous target selection visually
     const prevTargetToken = document.querySelector(`.player-token.target`);
     if (prevTargetToken) {
         prevTargetToken.classList.remove('target');
     }
+
+    // 2. Select new target visually
     const newTargetToken = document.querySelector(`.player-token[data-user-id="${targetId}"]`);
     if (newTargetToken) {
         newTargetToken.classList.add('target');
     }
 
+    // 3. Update state
     selectedTargetId = targetId;
     document.getElementById('targetUserId').value = targetId;
     document.getElementById('status').textContent = `Target selected: ${targetId.substring(0, 8)}... Ready to attack!`;
@@ -272,7 +288,7 @@ async function handleRecruit() {
         document.getElementById('status').textContent = 'Failed to update global score. Check console.';
     });
 
-    // 2. Update Personal State
+    // 2. Update Personal State (Saved persistently under UID)
     await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
         clicks: localPersonalTroops, 
         lastClicked: new Date().toISOString()
