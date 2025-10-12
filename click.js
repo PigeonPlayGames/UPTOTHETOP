@@ -71,6 +71,7 @@ async function initFirebase() {
 }
  
 // --- Firestore Paths ---
+// Path: artifacts (C) / tiny-tribes-19ec8 (D) / public (C) / data (D) / game_state (C) / global_game_state (D)
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
 
@@ -78,17 +79,17 @@ const getGlobalDocRef = () => doc(db, globalGameStatePath);
 const getPlayerPrivateDataRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 const getPersonalDocRef = () => getPlayerPrivateDataRef(userId);
 
-// FIX: Corrected Public Location Path Structure (Even number of segments: 6)
-// Path: artifacts/{appId}/public/locations/{playerId}
-const getPlayerLocationRef = (targetUserId) => doc(db, `artifacts/${appId}/public/locations`, targetUserId); 
-const getAllLocationsCollection = () => collection(db, `artifacts/${appId}/public/locations`);
+// FIX: Simplified Public Location Path Structure to a top-level collection.
+// Path: public_locations (C) / {playerId} (D) - This guarantees a valid 2-segment path.
+const getPlayerLocationRef = (targetUserId) => doc(db, "public_locations", targetUserId); 
+const getAllLocationsCollection = () => collection(db, "public_locations");
 
 
 // --- Initialization Logic ---
 async function initializeUserAndGlobalState() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
-    const locationDocRef = getPlayerLocationRef(userId); // Uses the fixed path
+    const locationDocRef = getPlayerLocationRef(userId); 
 
     // 1. Initialize Global State
     await fetchWithExponentialBackoff(async () => {
@@ -122,7 +123,6 @@ async function initializeUserAndGlobalState() {
             const x = Math.floor(Math.random() * 90) + 5; 
             const y = Math.floor(Math.random() * 90) + 5;
 
-            // Use the correct setDoc reference
             await setDoc(locationDocRef, { 
                 x: x, 
                 y: y, 
@@ -186,7 +186,7 @@ function setupMapListener() {
     const mapContainer = document.getElementById('gameMap');
     const locationsCollection = getAllLocationsCollection(); 
     
-    // Listen to ALL documents in the 'locations' collection
+    // Listen to ALL documents in the 'public_locations' collection
     onSnapshot(locationsCollection, (querySnapshot) => {
         mapContainer.innerHTML = ''; // Clear existing tokens
 
