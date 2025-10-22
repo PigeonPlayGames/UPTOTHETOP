@@ -1,8 +1,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- CONFIGURATION ---
+const appId = 'tiny-tribes-19ec8'; 
+const initialAuthToken = null; 
 
 const firebaseConfig = {
     apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
@@ -13,16 +15,7 @@ const firebaseConfig = {
     appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
     measurementId: "G-SFV5F5LG1V"
 };
-
-// FIX: Use the projectId as the fallback for appId to ensure path alignment
-const FALLBACK_APP_ID = firebaseConfig.projectId;
-
-// Use the environment variable __app_id if defined, otherwise use the projectId
-const appId = typeof __app_id !== 'undefined' ? __app_id : FALLBACK_APP_ID;
 // --------------------
-
-// NOTE: Since the game page HTML uses <script type="module">, we must use the modern modular SDK
-// The issue is likely due to the browser not persisting the Auth token correctly across pages/tabs.
 
 let db, auth;
 let userId = null;
@@ -31,7 +24,6 @@ let localPersonalClicks = 0;
 setLogLevel('Debug');
 
 // --- Utility Functions ---
-// Utility for retrying fetch operations with exponential backoff
 async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -50,49 +42,29 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 // --- Firebase Setup & Auth ---
 async function initFirebase() {
     try {
-        if (!firebaseConfig.projectId) { 
-            document.getElementById('status').textContent = "Error: Firebase configuration missing.";
-            throw new Error("Firebase configuration object is empty.");
+        if (!firebaseConfig.projectId || firebaseConfig.projectId === "YOUR_PROJECT_ID") {
+            throw new Error("Configuration is still using placeholder values. Please replace them with your actual Firebase config.");
         }
 
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
-        auth = getAuth(app); // Get Auth instance from the initialized app
-
-        document.getElementById('status').textContent = 'Checking login status...';
+        auth = getAuth(app);
 
         await new Promise(resolve => {
-            // This listener checks if a user is already signed in (via the homepage).
-            // It relies on Firebase's session persistence (which should be LOCAL by default 
-            // and enabled on your homepage) to retrieve the user object.
             onAuthStateChanged(auth, async (user) => {
-                const clickButton = document.getElementById('clickButton');
-                const attackButton = document.getElementById('attackButton');
-                const userIdDisplay = document.getElementById('userIdDisplay');
-
                 if (user) {
-                    // ✅ User is authenticated via Email/Password login
                     userId = user.uid;
-                    userIdDisplay.textContent = userId;
-                    document.getElementById('status').textContent = 'Logged In! Game is live.';
+                    document.getElementById('userIdDisplay').textContent = userId;
                     console.log("Firebase Auth Ready. User ID:", userId);
-                    
                     setupRealtimeListeners();
                     await initializeUserAndGlobalState();
-                    
-                    clickButton.disabled = false;
-                    attackButton.disabled = false;
+                    document.getElementById('clickButton').disabled = false;
+                    document.getElementById('attackButton').disabled = false;
+                    resolve();
                 } else {
-                    // ❌ User is NOT logged in. Disable game and prompt login.
-                    userId = null;
-                    userIdDisplay.textContent = 'Please log in on the main page to play.';
-                    document.getElementById('status').textContent = 'Login Required: Please log in to play the game.';
-                    
-                    clickButton.disabled = true;
-                    attackButton.disabled = true;
-                    updatePersonalScoreDisplay(0); 
+                    console.log("Signing in Anonymously...");
+                    await signInAnonymously(auth);
                 }
-                resolve(); // Resolve regardless of login status to continue script execution
             });
         });
 
@@ -103,21 +75,18 @@ async function initFirebase() {
 }
  
 // --- Firestore Paths and Initialization ---
-// Global state is public
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
  
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
-
-// Personal state is private, keyed by the authenticated userId
-// This path structure is necessary for the security rules
+const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
+ 
+// Document reference for ANY player's personal score (used for reading own score and targeting attacks)
 const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 
 const getPersonalDocRef = () => getPlayerDocRef(userId);
 
 
 async function initializeUserAndGlobalState() {
-    if (!db || !userId) return; // Must be logged in
-    
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
 
@@ -134,7 +103,7 @@ async function initializeUserAndGlobalState() {
     await fetchWithExponentialBackoff(async () => {
         const personalSnap = await getDoc(personalDocRef);
         if (!personalSnap.exists()) {
-            console.log("Initializing personal state for new user...");
+            console.log("Initializing personal state...");
             await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
             localPersonalClicks = 0;
         } else {
@@ -147,8 +116,6 @@ async function initializeUserAndGlobalState() {
 
 // --- Real-time Listeners and UI Updates ---
 function setupRealtimeListeners() {
-    if (!db || !userId) return; // Must be logged in
-
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
     
@@ -158,8 +125,10 @@ function setupRealtimeListeners() {
             const data = docSnap.data();
             const totalClicks = data.totalClicks || 0;
             updateGlobalScoreDisplay(totalClicks);
+            document.getElementById('status').textContent = 'Game is live!';
         } else {
             updateGlobalScoreDisplay(0);
+            document.getElementById('status').textContent = 'Waiting for global state initialization...';
         }
     }, (error) => {
         console.error("Error listening to global state:", error);
@@ -198,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function handleUserClick() {
     if (!userId || !db) {
-        document.getElementById('status').textContent = 'Login is required to click!';
+        document.getElementById('status').textContent = 'Initialization in progress...';
         return;
     }
     const clickAmount = 1;
@@ -210,34 +179,29 @@ async function handleUserClick() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
 
-    try {
-        // Use a batch or transaction for atomicity is ideal, but for simple increment, this sequence works.
-        // 1. Update Global State
-        await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
-            totalClicks: increment(clickAmount),
-            lastUpdate: new Date().toISOString()
-        }));
-
-        // 2. Update Personal State
-        // Use increment() here to prevent race conditions if the player clicks rapidly,
-        // rather than using the potentially stale 'localPersonalClicks' value.
-        await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
-            clicks: increment(clickAmount),
-            lastClicked: new Date().toISOString()
-        }));
-
-    } catch(e) {
+    // 1. Update Global State
+    await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
+        totalClicks: increment(clickAmount),
+        lastUpdate: new Date().toISOString()
+    })).catch(() => {
         // Revert local UI on failure
         localPersonalClicks -= clickAmount;
         updatePersonalScoreDisplay(localPersonalClicks);
-        document.getElementById('status').textContent = 'Click failed: Check console.';
-        console.error("Click operation failed:", e);
-    }
+        document.getElementById('status').textContent = 'Failed to update global score. Check console.';
+    });
+
+    // 2. Update Personal State
+    await fetchWithExponentialBackoff(() => updateDoc(personalDocRef, {
+        clicks: localPersonalClicks,
+        lastClicked: new Date().toISOString()
+    })).catch(() => {
+        document.getElementById('status').textContent = 'Failed to save personal score. Check console.';
+    });
 }
  
 async function handleUserAttack() {
     if (!userId || !db) {
-        document.getElementById('status').textContent = 'Login is required to attack!';
+        document.getElementById('status').textContent = 'Initialization in progress...';
         return;
     }
     
@@ -245,8 +209,7 @@ async function handleUserAttack() {
     const attackPower = 5; 
     
     if (!targetId || targetId === userId) {
-        // Replace alert() with a modal or status message
-        document.getElementById('status').textContent = 'Please enter a valid Target Player ID (and not your own!).';
+        alert("Please enter a valid Target Player ID (and not your own!).");
         return;
     }
 
@@ -267,12 +230,10 @@ async function handleUserAttack() {
             const targetData = targetSnap.data();
             const currentClicks = targetData.clicks || 0;
             
-            // Ensure score doesn't go below zero
             const newClicks = Math.max(0, currentClicks - attackPower);
             const clicksReduced = currentClicks - newClicks; 
             
             if (clicksReduced === 0) {
-                // Return gracefully without error if attack has no effect
                 document.getElementById('status').textContent = `${targetId} already has 0 clicks. Attack failed.`;
                 return; 
             }
@@ -284,7 +245,7 @@ async function handleUserAttack() {
                 lastAttackedTime: new Date().toISOString()
             });
 
-            // 2. Update the global score (reduce by the actual reduction amount)
+            // 2. Update the global score
             transaction.update(globalDocRef, {
                 totalClicks: increment(-clicksReduced),
                 lastUpdate: new Date().toISOString()
