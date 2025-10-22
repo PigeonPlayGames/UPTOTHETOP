@@ -2,15 +2,21 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// --- CONFIGURATION (Using Environment Variables) ---
+// --- CONFIGURATION ---
 // These global variables are provided by the canvas environment.
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'click-game-default';
-let firebaseConfig = {};
-try {
-    firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-} catch (e) {
-    console.error("Failed to parse firebase config:", e);
-}
+
+// FIX: Hardcode the firebaseConfig using details from your previous posts
+// This bypasses potential issues with the __firebase_config environment variable not being available.
+const firebaseConfig = {
+    apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
+    authDomain: "tiny-tribes-19ec8.firebaseapp.com",
+    projectId: "tiny-tribes-19ec8",
+    storageBucket: "tiny-tribes-19ec8.firebasestorage.app",
+    messagingSenderId: "746060276139",
+    appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
+    measurementId: "G-SFV5F5LG1V"
+};
 // --------------------
 
 let db, auth;
@@ -39,7 +45,8 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 // --- Firebase Setup & Auth ---
 async function initFirebase() {
     try {
-        if (!firebaseConfig.projectId) {
+        // Line 44 check simplified and adapted after hardcoding the config
+        if (!firebaseConfig.projectId) { 
             document.getElementById('status').textContent = "Error: Firebase configuration missing.";
             throw new Error("Firebase configuration object is empty.");
         }
