@@ -21,6 +21,9 @@ const FALLBACK_APP_ID = firebaseConfig.projectId;
 const appId = typeof __app_id !== 'undefined' ? __app_id : FALLBACK_APP_ID;
 // --------------------
 
+// NOTE: Since the game page HTML uses <script type="module">, we must use the modern modular SDK
+// The issue is likely due to the browser not persisting the Auth token correctly across pages/tabs.
+
 let db, auth;
 let userId = null;
 let localPersonalClicks = 0; 
@@ -54,12 +57,14 @@ async function initFirebase() {
 
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
-        auth = getAuth(app);
+        auth = getAuth(app); // Get Auth instance from the initialized app
 
         document.getElementById('status').textContent = 'Checking login status...';
 
         await new Promise(resolve => {
             // This listener checks if a user is already signed in (via the homepage).
+            // It relies on Firebase's session persistence (which should be LOCAL by default 
+            // and enabled on your homepage) to retrieve the user object.
             onAuthStateChanged(auth, async (user) => {
                 const clickButton = document.getElementById('clickButton');
                 const attackButton = document.getElementById('attackButton');
