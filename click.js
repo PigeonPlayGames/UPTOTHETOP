@@ -3,11 +3,7 @@ import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/
 import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- CONFIGURATION ---
-// These global variables are provided by the canvas environment.
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'click-game-default';
 
-// FIX: Hardcode the firebaseConfig using details from your previous posts
-// This bypasses potential issues with the __firebase_config environment variable not being available.
 const firebaseConfig = {
     apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
     authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -17,6 +13,12 @@ const firebaseConfig = {
     appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
     measurementId: "G-SFV5F5LG1V"
 };
+
+// FIX: Use the projectId as the fallback for appId to ensure path alignment
+const FALLBACK_APP_ID = firebaseConfig.projectId;
+
+// Use the environment variable __app_id if defined, otherwise use the projectId
+const appId = typeof __app_id !== 'undefined' ? __app_id : FALLBACK_APP_ID;
 // --------------------
 
 let db, auth;
@@ -45,7 +47,6 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 // --- Firebase Setup & Auth ---
 async function initFirebase() {
     try {
-        // Line 44 check simplified and adapted after hardcoding the config
         if (!firebaseConfig.projectId) { 
             document.getElementById('status').textContent = "Error: Firebase configuration missing.";
             throw new Error("Firebase configuration object is empty.");
