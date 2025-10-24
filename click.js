@@ -42,6 +42,10 @@ let db, auth;
 let userId = null;
 let localPersonalClicks = 0;
 
+// NEW: Global variables to store listener unsubscribe functions
+let unsubscribeGlobal = null;
+let unsubscribePersonal = null;
+
 setLogLevel('Debug');
 
 // --- DOM References ---
@@ -121,13 +125,27 @@ async function initFirebase() {
                 authDivider.classList.remove('hidden');
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
-                setupRealtimeListeners();
+                setupRealtimeListeners(); // Attach listeners
                 await initializeUserAndGlobalState();
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
 
             } else {
                 // USER IS LOGGED OUT
+                
+                // CRITICAL FIX: Unsubscribe the listeners immediately upon logout
+                if (unsubscribeGlobal) {
+                    unsubscribeGlobal();
+                    unsubscribeGlobal = null;
+                    console.log("Unsubscribed from Global Listener.");
+                }
+                if (unsubscribePersonal) {
+                    unsubscribePersonal();
+                    unsubscribePersonal = null;
+                    console.log("Unsubscribed from Personal Listener.");
+                }
+
+
                 userId = null;
                 document.getElementById('userIdDisplay').textContent = 'Signed Out';
                 authStatus.textContent = 'Please sign in or sign up to play.';
@@ -198,8 +216,8 @@ function setupRealtimeListeners() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
     
-    // Global Clicks Listener
-    onSnapshot(globalDocRef, (docSnap) => {
+    // Global Clicks Listener - Store the unsubscribe function
+    unsubscribeGlobal = onSnapshot(globalDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             const totalClicks = data.totalClicks || 0;
@@ -211,11 +229,11 @@ function setupRealtimeListeners() {
         }
     }, (error) => {
         console.error("Error listening to global state:", error);
-        gameStatus.textContent = `Error: ${error.message}`;
+        // Note: Do NOT set gameStatus here to avoid showing "Error" during normal sign-out process.
     });
 
-    // Personal Clicks Listener
-    onSnapshot(personalDocRef, (docSnap) => {
+    // Personal Clicks Listener - Store the unsubscribe function
+    unsubscribePersonal = onSnapshot(personalDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             const clicks = data.clicks || 0;
@@ -224,6 +242,7 @@ function setupRealtimeListeners() {
         }
     }, (error) => {
         console.error("Error listening to personal state:", error);
+        // Note: Do NOT set gameStatus here to avoid showing "Error" during normal sign-out process.
     });
 }
 
