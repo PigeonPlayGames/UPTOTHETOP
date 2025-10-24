@@ -23,8 +23,19 @@ import {
 // --- MANDATORY CANVAS CONFIGURATION ---
 // These variables are provided by the hosting environment.
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+// TEMPORARY FIX: Hardcoding Firebase Config to resolve "missing or invalid" error
+// The application was failing because __firebase_config was not being read properly.
+const firebaseConfig = {
+    apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
+    authDomain: "tiny-tribes-19ec8.firebaseapp.com",
+    projectId: "tiny-tribes-19ec8",
+    storageBucket: "tiny-tribes-19ec8.firebasestorage.app",
+    messagingSenderId: "746060276139",
+    appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
+    measurementId: "G-SFV5F5LG1V"
+};
 // ------------------------------------
 
 let db, auth;
@@ -71,6 +82,7 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 async function initFirebase() {
     try {
         if (!firebaseConfig.projectId) {
+            // This check is now redundant but kept for robustness.
             authStatus.textContent = "Firebase configuration is missing or invalid. Cannot initialize.";
             return;
         }
