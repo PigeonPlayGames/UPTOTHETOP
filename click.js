@@ -18,8 +18,8 @@ import {
     collection, 
     setLogLevel, 
     runTransaction,
-    getDocs, // NEW: For fetching multiple documents
-    query, // NEW: For creating queries
+    getDocs, 
+    query, 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
@@ -47,7 +47,7 @@ let localPersonalClicks = 0;
 // Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
-let unsubscribeLeaderboard = null; // NEW: Leaderboard listener
+let unsubscribeLeaderboard = null; 
 
 setLogLevel('Debug');
 
@@ -61,7 +61,7 @@ const authError = document.getElementById('authError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const gameStatus = document.getElementById('status');
-const leaderboardList = document.getElementById('leaderboardList'); // NEW
+const leaderboardList = document.getElementById('leaderboardList'); 
 
 // --- Utility Functions ---
 function displayAuthError(message, duration = 3000) {
@@ -146,11 +146,8 @@ async function initFirebase() {
                     unsubscribePersonal = null;
                     console.log("Unsubscribed from Personal Listener.");
                 }
-                if (unsubscribeLeaderboard) { // NEW: Unsubscribe leaderboard
-                    unsubscribeLeaderboard();
-                    unsubscribeLeaderboard = null;
-                    console.log("Unsubscribed from Leaderboard Listener.");
-                }
+                // Removed unsubscribeLeaderboard since it's now a fetch function
+                
 
 
                 userId = null;
@@ -183,13 +180,14 @@ const getGlobalDocRef = () => doc(db, globalGameStatePath);
 const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 const getPersonalDocRef = () => getPlayerDocRef(userId);
 
-// NEW: Collection group path for all user score documents
-const allUserScoresCollectionGroup = `artifacts/${appId}/users`;
+// Removed allUserScoresCollectionGroup - using the new collection path below
+const allScoresCollectionPath = `artifacts/${appId}/leaderboard/scores/list`; // NEW: A public collection to store all scores for easy query
 
 
 async function initializeUserAndGlobalState() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
+    const allScoresDocRef = doc(db, allScoresCollectionPath, userId); // Use user ID as the document ID
 
     // 1. Initialize Global State
     await fetchWithExponentialBackoff(async () => {
@@ -206,6 +204,7 @@ async function initializeUserAndGlobalState() {
         if (!personalSnap.exists()) {
             console.log("Initializing personal state...");
             // Ensure score document exists for the newly authenticated user
+            // NOTE: We don't save email here, we update it right after sign up.
             await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
             localPersonalClicks = 0;
         } else {
@@ -214,6 +213,23 @@ async function initializeUserAndGlobalState() {
             updatePersonalScoreDisplay(localPersonalClicks);
         }
     });
+    
+    // 3. Initialize/Update Public Score Index (For Leaderboard Querying)
+    // We update this public score index whenever the user signs in to ensure it exists
+    await fetchWithExponentialBackoff(async () => {
+        const user = auth.currentUser;
+        if (user && user.email) {
+             await setDoc(allScoresDocRef, { 
+                id: userId,
+                clicks: localPersonalClicks,
+                email: user.email, 
+                lastUpdated: new Date().toISOString() 
+             }, { merge: true });
+        }
+    });
+    
+    // Call the new leaderboard update here
+    updateLeaderboard();
 }
 
 // --- Leaderboard Logic ---
@@ -226,74 +242,32 @@ function handleLeaderboardAttack(event) {
     }
 }
 
-// NEW: Function to set up the leaderboard listener
-function setupLeaderboardListener() {
-    if (!db || !userId) return;
+// NEW: Function to fetch, sort, and display the leaderboard
+async function updateLeaderboard() {
+    if (!db || !userId) {
+        leaderboardList.innerHTML = `<p class="text-center text-gray-500 p-4">Sign in to see the leaderboard.</p>`;
+        return;
+    }
 
-    // We will query the 'data' document across all user collections.
-    // NOTE: Firestore requires index creation for collection group queries. 
-    // Since we cannot rely on a pre-existing index for sorting, we fetch all documents
-    // from the user's score documents, and sort them client-side.
+    const leaderboardCollectionRef = collection(db, allScoresCollectionPath);
     
-    // Path for all 'data' documents across all user score collections
-    const scoresCollection = collection(db, allUserScoresCollectionGroup);
-
-    // Get all user score collections
-    getDocs(scoresCollection).then(userDocs => {
-        let allScores = [];
-
-        // Iterate through each user's collection reference
-        userDocs.forEach(userDoc => {
-            const userRef = doc(db, `${userDoc.ref.path}/user_scores/data`);
-            
-            // Set up a snapshot listener for each user's score document
-            // This is efficient for a small number of top players (e.g., top 10)
-            const unsub = onSnapshot(userRef, (scoreSnap) => {
-                if (scoreSnap.exists()) {
-                    const data = scoreSnap.data();
-                    const playerId = userDoc.id;
-                    const clicks = data.clicks || 0;
-                    
-                    // Update or insert the player into the local scores array
-                    const existingIndex = allScores.findIndex(p => p.id === playerId);
-                    if (existingIndex > -1) {
-                        allScores[existingIndex].clicks = clicks;
-                    } else {
-                        allScores.push({ 
-                            id: playerId, 
-                            clicks: clicks, 
-                            email: scoreSnap.data().email || playerId.substring(0, 6) 
-                        });
-                    }
-                    
-                    // Sort and re-render the top 10 players
-                    allScores.sort((a, b) => b.clicks - a.clicks);
-                    renderLeaderboard(allScores.slice(0, 10));
-                }
-            }, (error) => {
-                // Ignore permission errors during sign-out, but log others
-                if (error.code !== 'permission-denied') {
-                    console.error(`Leaderboard listener error for ${userDoc.id}:`, error);
-                }
-            });
-
-            // Store the individual unsubscribe function (optional for complexity, but good practice)
-            // We use a simpler strategy here to prevent excessive listener management overhead,
-            // relying on the main onAuthStateChanged logic to manage termination.
-        });
+    try {
+        // Fetch all documents from the public scores collection
+        const querySnapshot = await fetchWithExponentialBackoff(() => getDocs(leaderboardCollectionRef));
         
-        // This is a placeholder for the main unsubscribe logic for simplicity.
-        // In a complex app, you'd manage the list of individual listener functions.
-        unsubscribeLeaderboard = () => {
-             // In a true implementation, this would iterate and call all 'unsub' functions
-             // For this simplified example, we rely on the security rules blocking after sign-out.
-        };
+        let allScores = [];
+        querySnapshot.forEach(doc => {
+            allScores.push(doc.data());
+        });
 
-    }).catch(error => {
-        console.error("Error fetching user collections for leaderboard:", error);
+        // Sort client-side for the top 10
+        allScores.sort((a, b) => b.clicks - a.clicks);
+        renderLeaderboard(allScores.slice(0, 10));
+
+    } catch (error) {
+        console.error("Error fetching leaderboard scores:", error);
         leaderboardList.innerHTML = `<p class="text-center text-red-500 p-4">Error loading leaderboard.</p>`;
-    });
-
+    }
 }
 
 // NEW: Function to render the top players
@@ -364,13 +338,15 @@ function setupRealtimeListeners() {
             const clicks = data.clicks || 0;
             localPersonalClicks = clicks; 
             updatePersonalScoreDisplay(clicks);
+            
+            // NEW: Trigger leaderboard update when personal score changes
+            updateLeaderboard(); 
         }
     }, (error) => {
         console.error("Error listening to personal state:", error);
     });
     
-    // NEW: Setup the leaderboard listener
-    setupLeaderboardListener();
+    // The leaderboard listener is now handled by updateLeaderboard()
 }
 
 function updateGlobalScoreDisplay(score) {
@@ -381,7 +357,7 @@ function updatePersonalScoreDisplay(score) {
     document.getElementById('personalScore').textContent = score.toLocaleString();
 }
 
-// --- Authentication Handlers (omitted for brevity, unchanged) ---
+// --- Authentication Handlers ---
 function getCredentials() {
     const email = emailInput.value.trim();
     const password = passwordInput.value.trim();
@@ -406,9 +382,21 @@ async function handleSignUp() {
 
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, creds.email, creds.password);
-        // Add email to the user's score document on sign-up for easier display
-        const personalDocRef = getPlayerDocRef(userCredential.user.uid);
+        const userUid = userCredential.user.uid;
+        
+        // 1. Update Personal Score Document with email
+        const personalDocRef = getPlayerDocRef(userUid);
         await setDoc(personalDocRef, { email: creds.email }, { merge: true });
+        
+        // 2. Initialize Public Leaderboard Index Entry
+        const allScoresDocRef = doc(db, allScoresCollectionPath, userUid);
+        await setDoc(allScoresDocRef, { 
+            id: userUid, 
+            clicks: 0, 
+            email: creds.email, 
+            lastUpdated: new Date().toISOString() 
+        }, { merge: true });
+
     } catch (error) {
         console.error("Sign Up Error:", error.code, error.message);
         if (error.code === 'auth/email-already-in-use') {
@@ -434,6 +422,7 @@ async function handleSignIn() {
 
     try {
         await signInWithEmailAndPassword(auth, creds.email, creds.password);
+        // Initialization logic in onAuthStateChanged will update the public index
     } catch (error) {
         console.error("Sign In Error:", error.code, error.message);
         if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
@@ -469,8 +458,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const clickButton = document.getElementById('clickButton');
     clickButton.addEventListener('click', handleUserClick);
     
-    // NOTE: Removed document.getElementById('attackButton').addEventListener('click', handleUserAttack);
-    // Attack handling is now done via the leaderboard buttons
 });
 
 async function handleUserClick() {
@@ -486,6 +473,7 @@ async function handleUserClick() {
 
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
+    const allScoresDocRef = doc(db, allScoresCollectionPath, userId); // Public score document
 
     // 1. Update Global State
     await fetchWithExponentialBackoff(() => updateDoc(globalDocRef, {
@@ -505,6 +493,16 @@ async function handleUserClick() {
     })).catch(() => {
         gameStatus.textContent = 'Failed to save personal score. Check console.';
     });
+
+    // 3. Update Public Score Index
+    await fetchWithExponentialBackoff(() => updateDoc(allScoresDocRef, {
+        clicks: localPersonalClicks,
+        lastUpdated: new Date().toISOString()
+    })).catch((error) => {
+        console.error("Failed to update public score index:", error);
+    });
+
+    // Leaderboard update is triggered by the onSnapshot listener for personal score
 }
  
 // UPDATED: Now takes targetId directly
@@ -525,13 +523,15 @@ async function handleUserAttack(targetId) {
     
     const targetDocRef = getPlayerDocRef(targetId);
     const globalDocRef = getGlobalDocRef();
+    const targetPublicDocRef = doc(db, allScoresCollectionPath, targetId); // Target Public Score Document
 
     try {
         // Use a Firestore Transaction for Atomic Attack
         await runTransaction(db, async (transaction) => {
             const targetSnap = await transaction.get(targetDocRef);
+            const targetPublicSnap = await transaction.get(targetPublicDocRef);
 
-            if (!targetSnap.exists()) {
+            if (!targetSnap.exists() || !targetPublicSnap.exists()) {
                 throw new Error("Target player not found or document structure is incorrect.");
             }
 
@@ -546,14 +546,20 @@ async function handleUserAttack(targetId) {
                 return; 
             }
             
-            // 1. Update the target's score
+            // 1. Update the target's personal score (private collection)
             transaction.update(targetDocRef, {
                 clicks: newClicks,
                 lastAttackedBy: userId,
                 lastAttackedTime: new Date().toISOString()
             });
+            
+            // 2. Update the target's public score (leaderboard index)
+            transaction.update(targetPublicDocRef, {
+                 clicks: newClicks,
+                 lastUpdated: new Date().toISOString()
+            });
 
-            // 2. Update the global score
+            // 3. Update the global score
             transaction.update(globalDocRef, {
                 totalClicks: increment(-clicksReduced),
                 lastUpdate: new Date().toISOString()
@@ -561,6 +567,9 @@ async function handleUserAttack(targetId) {
 
             gameStatus.textContent = `⚔️ Successful attack! Reduced ${targetId.substring(0, 6)}'s score by ${clicksReduced} clicks.`;
         });
+        
+        // Trigger a leaderboard refresh after the transaction completes
+        updateLeaderboard();
 
     } catch (e) {
         console.error("Attack transaction failed:", e);
