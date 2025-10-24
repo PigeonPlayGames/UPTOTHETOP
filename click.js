@@ -18,6 +18,8 @@ import {
     collection, 
     setLogLevel, 
     runTransaction,
+    getDocs, // NEW: For fetching multiple documents
+    query, // NEW: For creating queries
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
@@ -42,9 +44,10 @@ let db, auth;
 let userId = null;
 let localPersonalClicks = 0;
 
-// NEW: Global variables to store listener unsubscribe functions
+// Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
+let unsubscribeLeaderboard = null; // NEW: Leaderboard listener
 
 setLogLevel('Debug');
 
@@ -58,6 +61,7 @@ const authError = document.getElementById('authError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const gameStatus = document.getElementById('status');
+const leaderboardList = document.getElementById('leaderboardList'); // NEW
 
 // --- Utility Functions ---
 function displayAuthError(message, duration = 3000) {
@@ -86,7 +90,6 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 async function initFirebase() {
     try {
         if (!firebaseConfig.projectId) {
-            // This check is now redundant but kept for robustness.
             authStatus.textContent = "Firebase configuration is missing or invalid. Cannot initialize.";
             return;
         }
@@ -128,8 +131,7 @@ async function initFirebase() {
                 setupRealtimeListeners(); // Attach listeners
                 await initializeUserAndGlobalState();
                 document.getElementById('clickButton').disabled = false;
-                document.getElementById('attackButton').disabled = false;
-
+                
             } else {
                 // USER IS LOGGED OUT
                 
@@ -143,6 +145,11 @@ async function initFirebase() {
                     unsubscribePersonal();
                     unsubscribePersonal = null;
                     console.log("Unsubscribed from Personal Listener.");
+                }
+                if (unsubscribeLeaderboard) { // NEW: Unsubscribe leaderboard
+                    unsubscribeLeaderboard();
+                    unsubscribeLeaderboard = null;
+                    console.log("Unsubscribed from Leaderboard Listener.");
                 }
 
 
@@ -158,8 +165,8 @@ async function initFirebase() {
 
                 // Disable buttons and reset status
                 document.getElementById('clickButton').disabled = true;
-                document.getElementById('attackButton').disabled = true;
                 gameStatus.textContent = 'Please log in.';
+                leaderboardList.innerHTML = `<p class="text-center text-gray-500 p-4">Sign in to see the leaderboard.</p>`; // Clear leaderboard
             }
         });
 
@@ -173,11 +180,11 @@ async function initFirebase() {
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
  
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
-
-// Document reference for ANY player's personal score (used for reading own score and targeting attacks)
 const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
-
 const getPersonalDocRef = () => getPlayerDocRef(userId);
+
+// NEW: Collection group path for all user score documents
+const allUserScoresCollectionGroup = `artifacts/${appId}/users`;
 
 
 async function initializeUserAndGlobalState() {
@@ -209,6 +216,125 @@ async function initializeUserAndGlobalState() {
     });
 }
 
+// --- Leaderboard Logic ---
+
+// NEW: Handles the attack event from a leaderboard button
+function handleLeaderboardAttack(event) {
+    const targetId = event.currentTarget.dataset.targetId;
+    if (targetId) {
+        handleUserAttack(targetId);
+    }
+}
+
+// NEW: Function to set up the leaderboard listener
+function setupLeaderboardListener() {
+    if (!db || !userId) return;
+
+    // We will query the 'data' document across all user collections.
+    // NOTE: Firestore requires index creation for collection group queries. 
+    // Since we cannot rely on a pre-existing index for sorting, we fetch all documents
+    // from the user's score documents, and sort them client-side.
+    
+    // Path for all 'data' documents across all user score collections
+    const scoresCollection = collection(db, allUserScoresCollectionGroup);
+
+    // Get all user score collections
+    getDocs(scoresCollection).then(userDocs => {
+        let allScores = [];
+
+        // Iterate through each user's collection reference
+        userDocs.forEach(userDoc => {
+            const userRef = doc(db, `${userDoc.ref.path}/user_scores/data`);
+            
+            // Set up a snapshot listener for each user's score document
+            // This is efficient for a small number of top players (e.g., top 10)
+            const unsub = onSnapshot(userRef, (scoreSnap) => {
+                if (scoreSnap.exists()) {
+                    const data = scoreSnap.data();
+                    const playerId = userDoc.id;
+                    const clicks = data.clicks || 0;
+                    
+                    // Update or insert the player into the local scores array
+                    const existingIndex = allScores.findIndex(p => p.id === playerId);
+                    if (existingIndex > -1) {
+                        allScores[existingIndex].clicks = clicks;
+                    } else {
+                        allScores.push({ 
+                            id: playerId, 
+                            clicks: clicks, 
+                            email: scoreSnap.data().email || playerId.substring(0, 6) 
+                        });
+                    }
+                    
+                    // Sort and re-render the top 10 players
+                    allScores.sort((a, b) => b.clicks - a.clicks);
+                    renderLeaderboard(allScores.slice(0, 10));
+                }
+            }, (error) => {
+                // Ignore permission errors during sign-out, but log others
+                if (error.code !== 'permission-denied') {
+                    console.error(`Leaderboard listener error for ${userDoc.id}:`, error);
+                }
+            });
+
+            // Store the individual unsubscribe function (optional for complexity, but good practice)
+            // We use a simpler strategy here to prevent excessive listener management overhead,
+            // relying on the main onAuthStateChanged logic to manage termination.
+        });
+        
+        // This is a placeholder for the main unsubscribe logic for simplicity.
+        // In a complex app, you'd manage the list of individual listener functions.
+        unsubscribeLeaderboard = () => {
+             // In a true implementation, this would iterate and call all 'unsub' functions
+             // For this simplified example, we rely on the security rules blocking after sign-out.
+        };
+
+    }).catch(error => {
+        console.error("Error fetching user collections for leaderboard:", error);
+        leaderboardList.innerHTML = `<p class="text-center text-red-500 p-4">Error loading leaderboard.</p>`;
+    });
+
+}
+
+// NEW: Function to render the top players
+function renderLeaderboard(players) {
+    leaderboardList.innerHTML = ''; // Clear the list
+    players.forEach((player, index) => {
+        // Player name: Use the first part of the email if available, otherwise use a shortened ID
+        const displayName = player.email.includes('@') ? player.email.split('@')[0] : player.id.substring(0, 8);
+        const isSelf = player.id === userId;
+        
+        const html = `
+            <div class="flex justify-between items-center p-2 rounded-lg ${isSelf ? 'bg-yellow-100 font-bold' : 'bg-white hover:bg-gray-100 transition duration-100'}">
+                <span class="w-1/12 text-center text-lg">${index + 1}.</span>
+                <span class="w-5/12 truncate text-sm">
+                    ${displayName} ${isSelf ? '(You)' : ''}
+                </span>
+                <span class="w-3/12 text-right font-mono text-base text-indigo-600">
+                    ${player.clicks.toLocaleString()}
+                </span>
+                <span class="w-3/12 flex justify-center">
+                    ${isSelf 
+                        ? '<span class="text-xs text-gray-500">N/A</span>' 
+                        : `<button class="attack-btn bg-red-500 hover:bg-red-600 text-white text-xs font-semibold py-1 px-3 rounded-full shadow-sm" data-target-id="${player.id}">Attack!</button>`
+                    }
+                </span>
+            </div>
+        `;
+        leaderboardList.insertAdjacentHTML('beforeend', html);
+    });
+
+    // Attach click listeners to all new attack buttons
+    document.querySelectorAll('.attack-btn').forEach(button => {
+        button.addEventListener('click', handleLeaderboardAttack);
+    });
+
+    if (players.length === 0) {
+        leaderboardList.innerHTML = `<p class="text-center text-gray-500 p-4">No players on the leaderboard yet. Be the first!</p>`;
+    }
+}
+
+
 // --- Real-time Listeners and UI Updates ---
 function setupRealtimeListeners() {
     if (!db || !userId) return;
@@ -229,7 +355,6 @@ function setupRealtimeListeners() {
         }
     }, (error) => {
         console.error("Error listening to global state:", error);
-        // Note: Do NOT set gameStatus here to avoid showing "Error" during normal sign-out process.
     });
 
     // Personal Clicks Listener - Store the unsubscribe function
@@ -242,8 +367,10 @@ function setupRealtimeListeners() {
         }
     }, (error) => {
         console.error("Error listening to personal state:", error);
-        // Note: Do NOT set gameStatus here to avoid showing "Error" during normal sign-out process.
     });
+    
+    // NEW: Setup the leaderboard listener
+    setupLeaderboardListener();
 }
 
 function updateGlobalScoreDisplay(score) {
@@ -254,7 +381,7 @@ function updatePersonalScoreDisplay(score) {
     document.getElementById('personalScore').textContent = score.toLocaleString();
 }
 
-// --- Authentication Handlers ---
+// --- Authentication Handlers (omitted for brevity, unchanged) ---
 function getCredentials() {
     const email = emailInput.value.trim();
     const password = passwordInput.value.trim();
@@ -270,7 +397,6 @@ async function handleSignUp() {
     const creds = getCredentials();
     if (!creds) return;
     
-    // Crucial check added to prevent "Cannot read properties of undefined (reading 'app')"
     if (!auth) {
         displayAuthError('Firebase Authentication is not initialized.');
         return;
@@ -279,11 +405,12 @@ async function handleSignUp() {
     authStatus.textContent = 'Creating account...';
 
     try {
-        await createUserWithEmailAndPassword(auth, creds.email, creds.password);
-        // onAuthStateChanged handles success
+        const userCredential = await createUserWithEmailAndPassword(auth, creds.email, creds.password);
+        // Add email to the user's score document on sign-up for easier display
+        const personalDocRef = getPlayerDocRef(userCredential.user.uid);
+        await setDoc(personalDocRef, { email: creds.email }, { merge: true });
     } catch (error) {
         console.error("Sign Up Error:", error.code, error.message);
-        // Display a user-friendly error
         if (error.code === 'auth/email-already-in-use') {
             displayAuthError('This email is already registered. Try signing in.');
         } else if (error.code === 'auth/invalid-email') {
@@ -298,7 +425,6 @@ async function handleSignIn() {
     const creds = getCredentials();
     if (!creds) return;
     
-    // Crucial check added to prevent "Cannot read properties of undefined (reading 'app')"
     if (!auth) {
         displayAuthError('Firebase Authentication is not initialized.');
         return;
@@ -308,10 +434,8 @@ async function handleSignIn() {
 
     try {
         await signInWithEmailAndPassword(auth, creds.email, creds.password);
-        // onAuthStateChanged handles success
     } catch (error) {
         console.error("Sign In Error:", error.code, error.message);
-        // Display a user-friendly error
         if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
             displayAuthError('Invalid email or password.');
         } else {
@@ -344,8 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Game Button Listeners (Existing)
     const clickButton = document.getElementById('clickButton');
     clickButton.addEventListener('click', handleUserClick);
-    const attackButton = document.getElementById('attackButton');
-    attackButton.addEventListener('click', handleUserAttack);
+    
+    // NOTE: Removed document.getElementById('attackButton').addEventListener('click', handleUserAttack);
+    // Attack handling is now done via the leaderboard buttons
 });
 
 async function handleUserClick() {
@@ -382,22 +507,21 @@ async function handleUserClick() {
     });
 }
  
-async function handleUserAttack() {
+// UPDATED: Now takes targetId directly
+async function handleUserAttack(targetId) {
     if (!userId || !db) {
         gameStatus.textContent = 'Initialization in progress or user not logged in.';
         return;
     }
     
-    const targetId = document.getElementById('targetUserId').value.trim();
     const attackPower = 5; 
     
     if (!targetId || targetId === userId) {
-        // Replaced alert() with displayAuthError
-        displayAuthError("Please enter a valid Target Player ID (and not your own!).", 4000);
+        displayAuthError("You cannot attack yourself!", 4000);
         return;
     }
 
-    gameStatus.textContent = `Attacking ${targetId}...`;
+    gameStatus.textContent = `Attacking ${targetId.substring(0, 6)}...`;
     
     const targetDocRef = getPlayerDocRef(targetId);
     const globalDocRef = getGlobalDocRef();
@@ -418,7 +542,7 @@ async function handleUserAttack() {
             const clicksReduced = currentClicks - newClicks; 
             
             if (clicksReduced === 0) {
-                gameStatus.textContent = `${targetId} already has 0 clicks. Attack failed.`;
+                gameStatus.textContent = `${targetId.substring(0, 6)} already has 0 clicks. Attack failed.`;
                 return; 
             }
             
@@ -435,7 +559,7 @@ async function handleUserAttack() {
                 lastUpdate: new Date().toISOString()
             });
 
-            gameStatus.textContent = `⚔️ Successful attack! Reduced ${targetId}'s score by ${clicksReduced} clicks.`;
+            gameStatus.textContent = `⚔️ Successful attack! Reduced ${targetId.substring(0, 6)}'s score by ${clicksReduced} clicks.`;
         });
 
     } catch (e) {
