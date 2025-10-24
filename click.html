@@ -11,6 +11,7 @@
     
     <link rel="stylesheet" href="click.css">
 
+    <!-- Tailwind Config for Custom Colors/Focus Rings -->
     <script>
         tailwind.config = {
           theme: {
@@ -26,8 +27,10 @@
 <body>
     <div class="container">
         
+        <!-- GLOBAL STATUS -->
         <p id="authStatus" class="text-center text-sm mb-4 text-gray-700">Checking authentication state...</p>
 
+        <!-- LOGIN/SIGNUP UI (Visible when logged out) -->
         <div id="authUi">
             <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Sign In or Sign Up</h2>
             <input type="email" id="email" placeholder="Email"
@@ -45,6 +48,9 @@
             </div>
             <p id="authError" class="text-center text-sm mt-3 text-red-500"></p>
         </div>
+        <!-- END LOGIN/SIGNUP UI -->
+
+        <!-- LOGOUT BUTTON (Visible when logged in) -->
         <div id="logoutDiv" class="text-center my-4 hidden">
             <button id="signOutButton" class="text-xs text-gray-500 hover:text-red-500 transition duration-150">
                 Log Out
@@ -53,6 +59,7 @@
 
         <hr id="authDivider" class="my-6 hidden">
 
+        <!-- GAME CONTENT (Hidden when logged out, shown when logged in) -->
         <div id="gameContent" class="hidden">
             <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Multiplayer Click Challenge</h1>
             <p id="status" class="text-center text-sm mb-4 text-red-500">Initializing Firebase...</p>
@@ -81,28 +88,43 @@
 
             <hr class="my-6">
             
-            <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">⚔️ Attack Another Player ⚔️</h2>
+            <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">🏆 Leaderboard 🏆</h2>
             
-            <div class="flex flex-col sm:flex-row gap-3 items-center justify-center">
-                <input type="text" id="targetUserId" placeholder="Enter Target Player ID"
-                        class="flex-grow w-full sm:w-auto p-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm">
-                
-                <button id="attackButton"
-                        class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg text-lg shadow-md transition duration-150 ease-in-out transform focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50"
-                        disabled>
-                    Attack (-5 Clicks)
-                </button>
+            <!-- LEADERBOARD CONTAINER -->
+            <div id="leaderboard" class="bg-gray-50 p-4 rounded-xl shadow-inner max-h-96 overflow-y-auto">
+                <div class="flex justify-between font-semibold border-b pb-2 mb-2 text-gray-700">
+                    <span class="w-1/12 text-center">#</span>
+                    <span class="w-5/12">Player</span>
+                    <span class="w-3/12 text-right">Clicks</span>
+                    <span class="w-3/12 text-center">Action</span>
+                </div>
+                <div id="leaderboardList" class="space-y-2">
+                    <!-- Leaderboard entries will be inserted here by JavaScript -->
+                    <p class="text-center text-gray-500 p-4">Loading top players...</p>
+                </div>
             </div>
-            <p class="text-center text-xs mt-2 text-gray-500">You must use another player's ID from the bottom of their screen.</p>
-            
+
+            <!-- Removed the manual attack section since the action is now on the leaderboard -->
+            <input type="hidden" id="targetUserId">
+            <button type="hidden" id="attackButton"></button>
+
             <div class="mt-8 pt-4 border-t border-gray-200 text-center">
                 <h3 class="text-sm font-semibold text-gray-600 mb-2">Your Unique Player ID:</h3>
                 <code id="userIdDisplay" class="text-xs bg-gray-100 p-2 rounded-lg text-gray-700 break-all">Signed Out</code>
-                <p class="text-xs mt-2 text-gray-500">Share this ID with a friend if you need to identify yourself in the public data!</p>
+                <p class="text-xs mt-2 text-gray-500">This is how other players identify you!</p>
             </div>
         </div>
-        </div>
+        <!-- END GAME CONTENT -->
+    </div>
 
     <script type="module" src="click.js"></script>
 </body>
 </html>
+
+
+## 2. JavaScript: Fetch and Display Leaderboard
+
+I'm updating `click.js` to add a new function, `setupLeaderboardListener`, which fetches all user scores (limited to 10 for performance), sorts them, and dynamically updates the HTML list. I've also simplified `handleUserAttack` to accept the `targetId` directly from the button click event listener.
+
+
+http://googleusercontent.com/immersive_entry_chip/0
