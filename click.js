@@ -1,29 +1,57 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, updateDoc, increment, setDoc, getDoc, collection, setLogLevel, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { 
+    getAuth, 
+    onAuthStateChanged, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    signInWithCustomToken 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+    getFirestore, 
+    doc, 
+    onSnapshot, 
+    updateDoc, 
+    increment, 
+    setDoc, 
+    getDoc, 
+    collection, 
+    setLogLevel, 
+    runTransaction,
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// --- CONFIGURATION ---
-const appId = 'tiny-tribes-19ec8'; 
-const initialAuthToken = null; 
-
-const firebaseConfig = {
-    apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
-    authDomain: "tiny-tribes-19ec8.firebaseapp.com",
-    projectId: "tiny-tribes-19ec8",
-    storageBucket: "tiny-tribes-19ec8.firebasestorage.app",
-    messagingSenderId: "746060276139",
-    appId: "1:746060276139:web:46f2b6cd2d7c678f1032ee",
-    measurementId: "G-SFV5F5LG1V"
-};
-// --------------------
+// --- MANDATORY CANVAS CONFIGURATION ---
+// These variables are provided by the hosting environment.
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+// ------------------------------------
 
 let db, auth;
 let userId = null;
-let localPersonalClicks = 0; 
+let localPersonalClicks = 0;
 
 setLogLevel('Debug');
 
+// --- DOM References ---
+const authUi = document.getElementById('authUi');
+const gameContent = document.getElementById('gameContent');
+const logoutDiv = document.getElementById('logoutDiv');
+const authDivider = document.getElementById('authDivider');
+const authStatus = document.getElementById('authStatus'); 
+const authError = document.getElementById('authError'); 
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
+const gameStatus = document.getElementById('status');
+
 // --- Utility Functions ---
+function displayAuthError(message, duration = 3000) {
+    authError.textContent = message;
+    setTimeout(() => {
+        authError.textContent = '';
+    }, duration);
+}
+
 async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -42,34 +70,71 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 // --- Firebase Setup & Auth ---
 async function initFirebase() {
     try {
-        if (!firebaseConfig.projectId || firebaseConfig.projectId === "YOUR_PROJECT_ID") {
-            throw new Error("Configuration is still using placeholder values. Please replace them with your actual Firebase config.");
+        if (!firebaseConfig.projectId) {
+            authStatus.textContent = "Firebase configuration is missing or invalid. Cannot initialize.";
+            return;
         }
 
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
+        
+        // Use custom token if provided (Canvas environment), otherwise rely on user interaction
+        if (initialAuthToken) {
+            try {
+                authStatus.textContent = "Authenticating secure session...";
+                await signInWithCustomToken(auth, initialAuthToken);
+            } catch (error) {
+                console.warn("Custom token sign-in failed, proceeding to manual authentication.", error);
+                authStatus.textContent = "Secure session failed. Please sign in or sign up below.";
+            }
+        } else {
+             // Fallback for environments without custom token
+             authStatus.textContent = 'Please sign in or sign up to play.';
+        }
 
-        await new Promise(resolve => {
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    document.getElementById('userIdDisplay').textContent = userId;
-                    console.log("Firebase Auth Ready. User ID:", userId);
-                    setupRealtimeListeners();
-                    await initializeUserAndGlobalState();
-                    document.getElementById('clickButton').disabled = false;
-                    document.getElementById('attackButton').disabled = false;
-                    resolve();
-                } else {
-                    console.log("Signing in Anonymously...");
-                    await signInAnonymously(auth);
-                }
-            });
+
+        // The primary listener for authentication state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // USER IS LOGGED IN
+                userId = user.uid;
+                document.getElementById('userIdDisplay').textContent = userId;
+                authStatus.textContent = `Welcome, Player ${user.email ? user.email.split('@')[0] : userId.substring(0, 6)}!`;
+
+                // Show game, hide auth UI
+                authUi.classList.add('hidden');
+                gameContent.classList.remove('hidden');
+                logoutDiv.classList.remove('hidden');
+                authDivider.classList.remove('hidden');
+                
+                console.log("Firebase Auth Ready. User ID:", userId);
+                setupRealtimeListeners();
+                await initializeUserAndGlobalState();
+                document.getElementById('clickButton').disabled = false;
+                document.getElementById('attackButton').disabled = false;
+
+            } else {
+                // USER IS LOGGED OUT
+                userId = null;
+                document.getElementById('userIdDisplay').textContent = 'Signed Out';
+                authStatus.textContent = 'Please sign in or sign up to play.';
+
+                // Show auth UI, hide game
+                authUi.classList.remove('hidden');
+                gameContent.classList.add('hidden');
+                logoutDiv.classList.add('hidden');
+                authDivider.classList.add('hidden');
+
+                // Disable buttons and reset status
+                document.getElementById('clickButton').disabled = true;
+                document.getElementById('attackButton').disabled = true;
+                gameStatus.textContent = 'Please log in.';
+            }
         });
 
     } catch (error) {
-        document.getElementById('status').textContent = `Error initializing Firebase: ${error.message}`;
+        gameStatus.textContent = `Error initializing Firebase: ${error.message}`;
         console.error("Firebase Init Error:", error);
     }
 }
@@ -78,8 +143,7 @@ async function initFirebase() {
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
  
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
-const getPersonalCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/user_scores`);
- 
+
 // Document reference for ANY player's personal score (used for reading own score and targeting attacks)
 const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
 
@@ -104,6 +168,7 @@ async function initializeUserAndGlobalState() {
         const personalSnap = await getDoc(personalDocRef);
         if (!personalSnap.exists()) {
             console.log("Initializing personal state...");
+            // Ensure score document exists for the newly authenticated user
             await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
             localPersonalClicks = 0;
         } else {
@@ -116,6 +181,8 @@ async function initializeUserAndGlobalState() {
 
 // --- Real-time Listeners and UI Updates ---
 function setupRealtimeListeners() {
+    if (!db || !userId) return;
+
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
     
@@ -125,14 +192,14 @@ function setupRealtimeListeners() {
             const data = docSnap.data();
             const totalClicks = data.totalClicks || 0;
             updateGlobalScoreDisplay(totalClicks);
-            document.getElementById('status').textContent = 'Game is live!';
+            gameStatus.textContent = 'Game is live!';
         } else {
             updateGlobalScoreDisplay(0);
-            document.getElementById('status').textContent = 'Waiting for global state initialization...';
+            gameStatus.textContent = 'Waiting for global state initialization...';
         }
     }, (error) => {
         console.error("Error listening to global state:", error);
-        document.getElementById('status').textContent = `Error: ${error.message}`;
+        gameStatus.textContent = `Error: ${error.message}`;
     });
 
     // Personal Clicks Listener
@@ -156,9 +223,79 @@ function updatePersonalScoreDisplay(score) {
     document.getElementById('personalScore').textContent = score.toLocaleString();
 }
 
+// --- Authentication Handlers ---
+function getCredentials() {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
+    authError.textContent = ''; // Clear previous errors
+    if (!email || password.length < 6) {
+        displayAuthError('Email and a password of at least 6 characters are required.');
+        return null;
+    }
+    return { email, password };
+}
+
+async function handleSignUp() {
+    const creds = getCredentials();
+    if (!creds) return;
+    authStatus.textContent = 'Creating account...';
+
+    try {
+        await createUserWithEmailAndPassword(auth, creds.email, creds.password);
+        // onAuthStateChanged handles success
+    } catch (error) {
+        console.error("Sign Up Error:", error.code, error.message);
+        // Display a user-friendly error
+        if (error.code === 'auth/email-already-in-use') {
+            displayAuthError('This email is already registered. Try signing in.');
+        } else if (error.code === 'auth/invalid-email') {
+            displayAuthError('Invalid email address format.');
+        } else {
+            displayAuthError(`Sign Up failed: ${error.message}`);
+        }
+    }
+}
+
+async function handleSignIn() {
+    const creds = getCredentials();
+    if (!creds) return;
+    authStatus.textContent = 'Signing in...';
+
+    try {
+        await signInWithEmailAndPassword(auth, creds.email, creds.password);
+        // onAuthStateChanged handles success
+    } catch (error) {
+        console.error("Sign In Error:", error.code, error.message);
+        // Display a user-friendly error
+        if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            displayAuthError('Invalid email or password.');
+        } else {
+            displayAuthError(`Sign In failed: ${error.message}`);
+        }
+    }
+}
+
+async function handleSignOut() {
+    try {
+        await signOut(auth);
+        authStatus.textContent = 'You have been successfully signed out.';
+    } catch (error) {
+        console.error("Sign Out Error:", error);
+        displayAuthError('Sign out failed.');
+    }
+}
+
+
 // --- Game Logic ---
 document.addEventListener('DOMContentLoaded', () => {
     initFirebase();
+    
+    // Auth Button Listeners
+    document.getElementById('signUpButton').addEventListener('click', handleSignUp);
+    document.getElementById('signInButton').addEventListener('click', handleSignIn);
+    document.getElementById('signOutButton').addEventListener('click', handleSignOut);
+    
+    // Game Button Listeners (Existing)
     const clickButton = document.getElementById('clickButton');
     clickButton.addEventListener('click', handleUserClick);
     const attackButton = document.getElementById('attackButton');
@@ -167,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function handleUserClick() {
     if (!userId || !db) {
-        document.getElementById('status').textContent = 'Initialization in progress...';
+        gameStatus.textContent = 'Initialization in progress or user not logged in.';
         return;
     }
     const clickAmount = 1;
@@ -187,7 +324,7 @@ async function handleUserClick() {
         // Revert local UI on failure
         localPersonalClicks -= clickAmount;
         updatePersonalScoreDisplay(localPersonalClicks);
-        document.getElementById('status').textContent = 'Failed to update global score. Check console.';
+        gameStatus.textContent = 'Failed to update global score. Check console.';
     });
 
     // 2. Update Personal State
@@ -195,13 +332,13 @@ async function handleUserClick() {
         clicks: localPersonalClicks,
         lastClicked: new Date().toISOString()
     })).catch(() => {
-        document.getElementById('status').textContent = 'Failed to save personal score. Check console.';
+        gameStatus.textContent = 'Failed to save personal score. Check console.';
     });
 }
  
 async function handleUserAttack() {
     if (!userId || !db) {
-        document.getElementById('status').textContent = 'Initialization in progress...';
+        gameStatus.textContent = 'Initialization in progress or user not logged in.';
         return;
     }
     
@@ -209,11 +346,12 @@ async function handleUserAttack() {
     const attackPower = 5; 
     
     if (!targetId || targetId === userId) {
-        alert("Please enter a valid Target Player ID (and not your own!).");
+        // Replaced alert() with displayAuthError
+        displayAuthError("Please enter a valid Target Player ID (and not your own!).", 4000);
         return;
     }
 
-    document.getElementById('status').textContent = `Attacking ${targetId}...`;
+    gameStatus.textContent = `Attacking ${targetId}...`;
     
     const targetDocRef = getPlayerDocRef(targetId);
     const globalDocRef = getGlobalDocRef();
@@ -234,7 +372,7 @@ async function handleUserAttack() {
             const clicksReduced = currentClicks - newClicks; 
             
             if (clicksReduced === 0) {
-                document.getElementById('status').textContent = `${targetId} already has 0 clicks. Attack failed.`;
+                gameStatus.textContent = `${targetId} already has 0 clicks. Attack failed.`;
                 return; 
             }
             
@@ -251,11 +389,11 @@ async function handleUserAttack() {
                 lastUpdate: new Date().toISOString()
             });
 
-            document.getElementById('status').textContent = `Successfully reduced ${targetId}'s score by ${clicksReduced}.`;
+            gameStatus.textContent = `⚔️ Successful attack! Reduced ${targetId}'s score by ${clicksReduced} clicks.`;
         });
 
     } catch (e) {
         console.error("Attack transaction failed:", e);
-        document.getElementById('status').textContent = `Attack failed: ${e.message}`;
+        gameStatus.textContent = `Attack failed: ${e.message}`;
     }
 }
