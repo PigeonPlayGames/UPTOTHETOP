@@ -238,6 +238,13 @@ function getCredentials() {
 async function handleSignUp() {
     const creds = getCredentials();
     if (!creds) return;
+    
+    // Crucial check added to prevent "Cannot read properties of undefined (reading 'app')"
+    if (!auth) {
+        displayAuthError('Firebase Authentication is not initialized.');
+        return;
+    }
+
     authStatus.textContent = 'Creating account...';
 
     try {
@@ -259,6 +266,13 @@ async function handleSignUp() {
 async function handleSignIn() {
     const creds = getCredentials();
     if (!creds) return;
+    
+    // Crucial check added to prevent "Cannot read properties of undefined (reading 'app')"
+    if (!auth) {
+        displayAuthError('Firebase Authentication is not initialized.');
+        return;
+    }
+
     authStatus.textContent = 'Signing in...';
 
     try {
@@ -276,6 +290,7 @@ async function handleSignIn() {
 }
 
 async function handleSignOut() {
+    if (!auth) return;
     try {
         await signOut(auth);
         authStatus.textContent = 'You have been successfully signed out.';
