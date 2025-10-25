@@ -1,30 +1,30 @@
 // click.js
+import {
+    initializeApp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc,
+    updateDoc,
+    onSnapshot,
+    collection,
+    query,
+    orderBy,
+    limit,
+    runTransaction,
+    increment
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+import {
+    getAuth,
+    signInAnonymously,
+    onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 window.addEventListener("DOMContentLoaded", () => {
-    import {
-        initializeApp
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-
-    import {
-        getFirestore,
-        doc,
-        getDoc,
-        setDoc,
-        updateDoc,
-        onSnapshot,
-        collection,
-        query,
-        orderBy,
-        limit,
-        runTransaction,
-        increment
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-    import {
-        getAuth,
-        signInAnonymously,
-        onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
     // ---------------------------------------------------------------------
     // 🔧 Firebase Configuration
     // ---------------------------------------------------------------------
@@ -211,8 +211,8 @@ window.addEventListener("DOMContentLoaded", () => {
                     lastUpdate: new Date().toISOString()
                 });
 
-                if (gameStatus) gameStatus.textContent =
-                    `⚔️ Successful attack! Reduced ${targetId}'s score by ${clicksReduced} clicks.`;
+                if (gameStatus)
+                    gameStatus.textContent = `⚔️ Successful attack! Reduced ${targetId}'s score by ${clicksReduced} clicks.`;
             });
 
             await setupLeaderboardFetcher();
