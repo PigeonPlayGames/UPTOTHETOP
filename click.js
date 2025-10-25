@@ -22,7 +22,7 @@ import {
     query,
     orderBy,
     limit,
-    getDocs // Used for leaderboard nested fetches
+    // Removed getDocs, as it's not strictly necessary with this onSnapshot/getDoc pattern
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
@@ -49,7 +49,7 @@ let localPersonalClicks = 0;
 // Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
-let unsubscribeLeaderboard = null; // 👈 NEW
+let unsubscribeLeaderboard = null; 
 
 setLogLevel('Debug');
 
@@ -63,6 +63,7 @@ const authError = document.getElementById('authError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const gameStatus = document.getElementById('status');
+const leaderboardStatus = document.getElementById('leaderboard-status'); // 👈 NEW DOM REF
 
 // --- Utility Functions ---
 function displayAuthError(message, duration = 3000) {
@@ -129,7 +130,7 @@ async function initFirebase() {
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
                 setupRealtimeListeners(); // Attach personal/global listeners
-                setupLeaderboardListener(); // 👈 ATTACH NEW LEADERBOARD LISTENER
+                setupLeaderboardListener(); // ATTACH NEW LEADERBOARD LISTENER
                 await initializeUserAndGlobalState();
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
@@ -148,7 +149,7 @@ async function initFirebase() {
                     unsubscribePersonal = null;
                     console.log("Unsubscribed from Personal Listener.");
                 }
-                if (unsubscribeLeaderboard) { // 👈 UNSUBSCRIBE LEADERBOARD
+                if (unsubscribeLeaderboard) { // UNSUBSCRIBE LEADERBOARD
                     unsubscribeLeaderboard();
                     unsubscribeLeaderboard = null;
                     console.log("Unsubscribed from Leaderboard Listener.");
@@ -261,10 +262,11 @@ function setupLeaderboardListener() {
     const userScoresCollectionPath = `artifacts/${appId}/users`;
     const usersRef = collection(db, userScoresCollectionPath);
 
-    // Listen to the top-level 'users' collection. This provides updates when users are created/deleted.
-    // We then fetch the nested score document for each user.
+    // Listen to the top-level 'users' collection for changes (new users, user deletion).
     unsubscribeLeaderboard = onSnapshot(usersRef, async (querySnapshot) => {
-        document.getElementById('leaderboard-status').textContent = 'Fetching scores...';
+        if (leaderboardStatus) {
+            leaderboardStatus.textContent = 'Fetching scores...';
+        }
         
         const leaderboardDataPromises = [];
         
@@ -274,6 +276,8 @@ function setupLeaderboardListener() {
             const dataDocRef = doc(db, userScoresCollectionPath, userId, "user_scores", "data");
             
             // Fetch the nested score document.
+            // Using getDoc here means every time a user is added or removed, 
+            // we re-fetch the score for all users. This is necessary because of the nested structure.
             leaderboardDataPromises.push(getDoc(dataDocRef).then((dataSnap) => {
                 if (dataSnap.exists()) {
                     const data = dataSnap.data();
@@ -282,7 +286,6 @@ function setupLeaderboardListener() {
                 }
                 return null;
             }).catch(error => {
-                // Error likely due to missing security rule or document structure, but we continue
                 console.error("Error fetching leaderboard player data for", userId, ":", error);
                 return null;
             }));
@@ -299,16 +302,28 @@ function setupLeaderboardListener() {
 
     }, (error) => {
         console.error("Error listening to leaderboard (parent collection):", error);
-        document.getElementById('leaderboard-status').textContent = 'Error loading leaderboard.';
+        if (leaderboardStatus) {
+            leaderboardStatus.textContent = 'Error loading leaderboard.';
+        }
     });
 }
 
 function updateLeaderboardDisplay(data) {
     const leaderboardDiv = document.getElementById('leaderboard');
+    // Check if the leaderboard div exists before trying to update its children
+    if (!leaderboardDiv) {
+        console.error("Leaderboard div not found. Cannot update display.");
+        return; 
+    }
+    
     leaderboardDiv.innerHTML = ''; // Clear previous entries
+    const leaderboardStatus = document.getElementById('leaderboard-status');
 
     if (data.length === 0) {
         leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">No scores yet! Be the first to click.</p>';
+        // The error you were seeing likely occurred if this line was executed before the HTML was ready,
+        // or if a list item was being processed instead of the main container.
+        // We added a check at the top for robustness.
         return;
     }
 
