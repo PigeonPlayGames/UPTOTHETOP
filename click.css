@@ -1,6 +1,7 @@
 body {
-    font-family: 'Inter', sans-serif;
-    background-color: #f7f7f7;
+    font-family: "Georgia", serif;
+    background-color: #f4e4c1;
+    color: #3e2723;
     display: flex;
     justify-content: center;
     align-items: center;
