@@ -18,6 +18,11 @@ import {
     collection, 
     setLogLevel, 
     runTransaction,
+    // NEW IMPORTS FOR LEADERBOARD
+    query,
+    orderBy,
+    limit,
+    getDocs // Used for leaderboard nested fetches
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
@@ -26,7 +31,6 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 // TEMPORARY FIX: Hardcoding Firebase Config to resolve "missing or invalid" error
-// The application was failing because __firebase_config was not being read properly.
 const firebaseConfig = {
     apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
     authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -42,9 +46,10 @@ let db, auth;
 let userId = null;
 let localPersonalClicks = 0;
 
-// NEW: Global variables to store listener unsubscribe functions
+// Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
+let unsubscribeLeaderboard = null; // 👈 NEW
 
 setLogLevel('Debug');
 
@@ -86,7 +91,6 @@ async function fetchWithExponentialBackoff(fetchFn, maxRetries = 5) {
 async function initFirebase() {
     try {
         if (!firebaseConfig.projectId) {
-            // This check is now redundant but kept for robustness.
             authStatus.textContent = "Firebase configuration is missing or invalid. Cannot initialize.";
             return;
         }
@@ -95,7 +99,7 @@ async function initFirebase() {
         db = getFirestore(app);
         auth = getAuth(app);
         
-        // Use custom token if provided (Canvas environment), otherwise rely on user interaction
+        // Use custom token if provided (Canvas environment)
         if (initialAuthToken) {
             try {
                 authStatus.textContent = "Authenticating secure session...";
@@ -105,7 +109,6 @@ async function initFirebase() {
                 authStatus.textContent = "Secure session failed. Please sign in or sign up below.";
             }
         } else {
-             // Fallback for environments without custom token
              authStatus.textContent = 'Please sign in or sign up to play.';
         }
 
@@ -125,7 +128,8 @@ async function initFirebase() {
                 authDivider.classList.remove('hidden');
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
-                setupRealtimeListeners(); // Attach listeners
+                setupRealtimeListeners(); // Attach personal/global listeners
+                setupLeaderboardListener(); // 👈 ATTACH NEW LEADERBOARD LISTENER
                 await initializeUserAndGlobalState();
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
@@ -143,6 +147,11 @@ async function initFirebase() {
                     unsubscribePersonal();
                     unsubscribePersonal = null;
                     console.log("Unsubscribed from Personal Listener.");
+                }
+                if (unsubscribeLeaderboard) { // 👈 UNSUBSCRIBE LEADERBOARD
+                    unsubscribeLeaderboard();
+                    unsubscribeLeaderboard = null;
+                    console.log("Unsubscribed from Leaderboard Listener.");
                 }
 
 
@@ -229,7 +238,6 @@ function setupRealtimeListeners() {
         }
     }, (error) => {
         console.error("Error listening to global state:", error);
-        // Note: Do NOT set gameStatus here to avoid showing "Error" during normal sign-out process.
     });
 
     // Personal Clicks Listener - Store the unsubscribe function
@@ -242,9 +250,103 @@ function setupRealtimeListeners() {
         }
     }, (error) => {
         console.error("Error listening to personal state:", error);
-        // Note: Do NOT set gameStatus here to avoid showing "Error" during normal sign-out process.
     });
 }
+
+// --- LEADERBOARD LOGIC START ---
+
+function setupLeaderboardListener() {
+    if (!db) return;
+
+    const userScoresCollectionPath = `artifacts/${appId}/users`;
+    const usersRef = collection(db, userScoresCollectionPath);
+
+    // Listen to the top-level 'users' collection. This provides updates when users are created/deleted.
+    // We then fetch the nested score document for each user.
+    unsubscribeLeaderboard = onSnapshot(usersRef, async (querySnapshot) => {
+        document.getElementById('leaderboard-status').textContent = 'Fetching scores...';
+        
+        const leaderboardDataPromises = [];
+        
+        querySnapshot.forEach((userDoc) => {
+            const userId = userDoc.id; 
+            // Reference to the nested score document: artifacts/{appId}/users/{userId}/user_scores/data
+            const dataDocRef = doc(db, userScoresCollectionPath, userId, "user_scores", "data");
+            
+            // Fetch the nested score document.
+            leaderboardDataPromises.push(getDoc(dataDocRef).then((dataSnap) => {
+                if (dataSnap.exists()) {
+                    const data = dataSnap.data();
+                    const clicks = data.clicks || 0;
+                    return { userId, clicks };
+                }
+                return null;
+            }).catch(error => {
+                // Error likely due to missing security rule or document structure, but we continue
+                console.error("Error fetching leaderboard player data for", userId, ":", error);
+                return null;
+            }));
+        });
+        
+        // Wait for all fetches to complete
+        const results = await Promise.all(leaderboardDataPromises);
+        const leaderboardData = results.filter(item => item !== null && item.clicks > 0);
+
+        // Sort client-side (DESCENDING) and limit to top 10
+        leaderboardData.sort((a, b) => b.clicks - a.clicks);
+                    
+        updateLeaderboardDisplay(leaderboardData.slice(0, 10)); 
+
+    }, (error) => {
+        console.error("Error listening to leaderboard (parent collection):", error);
+        document.getElementById('leaderboard-status').textContent = 'Error loading leaderboard.';
+    });
+}
+
+function updateLeaderboardDisplay(data) {
+    const leaderboardDiv = document.getElementById('leaderboard');
+    leaderboardDiv.innerHTML = ''; // Clear previous entries
+
+    if (data.length === 0) {
+        leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">No scores yet! Be the first to click.</p>';
+        return;
+    }
+
+    const list = document.createElement('ol');
+    list.className = 'space-y-2'; 
+    
+    data.forEach((entry, index) => {
+        const listItem = document.createElement('li');
+        const rank = index + 1;
+        
+        // Tailwind classes for visual ranking
+        let rankClass = 'text-gray-700 font-medium';
+        if (rank === 1) rankClass = 'text-yellow-600 font-extrabold text-lg';
+        else if (rank === 2) rankClass = 'text-gray-500 font-bold';
+        else if (rank === 3) rankClass = 'text-yellow-800 font-bold';
+
+        const isSelf = entry.userId === userId;
+        const selfClass = isSelf ? 'bg-indigo-100 border-indigo-500 border-2 shadow-lg' : 'bg-white border border-gray-200';
+        
+        listItem.className = `flex justify-between items-center p-3 rounded-lg transition duration-150 ${selfClass}`;
+        
+        // Use the first 6 chars of the UserID as a name
+        const playerName = entry.userId.substring(0, 6);
+        const displayName = isSelf ? `You (${playerName})` : `Player ${playerName}`;
+
+        listItem.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <span class="${rankClass} w-6 text-center">${rank}.</span>
+                <span class="font-medium text-gray-800">${displayName}</span>
+            </div>
+            <span class="text-xl font-mono text-indigo-600">${entry.clicks.toLocaleString()}</span>
+        `;
+        list.appendChild(listItem);
+    });
+
+    leaderboardDiv.appendChild(list);
+}
+// --- LEADERBOARD LOGIC END ---
 
 function updateGlobalScoreDisplay(score) {
     document.getElementById('globalScore').textContent = score.toLocaleString();
@@ -254,7 +356,7 @@ function updatePersonalScoreDisplay(score) {
     document.getElementById('personalScore').textContent = score.toLocaleString();
 }
 
-// --- Authentication Handlers ---
+// --- Authentication Handlers (omitted for brevity, content unchanged) ---
 function getCredentials() {
     const email = emailInput.value.trim();
     const password = passwordInput.value.trim();
@@ -270,7 +372,6 @@ async function handleSignUp() {
     const creds = getCredentials();
     if (!creds) return;
     
-    // Crucial check added to prevent "Cannot read properties of undefined (reading 'app')"
     if (!auth) {
         displayAuthError('Firebase Authentication is not initialized.');
         return;
@@ -283,7 +384,6 @@ async function handleSignUp() {
         // onAuthStateChanged handles success
     } catch (error) {
         console.error("Sign Up Error:", error.code, error.message);
-        // Display a user-friendly error
         if (error.code === 'auth/email-already-in-use') {
             displayAuthError('This email is already registered. Try signing in.');
         } else if (error.code === 'auth/invalid-email') {
@@ -298,7 +398,6 @@ async function handleSignIn() {
     const creds = getCredentials();
     if (!creds) return;
     
-    // Crucial check added to prevent "Cannot read properties of undefined (reading 'app')"
     if (!auth) {
         displayAuthError('Firebase Authentication is not initialized.');
         return;
@@ -311,7 +410,6 @@ async function handleSignIn() {
         // onAuthStateChanged handles success
     } catch (error) {
         console.error("Sign In Error:", error.code, error.message);
-        // Display a user-friendly error
         if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
             displayAuthError('Invalid email or password.');
         } else {
