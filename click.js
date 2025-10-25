@@ -1,4 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { 
     getAuth, 
     onAuthStateChanged, 
@@ -18,11 +17,11 @@ import {
     collection, 
     setLogLevel, 
     runTransaction,
-    // NEW IMPORTS FOR LEADERBOARD
     query,
     orderBy,
     limit,
-    // Removed getDocs, as it's not strictly necessary with this onSnapshot/getDoc pattern
+    getDocs, // <-- NEW IMPORT: Crucial for reliable leaderboard fetch
+    initializeApp
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
@@ -49,7 +48,8 @@ let localPersonalClicks = 0;
 // Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
-let unsubscribeLeaderboard = null; 
+// We no longer need unsubscribeLeaderboard since we switched to one-time fetch (getDocs)
+// let unsubscribeLeaderboard = null; 
 
 setLogLevel('Debug');
 
@@ -63,7 +63,7 @@ const authError = document.getElementById('authError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const gameStatus = document.getElementById('status');
-const leaderboardStatus = document.getElementById('leaderboard-status'); // 👈 NEW DOM REF
+// const leaderboardStatus is no longer needed as we clear the innerHTML
 
 // --- Utility Functions ---
 function displayAuthError(message, duration = 3000) {
@@ -130,7 +130,10 @@ async function initFirebase() {
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
                 setupRealtimeListeners(); // Attach personal/global listeners
-                setupLeaderboardListener(); // ATTACH NEW LEADERBOARD LISTENER
+                
+                // CRUCIAL CHANGE: Await the leaderboard fetch to ensure it loads before the UI settles
+                await setupLeaderboardFetcher(); 
+                
                 await initializeUserAndGlobalState();
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
@@ -149,16 +152,12 @@ async function initFirebase() {
                     unsubscribePersonal = null;
                     console.log("Unsubscribed from Personal Listener.");
                 }
-                if (unsubscribeLeaderboard) { // UNSUBSCRIBE LEADERBOARD
-                    unsubscribeLeaderboard();
-                    unsubscribeLeaderboard = null;
-                    console.log("Unsubscribed from Leaderboard Listener.");
-                }
-
+                // No need to unsubscribe leaderboard listener if we use one-time fetch
 
                 userId = null;
                 document.getElementById('userIdDisplay').textContent = 'Signed Out';
                 authStatus.textContent = 'Please sign in or sign up to play.';
+                document.getElementById('leaderboard').innerHTML = '<p class="text-center text-gray-500">Log in to view the leaderboard.</p>'; // Reset Leaderboard
 
                 // Show auth UI, hide game
                 authUi.classList.remove('hidden');
@@ -178,7 +177,7 @@ async function initFirebase() {
         console.error("Firebase Init Error:", error);
     }
 }
- 
+
 // --- Firestore Paths and Initialization ---
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
  
@@ -248,36 +247,43 @@ function setupRealtimeListeners() {
             const clicks = data.clicks || 0;
             localPersonalClicks = clicks; 
             updatePersonalScoreDisplay(clicks);
+            // After a click or attack, refresh the leaderboard to reflect the change
+            setupLeaderboardFetcher();
         }
     }, (error) => {
         console.error("Error listening to personal state:", error);
     });
 }
 
-// --- LEADERBOARD LOGIC START ---
-
-function setupLeaderboardListener() {
+// --- LEADERBOARD LOGIC (REWRITTEN FOR RELIABILITY) ---
+async function setupLeaderboardFetcher() {
     if (!db) return;
+
+    const leaderboardDiv = document.getElementById('leaderboard');
+    if (!leaderboardDiv) return;
+    
+    // Initial loading state
+    leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">Loading leaderboard data...</p>';
 
     const userScoresCollectionPath = `artifacts/${appId}/users`;
     const usersRef = collection(db, userScoresCollectionPath);
 
-    // Listen to the top-level 'users' collection for changes (new users, user deletion).
-    unsubscribeLeaderboard = onSnapshot(usersRef, async (querySnapshot) => {
-        if (leaderboardStatus) {
-            leaderboardStatus.textContent = 'Fetching scores...';
-        }
+    try {
+        // 1. Fetch ALL user documents (just the ID/metadata)
+        const querySnapshot = await getDocs(usersRef);
         
+        if (querySnapshot.empty) {
+            leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">No scores yet! Be the first to click.</p>';
+            return;
+        }
+
         const leaderboardDataPromises = [];
         
+        // 2. For each user ID, fetch the NESTED score document
         querySnapshot.forEach((userDoc) => {
             const userId = userDoc.id; 
-            // Reference to the nested score document: artifacts/{appId}/users/{userId}/user_scores/data
             const dataDocRef = doc(db, userScoresCollectionPath, userId, "user_scores", "data");
             
-            // Fetch the nested score document.
-            // Using getDoc here means every time a user is added or removed, 
-            // we re-fetch the score for all users. This is necessary because of the nested structure.
             leaderboardDataPromises.push(getDoc(dataDocRef).then((dataSnap) => {
                 if (dataSnap.exists()) {
                     const data = dataSnap.data();
@@ -291,44 +297,34 @@ function setupLeaderboardListener() {
             }));
         });
         
-        // Wait for all fetches to complete
+        // 3. Wait for all nested fetches to complete
         const results = await Promise.all(leaderboardDataPromises);
         const leaderboardData = results.filter(item => item !== null && item.clicks > 0);
 
-        // Sort client-side (DESCENDING) and limit to top 10
+        // 4. Sort and display (client-side sorting is reliable and fast for max 100 players)
         leaderboardData.sort((a, b) => b.clicks - a.clicks);
                     
         updateLeaderboardDisplay(leaderboardData.slice(0, 10)); 
 
-    }, (error) => {
-        console.error("Error listening to leaderboard (parent collection):", error);
-        if (leaderboardStatus) {
-            leaderboardStatus.textContent = 'Error loading leaderboard.';
-        }
-    });
+    } catch (error) {
+        console.error("Error setting up leaderboard fetch:", error);
+        leaderboardDiv.innerHTML = '<p class="text-center text-red-500">Failed to load leaderboard. Check console and security rules.</p>';
+    }
 }
 
 function updateLeaderboardDisplay(data) {
     const leaderboardDiv = document.getElementById('leaderboard');
-    // Check if the leaderboard div exists before trying to update its children
-    if (!leaderboardDiv) {
-        console.error("Leaderboard div not found. Cannot update display.");
-        return; 
-    }
+    if (!leaderboardDiv) return;
     
     leaderboardDiv.innerHTML = ''; // Clear previous entries
-    const leaderboardStatus = document.getElementById('leaderboard-status');
 
     if (data.length === 0) {
         leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">No scores yet! Be the first to click.</p>';
-        // The error you were seeing likely occurred if this line was executed before the HTML was ready,
-        // or if a list item was being processed instead of the main container.
-        // We added a check at the top for robustness.
         return;
     }
 
     const list = document.createElement('ol');
-    list.className = 'space-y-2'; 
+    list.className = 'space-y-2 list-none p-0'; 
     
     data.forEach((entry, index) => {
         const listItem = document.createElement('li');
@@ -371,7 +367,7 @@ function updatePersonalScoreDisplay(score) {
     document.getElementById('personalScore').textContent = score.toLocaleString();
 }
 
-// --- Authentication Handlers (omitted for brevity, content unchanged) ---
+// --- Authentication Handlers ---
 function getCredentials() {
     const email = emailInput.value.trim();
     const password = passwordInput.value.trim();
@@ -494,7 +490,7 @@ async function handleUserClick() {
         gameStatus.textContent = 'Failed to save personal score. Check console.';
     });
 }
- 
+
 async function handleUserAttack() {
     if (!userId || !db) {
         gameStatus.textContent = 'Initialization in progress or user not logged in.';
@@ -505,7 +501,6 @@ async function handleUserAttack() {
     const attackPower = 5; 
     
     if (!targetId || targetId === userId) {
-        // Replaced alert() with displayAuthError
         displayAuthError("Please enter a valid Target Player ID (and not your own!).", 4000);
         return;
     }
