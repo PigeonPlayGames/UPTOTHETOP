@@ -1,3 +1,5 @@
+// Fix: Added initializeApp from firebase-app.js to resolve Uncaught SyntaxError
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { 
     getAuth, 
     onAuthStateChanged, 
@@ -20,8 +22,7 @@ import {
     query,
     orderBy,
     limit,
-    getDocs, // <-- NEW IMPORT: Crucial for reliable leaderboard fetch
-    initializeApp
+    getDocs // Used for reliable leaderboard fetching
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
@@ -30,6 +31,7 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 // TEMPORARY FIX: Hardcoding Firebase Config to resolve "missing or invalid" error
+// The application was failing because __firebase_config was not being read properly.
 const firebaseConfig = {
     apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
     authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -48,8 +50,7 @@ let localPersonalClicks = 0;
 // Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
-// We no longer need unsubscribeLeaderboard since we switched to one-time fetch (getDocs)
-// let unsubscribeLeaderboard = null; 
+let unsubscribeLeaderboard = null; 
 
 setLogLevel('Debug');
 
@@ -63,7 +64,7 @@ const authError = document.getElementById('authError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const gameStatus = document.getElementById('status');
-// const leaderboardStatus is no longer needed as we clear the innerHTML
+// const leaderboardStatus is commented out as it is inside the leaderboard div
 
 // --- Utility Functions ---
 function displayAuthError(message, duration = 3000) {
@@ -96,7 +97,7 @@ async function initFirebase() {
             return;
         }
 
-        const app = initializeApp(firebaseConfig);
+        const app = initializeApp(firebaseConfig); // Initialized from firebase-app.js
         db = getFirestore(app);
         auth = getAuth(app);
         
@@ -110,7 +111,7 @@ async function initFirebase() {
                 authStatus.textContent = "Secure session failed. Please sign in or sign up below.";
             }
         } else {
-             authStatus.textContent = 'Please sign in or sign up to play.';
+            authStatus.textContent = 'Please sign in or sign up to play.';
         }
 
 
@@ -130,10 +131,7 @@ async function initFirebase() {
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
                 setupRealtimeListeners(); // Attach personal/global listeners
-                
-                // CRUCIAL CHANGE: Await the leaderboard fetch to ensure it loads before the UI settles
-                await setupLeaderboardFetcher(); 
-                
+                await setupLeaderboardFetcher(); // AWAIT THE NEW FETCH FUNCTION
                 await initializeUserAndGlobalState();
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
@@ -152,12 +150,11 @@ async function initFirebase() {
                     unsubscribePersonal = null;
                     console.log("Unsubscribed from Personal Listener.");
                 }
-                // No need to unsubscribe leaderboard listener if we use one-time fetch
+                // No unsubscribe needed for the new leaderboard fetcher since it's one-time (getDocs)
 
                 userId = null;
                 document.getElementById('userIdDisplay').textContent = 'Signed Out';
                 authStatus.textContent = 'Please sign in or sign up to play.';
-                document.getElementById('leaderboard').innerHTML = '<p class="text-center text-gray-500">Log in to view the leaderboard.</p>'; // Reset Leaderboard
 
                 // Show auth UI, hide game
                 authUi.classList.remove('hidden');
@@ -177,7 +174,7 @@ async function initFirebase() {
         console.error("Firebase Init Error:", error);
     }
 }
-
+ 
 // --- Firestore Paths and Initialization ---
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
  
@@ -247,39 +244,35 @@ function setupRealtimeListeners() {
             const clicks = data.clicks || 0;
             localPersonalClicks = clicks; 
             updatePersonalScoreDisplay(clicks);
-            // After a click or attack, refresh the leaderboard to reflect the change
-            setupLeaderboardFetcher();
         }
     }, (error) => {
         console.error("Error listening to personal state:", error);
     });
 }
 
-// --- LEADERBOARD LOGIC (REWRITTEN FOR RELIABILITY) ---
+// --- LEADERBOARD LOGIC START (Fix for 'No scores yet!' issue) ---
+
+// Changed from onSnapshot to an asynchronous fetcher function (getDocs) for reliability
+// on nested score documents. We can call this function whenever a personal click happens.
 async function setupLeaderboardFetcher() {
     if (!db) return;
-
-    const leaderboardDiv = document.getElementById('leaderboard');
-    if (!leaderboardDiv) return;
     
-    // Initial loading state
-    leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">Loading leaderboard data...</p>';
+    // Set loading status immediately
+    const leaderboardDiv = document.getElementById('leaderboard');
+    if (leaderboardDiv) {
+        leaderboardDiv.innerHTML = '<p class="text-center text-gray-500" id="leaderboard-status">Fetching scores...</p>';
+    }
 
     const userScoresCollectionPath = `artifacts/${appId}/users`;
     const usersRef = collection(db, userScoresCollectionPath);
-
+    
     try {
-        // 1. Fetch ALL user documents (just the ID/metadata)
+        // 1. Get ALL user documents (parent IDs)
         const querySnapshot = await getDocs(usersRef);
         
-        if (querySnapshot.empty) {
-            leaderboardDiv.innerHTML = '<p class="text-center text-gray-500">No scores yet! Be the first to click.</p>';
-            return;
-        }
-
         const leaderboardDataPromises = [];
         
-        // 2. For each user ID, fetch the NESTED score document
+        // 2. For each user ID (document), asynchronously fetch the nested 'data' sub-document
         querySnapshot.forEach((userDoc) => {
             const userId = userDoc.id; 
             const dataDocRef = doc(db, userScoresCollectionPath, userId, "user_scores", "data");
@@ -288,33 +281,41 @@ async function setupLeaderboardFetcher() {
                 if (dataSnap.exists()) {
                     const data = dataSnap.data();
                     const clicks = data.clicks || 0;
-                    return { userId, clicks };
+                    if (clicks > 0) {
+                        return { userId, clicks };
+                    }
                 }
                 return null;
             }).catch(error => {
+                // Log error but continue fetching others
                 console.error("Error fetching leaderboard player data for", userId, ":", error);
                 return null;
             }));
         });
         
-        // 3. Wait for all nested fetches to complete
+        // 3. Wait for all individual score fetches to complete
         const results = await Promise.all(leaderboardDataPromises);
         const leaderboardData = results.filter(item => item !== null && item.clicks > 0);
 
-        // 4. Sort and display (client-side sorting is reliable and fast for max 100 players)
+        // 4. Sort client-side (DESCENDING) and limit to top 10
         leaderboardData.sort((a, b) => b.clicks - a.clicks);
                     
         updateLeaderboardDisplay(leaderboardData.slice(0, 10)); 
 
     } catch (error) {
-        console.error("Error setting up leaderboard fetch:", error);
-        leaderboardDiv.innerHTML = '<p class="text-center text-red-500">Failed to load leaderboard. Check console and security rules.</p>';
+        console.error("Error fetching leaderboard:", error);
+        if (leaderboardDiv) {
+            leaderboardDiv.innerHTML = '<p class="text-center text-red-500">Error loading leaderboard. Check console and security rules.</p>';
+        }
     }
 }
 
 function updateLeaderboardDisplay(data) {
     const leaderboardDiv = document.getElementById('leaderboard');
-    if (!leaderboardDiv) return;
+    if (!leaderboardDiv) {
+        console.error("Leaderboard div not found. Cannot update display.");
+        return; 
+    }
     
     leaderboardDiv.innerHTML = ''; // Clear previous entries
 
@@ -324,7 +325,7 @@ function updateLeaderboardDisplay(data) {
     }
 
     const list = document.createElement('ol');
-    list.className = 'space-y-2 list-none p-0'; 
+    list.className = 'space-y-2'; 
     
     data.forEach((entry, index) => {
         const listItem = document.createElement('li');
@@ -489,8 +490,12 @@ async function handleUserClick() {
     })).catch(() => {
         gameStatus.textContent = 'Failed to save personal score. Check console.';
     });
+    
+    // 3. Refresh Leaderboard after a successful click
+    // The leaderboard needs to be fetched again since the scores have changed.
+    await setupLeaderboardFetcher(); 
 }
-
+ 
 async function handleUserAttack() {
     if (!userId || !db) {
         gameStatus.textContent = 'Initialization in progress or user not logged in.';
@@ -501,6 +506,7 @@ async function handleUserAttack() {
     const attackPower = 5; 
     
     if (!targetId || targetId === userId) {
+        // Replaced alert() with displayAuthError
         displayAuthError("Please enter a valid Target Player ID (and not your own!).", 4000);
         return;
     }
@@ -545,6 +551,9 @@ async function handleUserAttack() {
 
             gameStatus.textContent = `⚔️ Successful attack! Reduced ${targetId}'s score by ${clicksReduced} clicks.`;
         });
+        
+        // Refresh leaderboard after a successful attack
+        await setupLeaderboardFetcher();
 
     } catch (e) {
         console.error("Attack transaction failed:", e);
