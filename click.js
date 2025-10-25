@@ -1,4 +1,4 @@
-// Fix: Added initializeApp from firebase-app.js to resolve Uncaught SyntaxError
+// Fix: initializeApp must be imported from firebase-app.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { 
     getAuth, 
@@ -64,7 +64,6 @@ const authError = document.getElementById('authError');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const gameStatus = document.getElementById('status');
-// const leaderboardStatus is commented out as it is inside the leaderboard div
 
 // --- Utility Functions ---
 function displayAuthError(message, duration = 3000) {
@@ -97,7 +96,7 @@ async function initFirebase() {
             return;
         }
 
-        const app = initializeApp(firebaseConfig); // Initialized from firebase-app.js
+        const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
         
@@ -131,8 +130,11 @@ async function initFirebase() {
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
                 setupRealtimeListeners(); // Attach personal/global listeners
+                
+                // CRUCIAL: Initialize user state before trying to fetch all scores
+                await initializeUserAndGlobalState(); 
                 await setupLeaderboardFetcher(); // AWAIT THE NEW FETCH FUNCTION
-                await initializeUserAndGlobalState();
+
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
 
@@ -252,8 +254,7 @@ function setupRealtimeListeners() {
 
 // --- LEADERBOARD LOGIC START (Fix for 'No scores yet!' issue) ---
 
-// Changed from onSnapshot to an asynchronous fetcher function (getDocs) for reliability
-// on nested score documents. We can call this function whenever a personal click happens.
+// Uses getDocs and Promise.all to reliably fetch scores from nested documents.
 async function setupLeaderboardFetcher() {
     if (!db) return;
     
@@ -275,7 +276,7 @@ async function setupLeaderboardFetcher() {
         // 2. For each user ID (document), asynchronously fetch the nested 'data' sub-document
         querySnapshot.forEach((userDoc) => {
             const userId = userDoc.id; 
-            const dataDocRef = doc(db, userScoresCollectionPath, userId, "user_scores", "data");
+            const dataDocRef = getPlayerDocRef(userId); // Use existing helper function
             
             leaderboardDataPromises.push(getDoc(dataDocRef).then((dataSnap) => {
                 if (dataSnap.exists()) {
