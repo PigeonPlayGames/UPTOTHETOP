@@ -1,5 +1,4 @@
-// Fix: initializeApp must be imported from firebase-app.js
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"; // <-- FIX: Correct import for initializeApp
 import { 
     getAuth, 
     onAuthStateChanged, 
@@ -26,12 +25,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- MANDATORY CANVAS CONFIGURATION ---
-// These variables are provided by the hosting environment.
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-// TEMPORARY FIX: Hardcoding Firebase Config to resolve "missing or invalid" error
-// The application was failing because __firebase_config was not being read properly.
+// TEMPORARY FIX: Hardcoding Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyDAlw3jjFay1K_3p8AvqTvx3jeWo9Vgjbs",
     authDomain: "tiny-tribes-19ec8.firebaseapp.com",
@@ -47,10 +44,9 @@ let db, auth;
 let userId = null;
 let localPersonalClicks = 0;
 
-// Global variables to store listener unsubscribe functions
 let unsubscribeGlobal = null;
 let unsubscribePersonal = null;
-let unsubscribeLeaderboard = null; 
+// No unsubscribeLeaderboard needed as it uses getDocs (one-time fetch)
 
 setLogLevel('Debug');
 
@@ -100,7 +96,6 @@ async function initFirebase() {
         db = getFirestore(app);
         auth = getAuth(app);
         
-        // Use custom token if provided (Canvas environment)
         if (initialAuthToken) {
             try {
                 authStatus.textContent = "Authenticating secure session...";
@@ -114,7 +109,6 @@ async function initFirebase() {
         }
 
 
-        // The primary listener for authentication state changes
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 // USER IS LOGGED IN
@@ -122,18 +116,17 @@ async function initFirebase() {
                 document.getElementById('userIdDisplay').textContent = userId;
                 authStatus.textContent = `Welcome, Player ${user.email ? user.email.split('@')[0] : userId.substring(0, 6)}!`;
 
-                // Show game, hide auth UI
                 authUi.classList.add('hidden');
                 gameContent.classList.remove('hidden');
                 logoutDiv.classList.remove('hidden');
                 authDivider.classList.remove('hidden');
                 
                 console.log("Firebase Auth Ready. User ID:", userId);
-                setupRealtimeListeners(); // Attach personal/global listeners
+                setupRealtimeListeners();
                 
-                // CRUCIAL: Initialize user state before trying to fetch all scores
+                // CRUCIAL REORDERING: Initialize state THEN fetch the leaderboard
                 await initializeUserAndGlobalState(); 
-                await setupLeaderboardFetcher(); // AWAIT THE NEW FETCH FUNCTION
+                await setupLeaderboardFetcher(); 
 
                 document.getElementById('clickButton').disabled = false;
                 document.getElementById('attackButton').disabled = false;
@@ -141,30 +134,24 @@ async function initFirebase() {
             } else {
                 // USER IS LOGGED OUT
                 
-                // CRITICAL FIX: Unsubscribe the listeners immediately upon logout
                 if (unsubscribeGlobal) {
                     unsubscribeGlobal();
                     unsubscribeGlobal = null;
-                    console.log("Unsubscribed from Global Listener.");
                 }
                 if (unsubscribePersonal) {
                     unsubscribePersonal();
                     unsubscribePersonal = null;
-                    console.log("Unsubscribed from Personal Listener.");
                 }
-                // No unsubscribe needed for the new leaderboard fetcher since it's one-time (getDocs)
 
                 userId = null;
                 document.getElementById('userIdDisplay').textContent = 'Signed Out';
                 authStatus.textContent = 'Please sign in or sign up to play.';
 
-                // Show auth UI, hide game
                 authUi.classList.remove('hidden');
                 gameContent.classList.add('hidden');
                 logoutDiv.classList.add('hidden');
                 authDivider.classList.add('hidden');
 
-                // Disable buttons and reset status
                 document.getElementById('clickButton').disabled = true;
                 document.getElementById('attackButton').disabled = true;
                 gameStatus.textContent = 'Please log in.';
@@ -181,10 +168,7 @@ async function initFirebase() {
 const globalGameStatePath = `artifacts/${appId}/public/data/game_state/global_game_state`;
  
 const getGlobalDocRef = () => doc(db, globalGameStatePath);
-
-// Document reference for ANY player's personal score (used for reading own score and targeting attacks)
 const getPlayerDocRef = (targetUserId) => doc(db, `artifacts/${appId}/users/${targetUserId}/user_scores/data`); 
-
 const getPersonalDocRef = () => getPlayerDocRef(userId);
 
 
@@ -201,12 +185,11 @@ async function initializeUserAndGlobalState() {
         }
     });
 
-    // 2. Initialize Personal State
+    // 2. Initialize Personal State (CRUCIAL for ensuring user score document exists)
     await fetchWithExponentialBackoff(async () => {
         const personalSnap = await getDoc(personalDocRef);
         if (!personalSnap.exists()) {
             console.log("Initializing personal state...");
-            // Ensure score document exists for the newly authenticated user
             await setDoc(personalDocRef, { clicks: 0, joinedAt: new Date().toISOString() });
             localPersonalClicks = 0;
         } else {
@@ -224,7 +207,7 @@ function setupRealtimeListeners() {
     const globalDocRef = getGlobalDocRef();
     const personalDocRef = getPersonalDocRef();
     
-    // Global Clicks Listener - Store the unsubscribe function
+    // Global Clicks Listener
     unsubscribeGlobal = onSnapshot(globalDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -239,7 +222,7 @@ function setupRealtimeListeners() {
         console.error("Error listening to global state:", error);
     });
 
-    // Personal Clicks Listener - Store the unsubscribe function
+    // Personal Clicks Listener
     unsubscribePersonal = onSnapshot(personalDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -252,7 +235,7 @@ function setupRealtimeListeners() {
     });
 }
 
-// --- LEADERBOARD LOGIC START (Fix for 'No scores yet!' issue) ---
+// --- LEADERBOARD LOGIC START (FIXED FETCHING) ---
 
 // Uses getDocs and Promise.all to reliably fetch scores from nested documents.
 async function setupLeaderboardFetcher() {
@@ -268,27 +251,29 @@ async function setupLeaderboardFetcher() {
     const usersRef = collection(db, userScoresCollectionPath);
     
     try {
-        // 1. Get ALL user documents (parent IDs)
+        // 1. Get ALL user documents (parent IDs) - Requires the new 'allow list' security rule
         const querySnapshot = await getDocs(usersRef);
+        
+        console.log(`[Leaderboard] Found ${querySnapshot.docs.length} user documents.`); // Logging for verification
         
         const leaderboardDataPromises = [];
         
-        // 2. For each user ID (document), asynchronously fetch the nested 'data' sub-document
+        // 2. For each user ID, asynchronously fetch the nested 'data' sub-document
         querySnapshot.forEach((userDoc) => {
             const userId = userDoc.id; 
-            const dataDocRef = getPlayerDocRef(userId); // Use existing helper function
+            const dataDocRef = getPlayerDocRef(userId); 
             
             leaderboardDataPromises.push(getDoc(dataDocRef).then((dataSnap) => {
                 if (dataSnap.exists()) {
                     const data = dataSnap.data();
                     const clicks = data.clicks || 0;
                     if (clicks > 0) {
+                        console.log(`[Leaderboard] Found score for ${userId.substring(0,6)}: ${clicks}`); // Logging
                         return { userId, clicks };
                     }
                 }
                 return null;
             }).catch(error => {
-                // Log error but continue fetching others
                 console.error("Error fetching leaderboard player data for", userId, ":", error);
                 return null;
             }));
@@ -298,15 +283,15 @@ async function setupLeaderboardFetcher() {
         const results = await Promise.all(leaderboardDataPromises);
         const leaderboardData = results.filter(item => item !== null && item.clicks > 0);
 
-        // 4. Sort client-side (DESCENDING) and limit to top 10
+        // 4. Sort client-side (DESCENDING) and display
         leaderboardData.sort((a, b) => b.clicks - a.clicks);
                     
         updateLeaderboardDisplay(leaderboardData.slice(0, 10)); 
 
     } catch (error) {
-        console.error("Error fetching leaderboard:", error);
+        console.error("[Leaderboard] Major Error Fetching User List:", error);
         if (leaderboardDiv) {
-            leaderboardDiv.innerHTML = '<p class="text-center text-red-500">Error loading leaderboard. Check console and security rules.</p>';
+            leaderboardDiv.innerHTML = '<p class="text-center text-red-500">Error loading leaderboard. Check console and security rules (allow list).</p>';
         }
     }
 }
@@ -493,7 +478,6 @@ async function handleUserClick() {
     });
     
     // 3. Refresh Leaderboard after a successful click
-    // The leaderboard needs to be fetched again since the scores have changed.
     await setupLeaderboardFetcher(); 
 }
  
@@ -507,7 +491,6 @@ async function handleUserAttack() {
     const attackPower = 5; 
     
     if (!targetId || targetId === userId) {
-        // Replaced alert() with displayAuthError
         displayAuthError("Please enter a valid Target Player ID (and not your own!).", 4000);
         return;
     }
