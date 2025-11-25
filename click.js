@@ -386,9 +386,9 @@ function setupRealtimeListeners() {
     );
 }
 
-// Public kingdoms/leaderboard listener
+// Public kingdoms/leaderboard listener with ID + Target button
 function setupKingdomsListListener() {
-    if (!db) return;
+    if (!db || !kingdomList) return;
 
     if (unsubscribeKingdoms) {
         unsubscribeKingdoms();
@@ -408,7 +408,6 @@ function setupKingdomsListListener() {
     unsubscribeKingdoms = onSnapshot(
         q,
         (snapshot) => {
-            if (!kingdomList) return;
             kingdomList.innerHTML = "";
 
             if (snapshot.empty) {
@@ -422,26 +421,68 @@ function setupKingdomsListListener() {
 
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
-                const li = document.createElement("li");
-                const isYou = docSnap.id === userId;
+                const id = docSnap.id;
+                const isYou = id === userId;
 
+                const li = document.createElement("li");
                 li.innerHTML = `
-                    <div class="border rounded-lg p-2 flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white/60">
-                        <div class="font-semibold text-gray-800">
-                            ${data.kingdomName || "Unknown Kingdom"}
+                    <div class="border rounded-lg p-2 bg-white/60 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2 items-center">
+                        <div>
+                            <div class="font-semibold text-gray-800">
+                                ${data.kingdomName || "Unknown Kingdom"}
+                                ${
+                                    isYou
+                                        ? '<span class="text-xs text-emerald-600 ml-1">(You)</span>'
+                                        : ""
+                                }
+                            </div>
+                            <div class="text-xs text-gray-600 mt-0.5">
+                                💰 ${data.gold || 0} gold &nbsp;|&nbsp; ⚔️ ${data.totalTroops || 0} troops
+                            </div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">
+                                Player ID:
+                                <code class="bg-gray-100 px-1 py-0.5 rounded break-all">
+                                    ${id}
+                                </code>
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
                             ${
                                 isYou
-                                    ? '<span class="text-xs text-emerald-600 ml-1">(You)</span>'
-                                    : ""
+                                    ? '<span class="text-[11px] text-emerald-600 font-medium">Your kingdom</span>'
+                                    : `<button
+                                            data-target-id="${id}"
+                                            class="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-lg shadow-sm transition"
+                                       >
+                                            Target
+                                       </button>`
                             }
-                        </div>
-                        <div class="text-xs text-gray-600 mt-1 sm:mt-0">
-                            💰 ${data.gold || 0} gold &nbsp;|&nbsp; ⚔️ ${
-                    data.totalTroops || 0
-                } troops
                         </div>
                     </div>
                 `;
+
+                const attackBtn = li.querySelector("button[data-target-id]");
+                if (attackBtn) {
+                    attackBtn.addEventListener("click", () => {
+                        const targetId = attackBtn.getAttribute("data-target-id");
+                        if (!targetId || targetId === userId) return;
+
+                        const input = document.getElementById("targetUserId");
+                        if (!input) return;
+
+                        input.value = targetId;
+                        input.focus();
+
+                        const attackButton = document.getElementById("attackButton");
+                        if (attackButton && attackButton.scrollIntoView) {
+                            attackButton.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center"
+                            });
+                        }
+                    });
+                }
+
                 kingdomList.appendChild(li);
             });
         },
@@ -735,8 +776,8 @@ async function handleUserAttack() {
                 gold: newGold,
                 troops: {
                     peasants: newPeasants,
-                    archers: (targetData.troops?.archers || 0),
-                    knights: (targetData.troops?.knights || 0)
+                    archers: targetData.troops?.archers || 0,
+                    knights: targetData.troops?.knights || 0
                 },
                 lastAttackedBy: userId,
                 lastAttackedTime: new Date().toISOString()
