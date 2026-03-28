@@ -7,7 +7,7 @@
 
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Favicon -->
+  <!-- Animated SVG Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
   <!-- Firebase Compat SDKs -->
@@ -16,13 +16,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
+  <canvas id="starfield"></canvas>
+
   <div class="background-glow glow-1"></div>
   <div class="background-glow glow-2"></div>
 
   <header class="site-header">
-    <div class="logo-wrap">
+    <a href="index.html" class="logo-wrap" aria-label="eon games home">
       <img src="eongames.png" alt="eon games logo" class="site-logo" />
-    </div>
+    </a>
 
     <nav class="nav">
       <a href="#games">Games</a>
@@ -74,7 +76,7 @@
           <p>
             A sleek and immersive new experience from eon games. More details will be added later.
           </p>
-          <button class="btn btn-card" type="button">View Game</button>
+          <a href="game1.html" class="btn btn-card">View Game</a>
         </article>
 
         <article class="game-card">
@@ -85,7 +87,7 @@
           <p>
             Fast, modern, and built for players who want something fresh. Full content coming soon.
           </p>
-          <button class="btn btn-card" type="button">View Game</button>
+          <a href="game2.html" class="btn btn-card">View Game</a>
         </article>
 
         <article class="game-card">
@@ -96,7 +98,7 @@
           <p>
             A new universe in progress. Placeholder text for now until your real description is ready.
           </p>
-          <button class="btn btn-card" type="button">View Game</button>
+          <a href="game3.html" class="btn btn-card">View Game</a>
         </article>
       </div>
     </section>
@@ -135,7 +137,7 @@
         <p class="section-tag">ABOUT</p>
         <h2>eon games</h2>
         <p>
-          We create modern game experiences with bold visuals, community energy,
+          We create modern game experiences with bold visuals, cosmic energy,
           and a focus on fun. This site is ready for you to expand with your real games,
           pages, media, and player content.
         </p>
@@ -149,9 +151,15 @@
 
   <!-- Login Modal -->
   <div id="login-modal" class="modal">
-    <div class="modal-content">
-      <button class="close-btn" type="button" onclick="closeModal()">&times;</button>
-      <h2>Login</h2>
+    <div class="modal-content auth-modal-card">
+      <button class="close-btn" type="button" onclick="closeModal()" aria-label="Close login">&times;</button>
+
+      <div class="auth-modal-head">
+        <div class="auth-orb"></div>
+        <h2>Login</h2>
+        <p>Enter your account to join the community.</p>
+      </div>
+
       <form id="login-form" class="auth-form">
         <input
           type="email"
@@ -171,6 +179,7 @@
         />
         <button type="submit" class="btn btn-primary full-width">Login</button>
       </form>
+
       <p class="modal-switch">
         Don’t have an account?
         <button class="text-btn" type="button" onclick="showSignup()">Sign up</button>
@@ -180,9 +189,15 @@
 
   <!-- Signup Modal -->
   <div id="signup-modal" class="modal">
-    <div class="modal-content">
-      <button class="close-btn" type="button" onclick="closeSignupModal()">&times;</button>
-      <h2>Sign Up</h2>
+    <div class="modal-content auth-modal-card">
+      <button class="close-btn" type="button" onclick="closeSignupModal()" aria-label="Close sign up">&times;</button>
+
+      <div class="auth-modal-head">
+        <div class="auth-orb"></div>
+        <h2>Create account</h2>
+        <p>Join eon games and start posting comments.</p>
+      </div>
+
       <form id="signup-form" class="auth-form">
         <input
           type="email"
@@ -202,6 +217,7 @@
         />
         <button type="submit" class="btn btn-primary full-width">Create Account</button>
       </form>
+
       <p class="modal-switch">
         Already have an account?
         <button class="text-btn" type="button" onclick="switchToLogin()">Login</button>
