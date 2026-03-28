@@ -784,3 +784,235 @@ main {
     padding: 16px;
   }
 }
+.game-page-hero {
+  padding: 48px 0 16px;
+}
+
+.game-page-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: center;
+}
+
+.game-page-copy,
+.game-page-art-card,
+.media-main-card,
+.details-card,
+.cta-banner {
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+}
+
+.game-page-copy {
+  padding: 34px;
+}
+
+.game-page-copy h1 {
+  font-size: clamp(3rem, 7vw, 5.4rem);
+  line-height: 0.95;
+  margin-bottom: 18px;
+}
+
+.game-page-lead {
+  color: var(--muted);
+  line-height: 1.8;
+  font-size: 1.05rem;
+  margin-bottom: 26px;
+  max-width: 640px;
+}
+
+.game-page-art-card {
+  min-height: 520px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.game-page-art-card::before {
+  content: "";
+  position: absolute;
+  inset: auto 12% 8% 12%;
+  height: 60px;
+  background: radial-gradient(circle, rgba(124, 92, 255, 0.3), transparent 68%);
+  filter: blur(28px);
+}
+
+.game-page-art {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+  padding: 24px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 22px rgba(124, 92, 255, 0.22))
+    drop-shadow(0 0 32px rgba(38, 208, 255, 0.08));
+}
+
+.game-highlight-grid,
+.feature-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+
+.feature-cards-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 22px;
+}
+
+.media-main-card {
+  padding: 18px;
+}
+
+.media-side-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.media-placeholder {
+  min-height: 180px;
+  border-radius: 20px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  background:
+    radial-gradient(circle at top left, rgba(124, 92, 255, 0.12), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(38, 208, 255, 0.1), transparent 35%),
+    rgba(255,255,255,0.04);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 18px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+}
+
+.large-media {
+  min-height: 420px;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 22px;
+}
+
+.details-card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow-soft);
+}
+
+.details-card h3 {
+  margin-bottom: 16px;
+  font-size: 1.35rem;
+}
+
+.details-card p {
+  color: var(--muted);
+  line-height: 1.8;
+  margin-bottom: 14px;
+}
+
+.details-list {
+  list-style: none;
+  display: grid;
+  gap: 14px;
+}
+
+.details-list li {
+  color: var(--muted);
+  line-height: 1.6;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.details-list li strong {
+  color: var(--text);
+}
+
+.cta-banner {
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cta-banner h2 {
+  margin-bottom: 10px;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+}
+
+.cta-banner p {
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 700px;
+}
+
+.cta-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+  .game-page-hero-grid,
+  .game-highlight-grid,
+  .feature-cards-grid,
+  .media-grid,
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .media-side-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .game-page-art-card {
+    min-height: 340px;
+  }
+
+  .large-media {
+    min-height: 300px;
+  }
+
+  .cta-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .game-page-copy,
+  .details-card,
+  .cta-banner {
+    padding: 20px;
+  }
+
+  .media-side-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .game-page-copy h1 {
+    font-size: 2.6rem;
+  }
+
+  .large-media {
+    min-height: 240px;
+  }
+}
