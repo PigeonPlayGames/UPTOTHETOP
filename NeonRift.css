@@ -36,6 +36,7 @@ body {
     radial-gradient(circle at 50% 80%, rgba(255, 159, 67, 0.08), transparent 18%),
     linear-gradient(180deg, var(--bg), var(--bg-2) 55%, #070c1b 100%);
   overflow-x: hidden;
+  touch-action: none;
 }
 
 .game-shell {
@@ -244,7 +245,7 @@ body {
   justify-content: center;
   background: rgba(5, 8, 22, 0.45);
   backdrop-filter: blur(4px);
-  z-index: 5;
+  z-index: 20;
 }
 
 .overlay.hidden {
@@ -302,6 +303,75 @@ body {
   box-shadow: 0 18px 34px rgba(124, 92, 255, 0.34);
 }
 
+.mobile-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.move-zone {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  display: none;
+}
+
+.touch-stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62px;
+  height: 62px;
+  margin-left: -31px;
+  margin-top: -31px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(38,208,255,0.95), rgba(124,92,255,0.75));
+  box-shadow: 0 0 18px rgba(124,92,255,0.25);
+}
+
+.touch-actions {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: none;
+  gap: 12px;
+  align-items: flex-end;
+  pointer-events: auto;
+}
+
+.touch-btn {
+  border: none;
+  border-radius: 50%;
+  width: 74px;
+  height: 74px;
+  color: white;
+  font-weight: 800;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.shoot-btn {
+  background: linear-gradient(135deg, #ff9f43, #ff5d7a);
+}
+
+.slash-btn {
+  background: linear-gradient(135deg, #26d0ff, #7c5cff);
+}
+
+.dash-btn {
+  background: linear-gradient(135deg, #7c5cff, #26d0ff);
+}
+
 @media (max-width: 1200px) {
   .game-layout {
     grid-template-columns: 1fr;
@@ -312,6 +382,13 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
+  }
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .move-zone,
+  .touch-actions {
+    display: flex;
   }
 }
 
@@ -337,5 +414,23 @@ body {
 
   .overlay-card h2 {
     font-size: 1.6rem;
+  }
+
+  .move-zone {
+    width: 120px;
+    height: 120px;
+  }
+
+  .touch-stick {
+    width: 54px;
+    height: 54px;
+    margin-left: -27px;
+    margin-top: -27px;
+  }
+
+  .touch-btn {
+    width: 66px;
+    height: 66px;
+    font-size: 0.85rem;
   }
 }
