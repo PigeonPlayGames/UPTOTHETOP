@@ -16,11 +16,30 @@ const waveTimerText = document.getElementById("waveTimerText");
 const stateText = document.getElementById("stateText");
 const finalScoreText = document.getElementById("finalScoreText");
 
+const movePad = document.getElementById("movePad");
+const moveStick = document.getElementById("moveStick");
+const shootBtn = document.getElementById("shootBtn");
+const slashBtn = document.getElementById("slashBtn");
+const dashBtn = document.getElementById("dashBtn");
+
 const keys = {};
 const mouse = {
   x: canvas.width / 2,
   y: canvas.height / 2,
   down: false
+};
+
+const touchState = {
+  active: false,
+  moveX: 0,
+  moveY: 0,
+  shoot: false,
+  aiming: false
+};
+
+const gamepadState = {
+  dashPressed: false,
+  slashPressed: false
 };
 
 let gameRunning = false;
@@ -35,7 +54,14 @@ const world = {
   stars: [],
   particles: [],
   bullets: [],
-  enemies: []
+  enemyBullets: [],
+  enemies: [],
+  slashWaves: []
+};
+
+const arena = {
+  padding: 36,
+  wallDamagePerSecond: 18
 };
 
 const player = {
@@ -52,6 +78,8 @@ const player = {
   dashDuration: 0.12,
   dashCooldown: 0,
   dashCooldownMax: 0.55,
+  slashCooldown: 0,
+  slashCooldownMax: 0.8,
   health: 100,
   maxHealth: 100,
   energy: 100,
@@ -72,11 +100,14 @@ function resetGame() {
   player.invuln = 0;
   player.dashTime = 0;
   player.dashCooldown = 0;
+  player.slashCooldown = 0;
   player.facing = 0;
 
   world.particles = [];
   world.bullets = [];
+  world.enemyBullets = [];
   world.enemies = [];
+  world.slashWaves = [];
   world.stars = createStars(120);
 
   spawnTimer = 0;
@@ -109,8 +140,13 @@ function updateHUD() {
   scoreText.textContent = player.score;
   enemyCountText.textContent = world.enemies.length;
   waveTimerText.textContent = difficultyTimer.toFixed(1);
-  stateText.textContent =
-    player.dashTime > 0 ? "Dashing" : gameRunning ? "Combat" : "Idle";
+
+  let state = "Combat";
+  if (!gameRunning) state = "Idle";
+  else if (player.dashTime > 0) state = "Dashing";
+  else if (player.slashCooldown > player.slashCooldownMax - 0.18) state = "Slashing";
+
+  stateText.textContent = state;
 }
 
 function clamp(value, min, max) {
@@ -119,6 +155,10 @@ function clamp(value, min, max) {
 
 function distance(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
+}
+
+function angleTo(ax, ay, bx, by) {
+  return Math.atan2(by - ay, bx - ax);
 }
 
 function spawnEnemy() {
@@ -149,7 +189,8 @@ function spawnEnemy() {
     speed: 95 + Math.random() * 45 + speedBoost,
     health: 2 + Math.floor(difficultyTimer / 12),
     hue: 180 + Math.random() * 120,
-    hitFlash: 0
+    hitFlash: 0,
+    fireCooldown: 1.3 + Math.random() * 1.2
   });
 }
 
@@ -157,22 +198,70 @@ function createBurst(x, y, color, count = 12, strength = 1) {
   for (let i = 0; i < count; i += 1) {
     const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
     const speed = (Math.random() * 120 + 40) * strength;
+    const life = 0.5 + Math.random() * 0.35;
+
     world.particles.push({
       x,
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      life: 0.5 + Math.random() * 0.35,
-      maxLife: 0.5 + Math.random() * 0.35,
+      life,
+      maxLife: life,
       size: Math.random() * 3 + 1.5,
       color
     });
   }
 }
 
+function getMoveInput() {
+  let x = 0;
+  let y = 0;
+
+  if (keys["w"] || keys["arrowup"]) y -= 1;
+  if (keys["s"] || keys["arrowdown"]) y += 1;
+  if (keys["a"] || keys["arrowleft"]) x -= 1;
+  if (keys["d"] || keys["arrowright"]) x += 1;
+
+  x += touchState.moveX;
+  y += touchState.moveY;
+
+  const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+  if (gamepad) {
+    const lx = applyDeadzone(gamepad.axes[0] || 0);
+    const ly = applyDeadzone(gamepad.axes[1] || 0);
+    x += lx;
+    y += ly;
+  }
+
+  const len = Math.hypot(x, y);
+  if (len > 1) {
+    x /= len;
+    y /= len;
+  }
+
+  return { x, y };
+}
+
+function updateAimFromController() {
+  const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+  if (!gamepad) return;
+
+  const rx = applyDeadzone(gamepad.axes[2] || 0);
+  const ry = applyDeadzone(gamepad.axes[3] || 0);
+
+  if (Math.hypot(rx, ry) > 0.2) {
+    mouse.x = player.x + rx * 220;
+    mouse.y = player.y + ry * 220;
+  }
+}
+
+function applyDeadzone(value, zone = 0.18) {
+  if (Math.abs(value) < zone) return 0;
+  return value;
+}
+
 function shoot() {
-  if (shootCooldown > 0) return;
-  if (!gameRunning) return;
+  if (shootCooldown > 0 || !gameRunning) return;
 
   const dx = mouse.x - player.x;
   const dy = mouse.y - player.y;
@@ -180,7 +269,6 @@ function shoot() {
 
   const dirX = dx / len;
   const dirY = dy / len;
-
   const bulletSpeed = 760;
 
   world.bullets.push({
@@ -197,16 +285,11 @@ function shoot() {
 }
 
 function dash() {
-  if (player.dashCooldown > 0) return;
-  if (player.energy < 22) return;
+  if (player.dashCooldown > 0 || player.energy < 22) return;
 
-  let moveX = 0;
-  let moveY = 0;
-
-  if (keys["w"] || keys["arrowup"]) moveY -= 1;
-  if (keys["s"] || keys["arrowdown"]) moveY += 1;
-  if (keys["a"] || keys["arrowleft"]) moveX -= 1;
-  if (keys["d"] || keys["arrowright"]) moveX += 1;
+  const move = getMoveInput();
+  let moveX = move.x;
+  let moveY = move.y;
 
   if (moveX === 0 && moveY === 0) {
     moveX = Math.cos(player.facing);
@@ -226,6 +309,28 @@ function dash() {
 
   screenShake = 6;
   createBurst(player.x, player.y, "124,92,255", 20, 1.5);
+}
+
+function riftSlash() {
+  if (!gameRunning || player.slashCooldown > 0 || player.energy < 28) return;
+
+  player.slashCooldown = player.slashCooldownMax;
+  player.energy -= 28;
+  screenShake = 8;
+
+  world.slashWaves.push({
+    x: player.x,
+    y: player.y,
+    angle: player.facing,
+    radius: 26,
+    maxRadius: 150,
+    width: Math.PI * 0.78,
+    speed: 620,
+    life: 0.22,
+    maxLife: 0.22
+  });
+
+  createBurst(player.x, player.y, "255,159,67", 18, 1.25);
 }
 
 function damagePlayer(amount) {
@@ -250,20 +355,11 @@ function endGame() {
 }
 
 function updatePlayer(dt) {
-  let inputX = 0;
-  let inputY = 0;
+  const move = getMoveInput();
 
-  if (keys["w"] || keys["arrowup"]) inputY -= 1;
-  if (keys["s"] || keys["arrowdown"]) inputY += 1;
-  if (keys["a"] || keys["arrowleft"]) inputX -= 1;
-  if (keys["d"] || keys["arrowright"]) inputX += 1;
-
-  const inputLen = Math.hypot(inputX, inputY);
-  if (inputLen > 0) {
-    inputX /= inputLen;
-    inputY /= inputLen;
-    player.vx += inputX * player.accel * dt;
-    player.vy += inputY * player.accel * dt;
+  if (move.x !== 0 || move.y !== 0) {
+    player.vx += move.x * player.accel * dt;
+    player.vy += move.y * player.accel * dt;
   }
 
   if (player.dashTime <= 0) {
@@ -281,13 +377,23 @@ function updatePlayer(dt) {
   player.x += player.vx * dt;
   player.y += player.vy * dt;
 
-  player.x = clamp(player.x, player.radius, canvas.width - player.radius);
-  player.y = clamp(player.y, player.radius, canvas.height - player.radius);
+  const minX = arena.padding + player.radius;
+  const maxX = canvas.width - arena.padding - player.radius;
+  const minY = arena.padding + player.radius;
+  const maxY = canvas.height - arena.padding - player.radius;
+
+  if (player.x < minX || player.x > maxX || player.y < minY || player.y > maxY) {
+    damagePlayer(arena.wallDamagePerSecond * dt);
+  }
+
+  player.x = clamp(player.x, minX, maxX);
+  player.y = clamp(player.y, minY, maxY);
 
   player.facing = Math.atan2(mouse.y - player.y, mouse.x - player.x);
 
   player.dashTime = Math.max(0, player.dashTime - dt);
   player.dashCooldown = Math.max(0, player.dashCooldown - dt);
+  player.slashCooldown = Math.max(0, player.slashCooldown - dt);
   player.invuln = Math.max(0, player.invuln - dt);
 
   player.energy = Math.min(player.maxEnergy, player.energy + 24 * dt);
@@ -317,6 +423,26 @@ function updateBullets(dt) {
       bullet.y < canvas.height + 20
     );
   });
+
+  world.enemyBullets = world.enemyBullets.filter((bullet) => {
+    bullet.x += bullet.vx * dt;
+    bullet.y += bullet.vy * dt;
+    bullet.life -= dt;
+
+    if (distance(bullet.x, bullet.y, player.x, player.y) < bullet.radius + player.radius) {
+      damagePlayer(14);
+      createBurst(bullet.x, bullet.y, "255,93,122", 10, 0.8);
+      return false;
+    }
+
+    return (
+      bullet.life > 0 &&
+      bullet.x > -20 &&
+      bullet.x < canvas.width + 20 &&
+      bullet.y > -20 &&
+      bullet.y < canvas.height + 20
+    );
+  });
 }
 
 function updateEnemies(dt) {
@@ -328,6 +454,23 @@ function updateEnemies(dt) {
     enemy.x += (dx / len) * enemy.speed * dt;
     enemy.y += (dy / len) * enemy.speed * dt;
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+    enemy.fireCooldown -= dt;
+
+    if (enemy.fireCooldown <= 0 && len > 120) {
+      enemy.fireCooldown = Math.max(0.8, 1.6 - difficultyTimer * 0.02) + Math.random() * 0.35;
+
+      const aim = angleTo(enemy.x, enemy.y, player.x, player.y);
+      const speed = 240 + Math.min(180, difficultyTimer * 5);
+
+      world.enemyBullets.push({
+        x: enemy.x,
+        y: enemy.y,
+        vx: Math.cos(aim) * speed,
+        vy: Math.sin(aim) * speed,
+        radius: 5,
+        life: 3
+      });
+    }
 
     const hitDist = enemy.radius + player.radius;
     if (distance(enemy.x, enemy.y, player.x, player.y) < hitDist) {
@@ -371,6 +514,42 @@ function handleCollisions() {
       }
     }
   }
+
+  for (const slash of world.slashWaves) {
+    for (let i = world.enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = world.enemies[i];
+      const dx = enemy.x - slash.x;
+      const dy = enemy.y - slash.y;
+      const dist = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+      let diff = ang - slash.angle;
+
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+
+      if (dist < slash.radius + enemy.radius && Math.abs(diff) < slash.width / 2) {
+        enemy.health -= 3;
+        enemy.hitFlash = 0.12;
+        enemy.x += Math.cos(ang) * 18;
+        enemy.y += Math.sin(ang) * 18;
+
+        if (enemy.health <= 0) {
+          createBurst(enemy.x, enemy.y, `${enemy.hue},90,255`, 22, 1.5);
+          world.enemies.splice(i, 1);
+          player.score += 18;
+          player.energy = Math.min(player.maxEnergy, player.energy + 6);
+        }
+      }
+    }
+  }
+}
+
+function updateSlashWaves(dt) {
+  world.slashWaves = world.slashWaves.filter((slash) => {
+    slash.radius += slash.speed * dt;
+    slash.life -= dt;
+    return slash.life > 0 && slash.radius < slash.maxRadius;
+  });
 }
 
 function updateParticles(dt) {
@@ -384,6 +563,25 @@ function updateParticles(dt) {
   });
 }
 
+function updateGamepadInputs() {
+  const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+  if (!gamepad) return;
+
+  updateAimFromController();
+
+  const shootPressed = (gamepad.buttons[7] && gamepad.buttons[7].pressed) ||
+    (gamepad.buttons[5] && gamepad.buttons[5].pressed);
+  if (shootPressed) shoot();
+
+  const dashPressed = (gamepad.buttons[0] && gamepad.buttons[0].pressed);
+  if (dashPressed && !gamepadState.dashPressed) dash();
+  gamepadState.dashPressed = !!dashPressed;
+
+  const slashPressed = (gamepad.buttons[2] && gamepad.buttons[2].pressed);
+  if (slashPressed && !gamepadState.slashPressed) riftSlash();
+  gamepadState.slashPressed = !!slashPressed;
+}
+
 function updateGame(dt) {
   if (!gameRunning) return;
 
@@ -391,6 +589,8 @@ function updateGame(dt) {
   spawnTimer += dt;
   shootCooldown = Math.max(0, shootCooldown - dt);
   screenShake = Math.max(0, screenShake - dt * 25);
+
+  updateGamepadInputs();
 
   const spawnRate = Math.max(0.25, 1.2 - difficultyTimer * 0.015);
 
@@ -403,7 +603,7 @@ function updateGame(dt) {
     }
   }
 
-  if (mouse.down) {
+  if (mouse.down || touchState.shoot) {
     shoot();
   }
 
@@ -411,6 +611,7 @@ function updateGame(dt) {
   updatePlayer(dt);
   updateBullets(dt);
   updateEnemies(dt);
+  updateSlashWaves(dt);
   handleCollisions();
   updateParticles(dt);
   updateHUD();
@@ -471,6 +672,19 @@ function drawGrid() {
     ctx.lineTo(canvas.width, y);
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function drawArenaBounds() {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.07)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(
+    arena.padding,
+    arena.padding,
+    canvas.width - arena.padding * 2,
+    canvas.height - arena.padding * 2
+  );
   ctx.restore();
 }
 
@@ -549,6 +763,42 @@ function drawBullets() {
     ctx.arc(bullet.x, bullet.y, bullet.radius + 4, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  for (const bullet of world.enemyBullets) {
+    ctx.beginPath();
+    ctx.fillStyle = "#ff5d7a";
+    ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.fillStyle = "rgba(255,93,122,0.24)";
+    ctx.arc(bullet.x, bullet.y, bullet.radius + 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawSlashWaves() {
+  for (const slash of world.slashWaves) {
+    const alpha = slash.life / slash.maxLife;
+
+    ctx.save();
+    ctx.translate(slash.x, slash.y);
+    ctx.rotate(slash.angle);
+
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(38,208,255,${alpha * 0.85})`;
+    ctx.lineWidth = 14;
+    ctx.arc(0, 0, slash.radius, -slash.width / 2, slash.width / 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(255,159,67,${alpha * 0.55})`;
+    ctx.lineWidth = 5;
+    ctx.arc(0, 0, slash.radius - 8, -slash.width / 2, slash.width / 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
 }
 
 function drawParticles() {
@@ -573,7 +823,9 @@ function render() {
 
   drawBackground();
   drawGrid();
+  drawArenaBounds();
   drawParticles();
+  drawSlashWaves();
   drawBullets();
   drawEnemies();
   drawPlayer();
@@ -604,6 +856,7 @@ function startGame() {
   animationId = requestAnimationFrame(loop);
 }
 
+// Mouse
 canvas.addEventListener("mousemove", (event) => {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
@@ -621,23 +874,120 @@ window.addEventListener("mouseup", () => {
   mouse.down = false;
 });
 
+// Keyboard
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   keys[key] = true;
 
-  if (key === "shift") {
-    dash();
+  if (key === "shift") dash();
+  if (key === " ") {
+    event.preventDefault();
+    riftSlash();
   }
-
-  if (key === "r") {
-    startGame();
-  }
+  if (key === "r") startGame();
 });
 
 window.addEventListener("keyup", (event) => {
   keys[event.key.toLowerCase()] = false;
 });
 
+// Touch joystick
+if (movePad && moveStick) {
+  let movePointerId = null;
+  let padRect = null;
+
+  function updatePadFromTouch(clientX, clientY) {
+    padRect = movePad.getBoundingClientRect();
+
+    const centerX = padRect.left + padRect.width / 2;
+    const centerY = padRect.top + padRect.height / 2;
+    let dx = clientX - centerX;
+    let dy = clientY - centerY;
+    const max = padRect.width * 0.32;
+    const len = Math.hypot(dx, dy);
+
+    if (len > max) {
+      dx = (dx / len) * max;
+      dy = (dy / len) * max;
+    }
+
+    moveStick.style.transform = `translate(${dx}px, ${dy}px)`;
+    touchState.moveX = dx / max;
+    touchState.moveY = dy / max;
+    touchState.active = true;
+  }
+
+  function resetPad() {
+    movePointerId = null;
+    moveStick.style.transform = `translate(0px, 0px)`;
+    touchState.moveX = 0;
+    touchState.moveY = 0;
+    touchState.active = false;
+  }
+
+  movePad.addEventListener("pointerdown", (e) => {
+    movePointerId = e.pointerId;
+    updatePadFromTouch(e.clientX, e.clientY);
+  });
+
+  movePad.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== movePointerId) return;
+    updatePadFromTouch(e.clientX, e.clientY);
+  });
+
+  movePad.addEventListener("pointerup", (e) => {
+    if (e.pointerId !== movePointerId) return;
+    resetPad();
+  });
+
+  movePad.addEventListener("pointercancel", resetPad);
+}
+
+// Touch buttons
+if (shootBtn) {
+  shootBtn.addEventListener("pointerdown", () => {
+    touchState.shoot = true;
+  });
+  shootBtn.addEventListener("pointerup", () => {
+    touchState.shoot = false;
+  });
+  shootBtn.addEventListener("pointercancel", () => {
+    touchState.shoot = false;
+  });
+}
+
+if (dashBtn) {
+  dashBtn.addEventListener("pointerdown", () => {
+    dash();
+  });
+}
+
+if (slashBtn) {
+  slashBtn.addEventListener("pointerdown", () => {
+    riftSlash();
+  });
+}
+
+// Touch aim on canvas
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "touch") return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  mouse.x = (e.clientX - rect.left) * scaleX;
+  mouse.y = (e.clientY - rect.top) * scaleY;
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "touch") return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  mouse.x = (e.clientX - rect.left) * scaleX;
+  mouse.y = (e.clientY - rect.top) * scaleY;
+});
+
+// Buttons
 startButton.addEventListener("click", startGame);
 restartButton.addEventListener("click", startGame);
 
