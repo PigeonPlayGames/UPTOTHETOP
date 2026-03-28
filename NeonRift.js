@@ -16,16 +16,16 @@ const waveTimerText = document.getElementById("waveTimerText");
 const stateText = document.getElementById("stateText");
 const finalScoreText = document.getElementById("finalScoreText");
 
-const movePad = document.getElementById("movePad");
-const moveStick = document.getElementById("moveStick");
-const shootBtn = document.getElementById("shootBtn");
-const slashBtn = document.getElementById("slashBtn");
-const dashBtn = document.getElementById("dashBtn");
+const mobileHealthFill = document.getElementById("mobileHealthFill");
+const mobileEnergyFill = document.getElementById("mobileEnergyFill");
+const mobileScoreText = document.getElementById("mobileScoreText");
+
+const canvasWrap = document.getElementById("canvasWrap");
 
 const keys = {};
 const mouse = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
+  x: 640,
+  y: 360,
   down: false
 };
 
@@ -33,7 +33,15 @@ const touchState = {
   active: false,
   moveX: 0,
   moveY: 0,
-  shoot: false
+  shoot: false,
+  moveTouchId: null,
+  aimTouchId: null,
+  moveStartX: 0,
+  moveStartY: 0,
+  aimStartX: 0,
+  aimStartY: 0,
+  aimStartTime: 0,
+  lastTapTime: 0
 };
 
 const gamepadState = {
@@ -48,6 +56,9 @@ let spawnTimer = 0;
 let difficultyTimer = 0;
 let shootCooldown = 0;
 let screenShake = 0;
+
+const BASE_WIDTH = 1280;
+const BASE_HEIGHT = 720;
 
 const world = {
   stars: [],
@@ -64,8 +75,8 @@ const arena = {
 };
 
 const player = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
+  x: BASE_WIDTH / 2,
+  y: BASE_HEIGHT / 2,
   radius: 16,
   vx: 0,
   vy: 0,
@@ -88,6 +99,28 @@ const player = {
   facing: 0
 };
 
+function isTouchLayout() {
+  return window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 900;
+}
+
+function resizeCanvas() {
+  if (isTouchLayout()) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  } else {
+    canvas.width = BASE_WIDTH;
+    canvas.height = BASE_HEIGHT;
+  }
+
+  if (!gameRunning) {
+    player.x = canvas.width / 2;
+    player.y = canvas.height / 2;
+    mouse.x = canvas.width / 2;
+    mouse.y = canvas.height / 2;
+    render();
+  }
+}
+
 function resetGame() {
   player.x = canvas.width / 2;
   player.y = canvas.height / 2;
@@ -101,6 +134,9 @@ function resetGame() {
   player.dashCooldown = 0;
   player.slashCooldown = 0;
   player.facing = 0;
+
+  mouse.x = canvas.width / 2;
+  mouse.y = canvas.height / 2;
 
   world.particles = [];
   world.bullets = [];
@@ -134,9 +170,14 @@ function updateHUD() {
   healthFill.style.width = `${healthPercent}%`;
   energyFill.style.width = `${energyPercent}%`;
 
+  if (mobileHealthFill) mobileHealthFill.style.width = `${healthPercent}%`;
+  if (mobileEnergyFill) mobileEnergyFill.style.width = `${energyPercent}%`;
+
   healthText.textContent = Math.ceil(player.health);
   energyText.textContent = Math.ceil(player.energy);
   scoreText.textContent = player.score;
+  if (mobileScoreText) mobileScoreText.textContent = player.score;
+
   enemyCountText.textContent = world.enemies.length;
   waveTimerText.textContent = difficultyTimer.toFixed(1);
 
@@ -653,12 +694,12 @@ function drawBackground() {
 
   ctx.beginPath();
   ctx.fillStyle = `rgba(124,92,255,${0.08 * pulse})`;
-  ctx.arc(canvas.width * 0.5, canvas.height * 0.5, 220, 0, Math.PI * 2);
+  ctx.arc(canvas.width * 0.5, canvas.height * 0.5, Math.min(canvas.width, canvas.height) * 0.3, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
   ctx.fillStyle = "rgba(38,208,255,0.05)";
-  ctx.arc(canvas.width * 0.55, canvas.height * 0.48, 140, 0, Math.PI * 2);
+  ctx.arc(canvas.width * 0.55, canvas.height * 0.48, Math.min(canvas.width, canvas.height) * 0.2, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -667,7 +708,7 @@ function drawGrid() {
   ctx.strokeStyle = "rgba(255,255,255,0.035)";
   ctx.lineWidth = 1;
 
-  const spacing = 48;
+  const spacing = Math.max(42, Math.min(58, canvas.width / 24));
   for (let x = 0; x < canvas.width; x += spacing) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -865,6 +906,92 @@ function startGame() {
   animationId = requestAnimationFrame(loop);
 }
 
+function handleTouchStart(touch) {
+  const rect = canvas.getBoundingClientRect();
+  const midX = rect.left + rect.width / 2;
+  const point = getCanvasPoint(touch.clientX, touch.clientY);
+
+  if (touch.clientX < midX && touchState.moveTouchId === null) {
+    touchState.moveTouchId = touch.identifier;
+    touchState.moveStartX = point.x;
+    touchState.moveStartY = point.y;
+    touchState.moveX = 0;
+    touchState.moveY = 0;
+    return;
+  }
+
+  if (touch.clientX >= midX && touchState.aimTouchId === null) {
+    const now = performance.now();
+    if (now - touchState.lastTapTime < 260) {
+      riftSlash();
+      touchState.lastTapTime = 0;
+    } else {
+      touchState.lastTapTime = now;
+    }
+
+    touchState.aimTouchId = touch.identifier;
+    touchState.aimStartX = point.x;
+    touchState.aimStartY = point.y;
+    touchState.aimStartTime = now;
+    touchState.shoot = true;
+    mouse.x = point.x;
+    mouse.y = point.y;
+  }
+}
+
+function handleTouchMove(touch) {
+  const point = getCanvasPoint(touch.clientX, touch.clientY);
+
+  if (touch.identifier === touchState.moveTouchId) {
+    const dx = point.x - touchState.moveStartX;
+    const dy = point.y - touchState.moveStartY;
+    const max = 90;
+
+    let moveX = dx / max;
+    let moveY = dy / max;
+    const len = Math.hypot(moveX, moveY);
+
+    if (len > 1) {
+      moveX /= len;
+      moveY /= len;
+    }
+
+    touchState.moveX = moveX;
+    touchState.moveY = moveY;
+  }
+
+  if (touch.identifier === touchState.aimTouchId) {
+    mouse.x = point.x;
+    mouse.y = point.y;
+  }
+}
+
+function handleTouchEnd(touch) {
+  const point = getCanvasPoint(touch.clientX, touch.clientY);
+
+  if (touch.identifier === touchState.moveTouchId) {
+    touchState.moveTouchId = null;
+    touchState.moveX = 0;
+    touchState.moveY = 0;
+  }
+
+  if (touch.identifier === touchState.aimTouchId) {
+    const dx = point.x - touchState.aimStartX;
+    const dy = point.y - touchState.aimStartY;
+    const dist = Math.hypot(dx, dy);
+    const elapsed = performance.now() - touchState.aimStartTime;
+
+    if (dist > 90 && elapsed < 260) {
+      mouse.x = point.x;
+      mouse.y = point.y;
+      dash();
+    }
+
+    touchState.aimTouchId = null;
+    touchState.shoot = false;
+  }
+}
+
 // Mouse
 canvas.addEventListener("mousemove", (event) => {
   const point = getCanvasPoint(event.clientX, event.clientY);
@@ -897,161 +1024,38 @@ window.addEventListener("keyup", (event) => {
   keys[event.key.toLowerCase()] = false;
 });
 
-// Pointer-based touch aim on canvas
-canvas.addEventListener("pointerdown", (e) => {
-  if (e.pointerType === "touch") {
-    e.preventDefault();
-    const point = getCanvasPoint(e.clientX, e.clientY);
-    mouse.x = point.x;
-    mouse.y = point.y;
-  }
-});
-
-canvas.addEventListener("pointermove", (e) => {
-  if (e.pointerType === "touch") {
-    e.preventDefault();
-    const point = getCanvasPoint(e.clientX, e.clientY);
-    mouse.x = point.x;
-    mouse.y = point.y;
-  }
-});
-
-// Touch fallback for browsers that are weird with pointer events
+// Pointer touch handling
 canvas.addEventListener("touchstart", (e) => {
-  if (!e.touches.length) return;
+  if (!isTouchLayout()) return;
   e.preventDefault();
-  const touch = e.touches[0];
-  const point = getCanvasPoint(touch.clientX, touch.clientY);
-  mouse.x = point.x;
-  mouse.y = point.y;
+  for (const touch of e.changedTouches) {
+    handleTouchStart(touch);
+  }
 }, { passive: false });
 
 canvas.addEventListener("touchmove", (e) => {
-  if (!e.touches.length) return;
+  if (!isTouchLayout()) return;
   e.preventDefault();
-  const touch = e.touches[0];
-  const point = getCanvasPoint(touch.clientX, touch.clientY);
-  mouse.x = point.x;
-  mouse.y = point.y;
+  for (const touch of e.changedTouches) {
+    handleTouchMove(touch);
+  }
 }, { passive: false });
 
-// Touch joystick
-if (movePad && moveStick) {
-  let movePointerId = null;
-
-  function updatePad(clientX, clientY) {
-    const rect = movePad.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-
-    let dx = clientX - centerX;
-    let dy = clientY - centerY;
-    const max = rect.width * 0.32;
-    const len = Math.hypot(dx, dy);
-
-    if (len > max) {
-      dx = (dx / len) * max;
-      dy = (dy / len) * max;
-    }
-
-    moveStick.style.transform = `translate(${dx}px, ${dy}px)`;
-    touchState.moveX = dx / max;
-    touchState.moveY = dy / max;
-    touchState.active = true;
+canvas.addEventListener("touchend", (e) => {
+  if (!isTouchLayout()) return;
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    handleTouchEnd(touch);
   }
+}, { passive: false });
 
-  function resetPad() {
-    movePointerId = null;
-    moveStick.style.transform = "translate(0px, 0px)";
-    touchState.moveX = 0;
-    touchState.moveY = 0;
-    touchState.active = false;
+canvas.addEventListener("touchcancel", (e) => {
+  if (!isTouchLayout()) return;
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    handleTouchEnd(touch);
   }
-
-  movePad.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    movePointerId = e.pointerId;
-    updatePad(e.clientX, e.clientY);
-  });
-
-  movePad.addEventListener("pointermove", (e) => {
-    if (e.pointerId !== movePointerId) return;
-    e.preventDefault();
-    updatePad(e.clientX, e.clientY);
-  });
-
-  movePad.addEventListener("pointerup", (e) => {
-    if (e.pointerId !== movePointerId) return;
-    resetPad();
-  });
-
-  movePad.addEventListener("pointercancel", resetPad);
-
-  movePad.addEventListener("touchstart", (e) => {
-    if (!e.touches.length) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    updatePad(touch.clientX, touch.clientY);
-  }, { passive: false });
-
-  movePad.addEventListener("touchmove", (e) => {
-    if (!e.touches.length) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    updatePad(touch.clientX, touch.clientY);
-  }, { passive: false });
-
-  movePad.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    resetPad();
-  }, { passive: false });
-}
-
-// Touch buttons
-function bindTouchButton(button, onPress, onRelease = null) {
-  if (!button) return;
-
-  button.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    onPress();
-  });
-
-  if (onRelease) {
-    button.addEventListener("pointerup", (e) => {
-      e.preventDefault();
-      onRelease();
-    });
-
-    button.addEventListener("pointercancel", (e) => {
-      e.preventDefault();
-      onRelease();
-    });
-
-    button.addEventListener("touchend", (e) => {
-      e.preventDefault();
-      onRelease();
-    }, { passive: false });
-  }
-
-  button.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    onPress();
-  }, { passive: false });
-}
-
-bindTouchButton(shootBtn, () => {
-  touchState.shoot = true;
-}, () => {
-  touchState.shoot = false;
-});
-
-bindTouchButton(dashBtn, () => {
-  dash();
-});
-
-bindTouchButton(slashBtn, () => {
-  riftSlash();
-});
+}, { passive: false });
 
 // Buttons
 startButton.addEventListener("click", startGame);
@@ -1088,5 +1092,11 @@ function updateGamepadInputs() {
   gamepadState.slashPressed = !!slashPressed;
 }
 
+window.addEventListener("resize", resizeCanvas);
+window.addEventListener("orientationchange", () => {
+  setTimeout(resizeCanvas, 150);
+});
+
+resizeCanvas();
 resetGame();
 render();
