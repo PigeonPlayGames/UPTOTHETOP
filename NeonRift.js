@@ -33,8 +33,7 @@ const touchState = {
   active: false,
   moveX: 0,
   moveY: 0,
-  shoot: false,
-  aiming: false
+  shoot: false
 };
 
 const gamepadState = {
@@ -161,6 +160,22 @@ function angleTo(ax, ay, bx, by) {
   return Math.atan2(by - ay, bx - ax);
 }
 
+function applyDeadzone(value, zone = 0.18) {
+  if (Math.abs(value) < zone) return 0;
+  return value;
+}
+
+function getCanvasPoint(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
 function spawnEnemy() {
   const edge = Math.floor(Math.random() * 4);
   let x = 0;
@@ -227,10 +242,8 @@ function getMoveInput() {
 
   const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
   if (gamepad) {
-    const lx = applyDeadzone(gamepad.axes[0] || 0);
-    const ly = applyDeadzone(gamepad.axes[1] || 0);
-    x += lx;
-    y += ly;
+    x += applyDeadzone(gamepad.axes[0] || 0);
+    y += applyDeadzone(gamepad.axes[1] || 0);
   }
 
   const len = Math.hypot(x, y);
@@ -253,11 +266,6 @@ function updateAimFromController() {
     mouse.x = player.x + rx * 220;
     mouse.y = player.y + ry * 220;
   }
-}
-
-function applyDeadzone(value, zone = 0.18) {
-  if (Math.abs(value) < zone) return 0;
-  return value;
 }
 
 function shoot() {
@@ -569,15 +577,16 @@ function updateGamepadInputs() {
 
   updateAimFromController();
 
-  const shootPressed = (gamepad.buttons[7] && gamepad.buttons[7].pressed) ||
+  const shootPressed =
+    (gamepad.buttons[7] && gamepad.buttons[7].pressed) ||
     (gamepad.buttons[5] && gamepad.buttons[5].pressed);
   if (shootPressed) shoot();
 
-  const dashPressed = (gamepad.buttons[0] && gamepad.buttons[0].pressed);
+  const dashPressed = gamepad.buttons[0] && gamepad.buttons[0].pressed;
   if (dashPressed && !gamepadState.dashPressed) dash();
   gamepadState.dashPressed = !!dashPressed;
 
-  const slashPressed = (gamepad.buttons[2] && gamepad.buttons[2].pressed);
+  const slashPressed = gamepad.buttons[2] && gamepad.buttons[2].pressed;
   if (slashPressed && !gamepadState.slashPressed) riftSlash();
   gamepadState.slashPressed = !!slashPressed;
 }
@@ -858,12 +867,9 @@ function startGame() {
 
 // Mouse
 canvas.addEventListener("mousemove", (event) => {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-
-  mouse.x = (event.clientX - rect.left) * scaleX;
-  mouse.y = (event.clientY - rect.top) * scaleY;
+  const point = getCanvasPoint(event.clientX, event.clientY);
+  mouse.x = point.x;
+  mouse.y = point.y;
 });
 
 canvas.addEventListener("mousedown", () => {
@@ -891,19 +897,56 @@ window.addEventListener("keyup", (event) => {
   keys[event.key.toLowerCase()] = false;
 });
 
+// Pointer-based touch aim on canvas
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch") {
+    e.preventDefault();
+    const point = getCanvasPoint(e.clientX, e.clientY);
+    mouse.x = point.x;
+    mouse.y = point.y;
+  }
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "touch") {
+    e.preventDefault();
+    const point = getCanvasPoint(e.clientX, e.clientY);
+    mouse.x = point.x;
+    mouse.y = point.y;
+  }
+});
+
+// Touch fallback for browsers that are weird with pointer events
+canvas.addEventListener("touchstart", (e) => {
+  if (!e.touches.length) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const point = getCanvasPoint(touch.clientX, touch.clientY);
+  mouse.x = point.x;
+  mouse.y = point.y;
+}, { passive: false });
+
+canvas.addEventListener("touchmove", (e) => {
+  if (!e.touches.length) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const point = getCanvasPoint(touch.clientX, touch.clientY);
+  mouse.x = point.x;
+  mouse.y = point.y;
+}, { passive: false });
+
 // Touch joystick
 if (movePad && moveStick) {
   let movePointerId = null;
-  let padRect = null;
 
-  function updatePadFromTouch(clientX, clientY) {
-    padRect = movePad.getBoundingClientRect();
+  function updatePad(clientX, clientY) {
+    const rect = movePad.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
 
-    const centerX = padRect.left + padRect.width / 2;
-    const centerY = padRect.top + padRect.height / 2;
     let dx = clientX - centerX;
     let dy = clientY - centerY;
-    const max = padRect.width * 0.32;
+    const max = rect.width * 0.32;
     const len = Math.hypot(dx, dy);
 
     if (len > max) {
@@ -919,20 +962,22 @@ if (movePad && moveStick) {
 
   function resetPad() {
     movePointerId = null;
-    moveStick.style.transform = `translate(0px, 0px)`;
+    moveStick.style.transform = "translate(0px, 0px)";
     touchState.moveX = 0;
     touchState.moveY = 0;
     touchState.active = false;
   }
 
   movePad.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
     movePointerId = e.pointerId;
-    updatePadFromTouch(e.clientX, e.clientY);
+    updatePad(e.clientX, e.clientY);
   });
 
   movePad.addEventListener("pointermove", (e) => {
     if (e.pointerId !== movePointerId) return;
-    updatePadFromTouch(e.clientX, e.clientY);
+    e.preventDefault();
+    updatePad(e.clientX, e.clientY);
   });
 
   movePad.addEventListener("pointerup", (e) => {
@@ -941,55 +986,107 @@ if (movePad && moveStick) {
   });
 
   movePad.addEventListener("pointercancel", resetPad);
+
+  movePad.addEventListener("touchstart", (e) => {
+    if (!e.touches.length) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    updatePad(touch.clientX, touch.clientY);
+  }, { passive: false });
+
+  movePad.addEventListener("touchmove", (e) => {
+    if (!e.touches.length) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    updatePad(touch.clientX, touch.clientY);
+  }, { passive: false });
+
+  movePad.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    resetPad();
+  }, { passive: false });
 }
 
 // Touch buttons
-if (shootBtn) {
-  shootBtn.addEventListener("pointerdown", () => {
-    touchState.shoot = true;
+function bindTouchButton(button, onPress, onRelease = null) {
+  if (!button) return;
+
+  button.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    onPress();
   });
-  shootBtn.addEventListener("pointerup", () => {
-    touchState.shoot = false;
-  });
-  shootBtn.addEventListener("pointercancel", () => {
-    touchState.shoot = false;
-  });
+
+  if (onRelease) {
+    button.addEventListener("pointerup", (e) => {
+      e.preventDefault();
+      onRelease();
+    });
+
+    button.addEventListener("pointercancel", (e) => {
+      e.preventDefault();
+      onRelease();
+    });
+
+    button.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      onRelease();
+    }, { passive: false });
+  }
+
+  button.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    onPress();
+  }, { passive: false });
 }
 
-if (dashBtn) {
-  dashBtn.addEventListener("pointerdown", () => {
-    dash();
-  });
-}
-
-if (slashBtn) {
-  slashBtn.addEventListener("pointerdown", () => {
-    riftSlash();
-  });
-}
-
-// Touch aim on canvas
-canvas.addEventListener("pointerdown", (e) => {
-  if (e.pointerType !== "touch") return;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  mouse.x = (e.clientX - rect.left) * scaleX;
-  mouse.y = (e.clientY - rect.top) * scaleY;
+bindTouchButton(shootBtn, () => {
+  touchState.shoot = true;
+}, () => {
+  touchState.shoot = false;
 });
 
-canvas.addEventListener("pointermove", (e) => {
-  if (e.pointerType !== "touch") return;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  mouse.x = (e.clientX - rect.left) * scaleX;
-  mouse.y = (e.clientY - rect.top) * scaleY;
+bindTouchButton(dashBtn, () => {
+  dash();
+});
+
+bindTouchButton(slashBtn, () => {
+  riftSlash();
 });
 
 // Buttons
 startButton.addEventListener("click", startGame);
 restartButton.addEventListener("click", startGame);
+
+startButton.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  startGame();
+}, { passive: false });
+
+restartButton.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  startGame();
+}, { passive: false });
+
+// Gamepad
+function updateGamepadInputs() {
+  const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+  if (!gamepad) return;
+
+  updateAimFromController();
+
+  const shootPressed =
+    (gamepad.buttons[7] && gamepad.buttons[7].pressed) ||
+    (gamepad.buttons[5] && gamepad.buttons[5].pressed);
+  if (shootPressed) shoot();
+
+  const dashPressed = gamepad.buttons[0] && gamepad.buttons[0].pressed;
+  if (dashPressed && !gamepadState.dashPressed) dash();
+  gamepadState.dashPressed = !!dashPressed;
+
+  const slashPressed = gamepad.buttons[2] && gamepad.buttons[2].pressed;
+  if (slashPressed && !gamepadState.slashPressed) riftSlash();
+  gamepadState.slashPressed = !!slashPressed;
+}
 
 resetGame();
 render();
