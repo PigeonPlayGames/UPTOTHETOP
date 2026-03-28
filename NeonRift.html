@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Rift</title>
+  <link rel="stylesheet" href="NeonRift.css" />
+</head>
+<body>
+  <div class="game-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-orb"></div>
+        <div>
+          <h1>NEON RIFT</h1>
+          <p class="subtitle">Momentum combat prototype</p>
+        </div>
+      </div>
+
+      <div class="hud">
+        <div class="hud-card">
+          <span class="hud-label">Health</span>
+          <div class="bar">
+            <div id="healthFill" class="bar-fill health-fill"></div>
+          </div>
+          <span id="healthText" class="hud-value">100</span>
+        </div>
+
+        <div class="hud-card">
+          <span class="hud-label">Energy</span>
+          <div class="bar">
+            <div id="energyFill" class="bar-fill energy-fill"></div>
+          </div>
+          <span id="energyText" class="hud-value">100</span>
+        </div>
+
+        <div class="hud-card score-card">
+          <span class="hud-label">Score</span>
+          <span id="scoreText" class="score-value">0</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="game-layout">
+      <section class="left-panel">
+        <div class="panel glass">
+          <h2>Controls</h2>
+          <ul class="control-list">
+            <li><strong>WASD</strong> Move</li>
+            <li><strong>Shift</strong> Dash</li>
+            <li><strong>Mouse</strong> Aim</li>
+            <li><strong>Left Click</strong> Shoot</li>
+            <li><strong>R</strong> Restart</li>
+          </ul>
+        </div>
+
+        <div class="panel glass">
+          <h2>About</h2>
+          <p>
+            Neon Rift is a fast sci-fi action prototype built around speed,
+            glowing cosmic visuals, and momentum-based survival combat.
+          </p>
+        </div>
+      </section>
+
+      <section class="center-panel">
+        <div class="canvas-wrap glass">
+          <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+          <div id="overlay" class="overlay visible">
+            <div class="overlay-card">
+              <p class="eyebrow">EON GAMES</p>
+              <h2>Enter the Rift</h2>
+              <p>
+                Dash through unstable space, eliminate hostile drones, and stay alive.
+              </p>
+              <button id="startButton" class="action-btn">Play Neon Rift</button>
+            </div>
+          </div>
+
+          <div id="gameOverOverlay" class="overlay hidden">
+            <div class="overlay-card">
+              <p class="eyebrow">SYSTEM FAILURE</p>
+              <h2>Rift Collapse</h2>
+              <p id="finalScoreText">Final Score: 0</p>
+              <button id="restartButton" class="action-btn">Restart</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="right-panel">
+        <div class="panel glass">
+          <h2>Status</h2>
+          <div class="status-grid">
+            <div class="status-item">
+              <span class="status-label">Enemies</span>
+              <span id="enemyCountText" class="status-value">0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Wave Timer</span>
+              <span id="waveTimerText" class="status-value">0.0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">State</span>
+              <span id="stateText" class="status-value">Idle</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel glass">
+          <h2>Goal</h2>
+          <p>
+            Survive as long as possible. Use movement and dashes to avoid being surrounded.
+            The more drones you destroy, the faster the Rift becomes.
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="NeonRift.js"></script>
+</body>
+</html>
