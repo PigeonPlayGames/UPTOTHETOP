@@ -20,7 +20,8 @@ const mobileHealthFill = document.getElementById("mobileHealthFill");
 const mobileEnergyFill = document.getElementById("mobileEnergyFill");
 const mobileScoreText = document.getElementById("mobileScoreText");
 
-const canvasWrap = document.getElementById("canvasWrap");
+const bgMusic = document.getElementById("bgMusic");
+const shootSound = document.getElementById("shootSound");
 
 const keys = {};
 const mouse = {
@@ -119,6 +120,30 @@ function resizeCanvas() {
     mouse.y = canvas.height / 2;
     render();
   }
+}
+
+function startBackgroundMusic() {
+  if (!bgMusic) return;
+  bgMusic.volume = 0.45;
+  bgMusic.play().catch((error) => {
+    console.log("Background music autoplay blocked until user interaction:", error);
+  });
+}
+
+function stopBackgroundMusic() {
+  if (!bgMusic) return;
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
+}
+
+function playShootSound() {
+  if (!shootSound) return;
+
+  const shot = shootSound.cloneNode();
+  shot.volume = 0.35;
+  shot.play().catch((error) => {
+    console.log("Shoot sound blocked:", error);
+  });
 }
 
 function resetGame() {
@@ -329,6 +354,8 @@ function shoot() {
     life: 0.9
   });
 
+  playShootSound();
+
   shootCooldown = 0.12;
   createBurst(player.x + dirX * 18, player.y + dirY * 18, "38,208,255", 6, 0.5);
 }
@@ -398,6 +425,7 @@ function damagePlayer(amount) {
 
 function endGame() {
   gameRunning = false;
+  stopBackgroundMusic();
   finalScoreText.textContent = `Final Score: ${player.score}`;
   gameOverOverlay.classList.remove("hidden");
   gameOverOverlay.classList.add("visible");
@@ -902,6 +930,8 @@ function startGame() {
   gameOverOverlay.classList.add("hidden");
   lastTime = performance.now();
 
+  startBackgroundMusic();
+
   if (animationId) cancelAnimationFrame(animationId);
   animationId = requestAnimationFrame(loop);
 }
@@ -1024,7 +1054,7 @@ window.addEventListener("keyup", (event) => {
   keys[event.key.toLowerCase()] = false;
 });
 
-// Pointer touch handling
+// Touch
 canvas.addEventListener("touchstart", (e) => {
   if (!isTouchLayout()) return;
   e.preventDefault();
@@ -1072,26 +1102,6 @@ restartButton.addEventListener("touchstart", (e) => {
 }, { passive: false });
 
 // Gamepad
-function updateGamepadInputs() {
-  const gamepad = navigator.getGamepads ? navigator.getGamepads()[0] : null;
-  if (!gamepad) return;
-
-  updateAimFromController();
-
-  const shootPressed =
-    (gamepad.buttons[7] && gamepad.buttons[7].pressed) ||
-    (gamepad.buttons[5] && gamepad.buttons[5].pressed);
-  if (shootPressed) shoot();
-
-  const dashPressed = gamepad.buttons[0] && gamepad.buttons[0].pressed;
-  if (dashPressed && !gamepadState.dashPressed) dash();
-  gamepadState.dashPressed = !!dashPressed;
-
-  const slashPressed = gamepad.buttons[2] && gamepad.buttons[2].pressed;
-  if (slashPressed && !gamepadState.slashPressed) riftSlash();
-  gamepadState.slashPressed = !!slashPressed;
-}
-
 window.addEventListener("resize", resizeCanvas);
 window.addEventListener("orientationchange", () => {
   setTimeout(resizeCanvas, 150);
