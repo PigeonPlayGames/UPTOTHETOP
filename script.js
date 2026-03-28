@@ -34,62 +34,100 @@ const commentForm = document.getElementById("commentForm");
 const commentTextInput = document.getElementById("commentText");
 const commentList = document.getElementById("commentList");
 
+const loginModal = document.getElementById("login-modal");
+const signupModal = document.getElementById("signup-modal");
+
+// 🔹 Small helper for inline auth messages
+function ensureMessageElement(form) {
+  if (!form) return null;
+
+  let messageEl = form.querySelector(".auth-message");
+
+  if (!messageEl) {
+    messageEl = document.createElement("div");
+    messageEl.className = "auth-message";
+    form.appendChild(messageEl);
+  }
+
+  return messageEl;
+}
+
+function setFormMessage(form, text, type = "") {
+  const messageEl = ensureMessageElement(form);
+  if (!messageEl) return;
+
+  messageEl.className = `auth-message ${type}`.trim();
+  messageEl.textContent = text;
+}
+
 // 🔹 Handle UI Updates When User Logs In/Out
 auth.onAuthStateChanged((user) => {
   if (user) {
-    loginBtn.style.display = "none";
-    logoutBtn.style.display = "inline-block";
-    welcomeUser.innerText = `Welcome, ${user.email}!`;
+    if (loginBtn) loginBtn.style.display = "none";
+    if (logoutBtn) logoutBtn.style.display = "inline-flex";
+    if (welcomeUser) welcomeUser.innerText = `Welcome, ${user.email}`;
   } else {
-    loginBtn.style.display = "inline-block";
-    logoutBtn.style.display = "none";
-    welcomeUser.innerText = "";
+    if (loginBtn) loginBtn.style.display = "inline-flex";
+    if (logoutBtn) logoutBtn.style.display = "none";
+    if (welcomeUser) welcomeUser.innerText = "";
   }
 });
 
 // 🔹 Handle User Login
-loginForm.addEventListener("submit", (e) => {
-  e.preventDefault();
+if (loginForm) {
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
+    setFormMessage(loginForm, "");
 
-  auth.signInWithEmailAndPassword(email, password)
-    .then(() => {
-      alert("Login successful!");
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      setFormMessage(loginForm, "Login successful.", "success");
       loginForm.reset();
-      closeModal();
-    })
-    .catch((error) => {
+
+      setTimeout(() => {
+        closeModal();
+      }, 500);
+    } catch (error) {
       console.error("Login Error:", error.code, error.message);
-      alert(error.message);
-    });
-});
+      setFormMessage(loginForm, error.message, "error");
+    }
+  });
+}
 
 // 🔹 Handle User Signup
-signupForm.addEventListener("submit", (e) => {
-  e.preventDefault();
+if (signupForm) {
+  signupForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const email = document.getElementById("signup-email").value.trim();
-  const password = document.getElementById("signup-password").value;
+    setFormMessage(signupForm, "");
 
-  auth.createUserWithEmailAndPassword(email, password)
-    .then(() => {
-      alert("Sign-up successful!");
+    const email = document.getElementById("signup-email").value.trim();
+    const password = document.getElementById("signup-password").value;
+
+    try {
+      await auth.createUserWithEmailAndPassword(email, password);
+      setFormMessage(signupForm, "Account created successfully.", "success");
       signupForm.reset();
-      closeSignupModal();
-    })
-    .catch((error) => {
+
+      setTimeout(() => {
+        closeSignupModal();
+      }, 700);
+    } catch (error) {
       console.error("Signup Error:", error.code, error.message);
-      alert(error.message);
-    });
-});
+      setFormMessage(signupForm, error.message, "error");
+    }
+  });
+}
 
 // 🔹 Handle User Logout
 function logout() {
   auth.signOut()
     .then(() => {
-      alert("Logged out successfully!");
+      console.log("Logged out successfully.");
     })
     .catch((error) => {
       console.error("Logout Error:", error);
@@ -98,41 +136,46 @@ function logout() {
 }
 
 // 🔹 Handle Comment Submission
-commentForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+if (commentForm && commentTextInput) {
+  commentForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const user = auth.currentUser;
+    const user = auth.currentUser;
 
-  if (!user) {
-    alert("You must be logged in to comment!");
-    return;
-  }
+    if (!user) {
+      alert("You must be logged in to comment.");
+      openModal();
+      return;
+    }
 
-  const commentText = commentTextInput.value.trim();
+    const commentText = commentTextInput.value.trim();
 
-  if (!commentText) {
-    alert("Please enter a comment.");
-    return;
-  }
+    if (!commentText) {
+      alert("Please enter a comment.");
+      return;
+    }
 
-  try {
-    await db.collection("comments").add({
-      username: user.email,
-      comment: commentText,
-      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-      likes: 0,
-      uid: user.uid
-    });
+    try {
+      await db.collection("comments").add({
+        username: user.email,
+        comment: commentText,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        likes: 0,
+        uid: user.uid
+      });
 
-    commentTextInput.value = "";
-  } catch (error) {
-    console.error("Error adding comment:", error);
-    alert("Failed to post comment.");
-  }
-});
+      commentTextInput.value = "";
+    } catch (error) {
+      console.error("Error adding comment:", error);
+      alert("Failed to post comment.");
+    }
+  });
+}
 
 // 🔹 Load Comments from Firestore
 function loadComments() {
+  if (!commentList) return;
+
   db.collection("comments")
     .orderBy("timestamp", "desc")
     .onSnapshot(
@@ -140,7 +183,7 @@ function loadComments() {
         commentList.innerHTML = "";
 
         if (snapshot.empty) {
-          commentList.innerHTML = `<p style="color:#a7b0d6;">No comments yet. Be the first to post.</p>`;
+          commentList.innerHTML = `<p class="comment-text" style="margin:0;color:#a7b0d6;">No comments yet. Be the first to post.</p>`;
           return;
         }
 
@@ -162,7 +205,7 @@ function loadComments() {
             </div>
             <p class="comment-text">${escapeHTML(commentData.comment || "")}</p>
             <div class="comment-actions">
-              <button class="like-btn" onclick="likeComment('${commentId}')">👍 Like</button>
+              <button class="like-btn" type="button" onclick="likeComment('${commentId}')">👍 Like</button>
               <span class="likes-count">Likes: <span id="likes-${commentId}">${commentData.likes || 0}</span></span>
             </div>
           `;
@@ -172,7 +215,7 @@ function loadComments() {
       },
       (error) => {
         console.error("Error loading comments:", error);
-        commentList.innerHTML = `<p style="color:#ff9c9c;">Failed to load comments.</p>`;
+        commentList.innerHTML = `<p class="comment-text" style="margin:0;color:#ff9c9c;">Failed to load comments.</p>`;
       }
     );
 }
@@ -207,20 +250,20 @@ function escapeHTML(str) {
 
 // 🔹 Modal Functions
 function openModal() {
-  document.getElementById("login-modal").style.display = "block";
+  if (loginModal) loginModal.style.display = "block";
 }
 
 function closeModal() {
-  document.getElementById("login-modal").style.display = "none";
+  if (loginModal) loginModal.style.display = "none";
 }
 
 function showSignup() {
   closeModal();
-  document.getElementById("signup-modal").style.display = "block";
+  if (signupModal) signupModal.style.display = "block";
 }
 
 function closeSignupModal() {
-  document.getElementById("signup-modal").style.display = "none";
+  if (signupModal) signupModal.style.display = "none";
 }
 
 function switchToLogin() {
@@ -230,12 +273,61 @@ function switchToLogin() {
 
 // 🔹 Close modal when clicking outside
 window.addEventListener("click", (e) => {
-  const loginModal = document.getElementById("login-modal");
-  const signupModal = document.getElementById("signup-modal");
-
   if (e.target === loginModal) closeModal();
   if (e.target === signupModal) closeSignupModal();
 });
 
-// 🔹 Load comments on page start
+// 🔹 Moving starfield background
+function initStarfield() {
+  const canvas = document.getElementById("starfield");
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  let width = 0;
+  let height = 0;
+  let stars = [];
+
+  function resizeCanvas() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+
+    const starCount = Math.max(80, Math.floor((width * height) / 12000));
+
+    stars = Array.from({ length: starCount }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      speed: Math.random() * 0.45 + 0.12,
+      radius: Math.random() * 1.6 + 0.2,
+      alpha: Math.random() * 0.75 + 0.2
+    }));
+  }
+
+  function drawFrame() {
+    ctx.clearRect(0, 0, width, height);
+
+    for (const star of stars) {
+      star.y += star.speed;
+
+      if (star.y > height + 2) {
+        star.y = -2;
+        star.x = Math.random() * width;
+      }
+
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(220, 230, 255, ${star.alpha})`;
+      ctx.fill();
+    }
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  resizeCanvas();
+  drawFrame();
+
+  window.addEventListener("resize", resizeCanvas);
+}
+
+// 🔹 Run on page load
 loadComments();
+initStarfield();
