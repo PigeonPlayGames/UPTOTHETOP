@@ -4,7 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>eon games</title>
+
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
   <!-- Firebase Compat SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -16,7 +20,9 @@
   <div class="background-glow glow-2"></div>
 
   <header class="site-header">
-    <div class="logo">eon games</div>
+    <div class="logo-wrap">
+      <img src="eongames.png" alt="eon games logo" class="site-logo" />
+    </div>
 
     <nav class="nav">
       <a href="#games">Games</a>
@@ -26,8 +32,8 @@
 
     <div class="auth-area">
       <span id="welcome-user" class="welcome-user"></span>
-      <button id="login-btn" class="btn btn-primary" onclick="openModal()">Login</button>
-      <button id="logout-btn" class="btn btn-secondary" onclick="logout()">Logout</button>
+      <button id="login-btn" class="btn btn-primary" type="button" onclick="openModal()">Login</button>
+      <button id="logout-btn" class="btn btn-secondary" type="button" onclick="logout()">Logout</button>
     </div>
   </header>
 
@@ -68,7 +74,7 @@
           <p>
             A sleek and immersive new experience from eon games. More details will be added later.
           </p>
-          <button class="btn btn-card">View Game</button>
+          <button class="btn btn-card" type="button">View Game</button>
         </article>
 
         <article class="game-card">
@@ -79,7 +85,7 @@
           <p>
             Fast, modern, and built for players who want something fresh. Full content coming soon.
           </p>
-          <button class="btn btn-card">View Game</button>
+          <button class="btn btn-card" type="button">View Game</button>
         </article>
 
         <article class="game-card">
@@ -90,7 +96,7 @@
           <p>
             A new universe in progress. Placeholder text for now until your real description is ready.
           </p>
-          <button class="btn btn-card">View Game</button>
+          <button class="btn btn-card" type="button">View Game</button>
         </article>
       </div>
     </section>
@@ -108,7 +114,9 @@
           <form id="commentForm">
             <textarea
               id="commentText"
+              name="commentText"
               placeholder="Share your thoughts..."
+              autocomplete="off"
               required
             ></textarea>
             <button type="submit" class="btn btn-primary">Post Comment</button>
@@ -142,16 +150,30 @@
   <!-- Login Modal -->
   <div id="login-modal" class="modal">
     <div class="modal-content">
-      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <button class="close-btn" type="button" onclick="closeModal()">&times;</button>
       <h2>Login</h2>
       <form id="login-form" class="auth-form">
-        <input type="email" id="email" placeholder="Email" required />
-        <input type="password" id="password" placeholder="Password" required />
+        <input
+          type="email"
+          id="email"
+          name="email"
+          placeholder="Email"
+          autocomplete="email"
+          required
+        />
+        <input
+          type="password"
+          id="password"
+          name="password"
+          placeholder="Password"
+          autocomplete="current-password"
+          required
+        />
         <button type="submit" class="btn btn-primary full-width">Login</button>
       </form>
       <p class="modal-switch">
         Don’t have an account?
-        <button class="text-btn" onclick="showSignup()">Sign up</button>
+        <button class="text-btn" type="button" onclick="showSignup()">Sign up</button>
       </p>
     </div>
   </div>
@@ -159,16 +181,30 @@
   <!-- Signup Modal -->
   <div id="signup-modal" class="modal">
     <div class="modal-content">
-      <button class="close-btn" onclick="closeSignupModal()">&times;</button>
+      <button class="close-btn" type="button" onclick="closeSignupModal()">&times;</button>
       <h2>Sign Up</h2>
       <form id="signup-form" class="auth-form">
-        <input type="email" id="signup-email" placeholder="Email" required />
-        <input type="password" id="signup-password" placeholder="Password" required />
+        <input
+          type="email"
+          id="signup-email"
+          name="signup-email"
+          placeholder="Email"
+          autocomplete="email"
+          required
+        />
+        <input
+          type="password"
+          id="signup-password"
+          name="signup-password"
+          placeholder="Password"
+          autocomplete="new-password"
+          required
+        />
         <button type="submit" class="btn btn-primary full-width">Create Account</button>
       </form>
       <p class="modal-switch">
         Already have an account?
-        <button class="text-btn" onclick="switchToLogin()">Login</button>
+        <button class="text-btn" type="button" onclick="switchToLogin()">Login</button>
       </p>
     </div>
   </div>
