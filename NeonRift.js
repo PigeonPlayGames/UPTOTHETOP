@@ -138,7 +138,7 @@ function startBackgroundMusic() {
   bgMusic.pause();
   bgMusic.currentTime = 0;
   bgMusic.loop = true;
-  bgMusic.volume = 1.0;
+  bgMusic.volume = 9.0;
 
   const playPromise = bgMusic.play();
 
