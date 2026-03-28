@@ -162,8 +162,13 @@
   </div>
 
   <!-- Audio -->
-  <audio id="bgMusic" src="audio/kinetic-breach.mp3" loop preload="auto"></audio>
-  <audio id="shootSound" src="audio/neonshoot.mp3" preload="auto"></audio>
+  <audio id="bgMusic" preload="auto" loop>
+    <source src="audio/kinetic-breach.mp3" type="audio/mpeg" />
+  </audio>
+
+  <audio id="shootSound" preload="auto">
+    <source src="audio/neonshoot.mp3" type="audio/mpeg" />
+  </audio>
 
   <script src="NeonRift.js"></script>
 </body>
