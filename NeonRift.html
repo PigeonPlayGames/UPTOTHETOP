@@ -48,9 +48,21 @@
           <ul class="control-list">
             <li><strong>WASD</strong> Move</li>
             <li><strong>Shift</strong> Dash</li>
+            <li><strong>Space</strong> Rift Slash</li>
             <li><strong>Mouse</strong> Aim</li>
             <li><strong>Left Click</strong> Shoot</li>
             <li><strong>R</strong> Restart</li>
+          </ul>
+        </div>
+
+        <div class="panel glass">
+          <h2>Touch / Controller</h2>
+          <ul class="control-list">
+            <li><strong>Left stick</strong> Move</li>
+            <li><strong>Right stick</strong> Aim</li>
+            <li><strong>RT / R2</strong> Shoot</li>
+            <li><strong>A / Cross</strong> Dash</li>
+            <li><strong>X / Square</strong> Rift Slash</li>
           </ul>
         </div>
 
@@ -86,6 +98,18 @@
               <button id="restartButton" class="action-btn">Restart</button>
             </div>
           </div>
+
+          <div class="mobile-controls">
+            <div id="movePad" class="touch-zone move-zone">
+              <div id="moveStick" class="touch-stick"></div>
+            </div>
+
+            <div class="touch-actions">
+              <button id="shootBtn" class="touch-btn shoot-btn" type="button">Shoot</button>
+              <button id="slashBtn" class="touch-btn slash-btn" type="button">Slash</button>
+              <button id="dashBtn" class="touch-btn dash-btn" type="button">Dash</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -111,8 +135,8 @@
         <div class="panel glass">
           <h2>Goal</h2>
           <p>
-            Survive as long as possible. Use movement and dashes to avoid being surrounded.
-            The more drones you destroy, the faster the Rift becomes.
+            Survive as long as possible. Use movement, dash, and Rift Slash to avoid being surrounded.
+            Hostile drones now fire back, so momentum matters even more.
           </p>
         </div>
       </section>
