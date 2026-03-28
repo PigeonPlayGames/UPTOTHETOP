@@ -100,6 +100,16 @@ const player = {
   facing: 0
 };
 
+if (bgMusic) {
+  bgMusic.addEventListener("canplaythrough", () => {
+    console.log("Background music loaded and ready.");
+  });
+
+  bgMusic.addEventListener("error", () => {
+    console.log("Background music file could not be loaded.");
+  });
+}
+
 function isTouchLayout() {
   return window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 900;
 }
@@ -124,10 +134,23 @@ function resizeCanvas() {
 
 function startBackgroundMusic() {
   if (!bgMusic) return;
-  bgMusic.volume = 0.45;
-  bgMusic.play().catch((error) => {
-    console.log("Background music autoplay blocked until user interaction:", error);
-  });
+
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
+  bgMusic.loop = true;
+  bgMusic.volume = 1.0;
+
+  const playPromise = bgMusic.play();
+
+  if (playPromise !== undefined) {
+    playPromise
+      .then(() => {
+        console.log("Background music started.");
+      })
+      .catch((error) => {
+        console.log("Background music failed to start:", error);
+      });
+  }
 }
 
 function stopBackgroundMusic() {
@@ -139,7 +162,7 @@ function stopBackgroundMusic() {
 function playShootSound() {
   if (!shootSound) return;
 
-  const shot = shootSound.cloneNode();
+  const shot = shootSound.cloneNode(true);
   shot.volume = 0.35;
   shot.play().catch((error) => {
     console.log("Shoot sound blocked:", error);
@@ -1101,7 +1124,7 @@ restartButton.addEventListener("touchstart", (e) => {
   startGame();
 }, { passive: false });
 
-// Gamepad
+// Resize/orientation
 window.addEventListener("resize", resizeCanvas);
 window.addEventListener("orientationchange", () => {
   setTimeout(resizeCanvas, 150);
