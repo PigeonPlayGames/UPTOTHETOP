@@ -494,8 +494,8 @@
             <span class="muted">How your prompt would look in a chat UI</span>
           </div>
           <div class="chat-log" id="chatLog">
-            <div class="message system">System: You are a helpful AI. Better prompts earn more points.</div>
-            <div class="message ai">AI: Ready for your prompt. Be specific, structured, and detailed.</div>
+            <div class="message system">System: You are a helpful AI. Better prompts earn more points, but vague prompts still get imaginative responses.</div>
+            <div class="message ai">AI: Ready for your prompt. Be specific if you can — I’ll still improvise creatively if you’re vague.</div>
           </div>
         </div>
       </section>
@@ -743,12 +743,104 @@
       return { score, verdict, feedback, strengths, improvements, notes };
     }
 
-    function makeAiPreview(prompt, challenge, result) {
-      const short = prompt.length > 220 ? prompt.slice(0, 220) + "..." : prompt;
-      if (result.score >= challenge.target) {
-        return `AI: Great prompt detected. I understand the task clearly and can generate a structured answer based on this request:\n\n"${short}"\n\nExpected quality: high.`;
+    function buildUniqueResponse(prompt, challenge, result) {
+      const text = prompt.trim();
+      const lower = text.toLowerCase();
+      const requestedFormatMatch = text.match(/(table|bullet|checklist|step-by-step|json|sections)/i);
+      const requestedFormat = requestedFormatMatch ? requestedFormatMatch[0] : "structured sections";
+
+      const tones = lower.includes("fun") || lower.includes("playful")
+        ? "playful"
+        : lower.includes("professional") || lower.includes("formal")
+        ? "professional"
+        : lower.includes("creative")
+        ? "creative"
+        : "helpful";
+
+      const uniqueAngles = [
+        "unexpected twist",
+        "signature theme",
+        "memorable hook",
+        "smart simplification",
+        "creative framing"
+      ];
+      const uniqueAngle = uniqueAngles[(text.length + state.round + state.index) % uniqueAngles.length];
+
+      const fallbacks = {
+        travel: [
+          "A hidden-food-stops route with one iconic landmark each day.",
+          "A relaxed local-first itinerary with morning, afternoon, and evening flow.",
+          "A contrast-based trip that mixes busy hotspots with calm neighborhoods."
+        ],
+        food: [
+          "A repeat-friendly meal system with easy grocery overlap.",
+          "A healthy reset plan built around simple breakfasts and flexible dinners.",
+          "A practical weekly plan focused on low-prep meals and variety."
+        ],
+        fitness: [
+          "A confidence-first beginner routine with gentle progression.",
+          "A bodyweight-focused plan that avoids overload early on.",
+          "A simple weekly structure mixing strength, mobility, and recovery."
+        ],
+        marketing: [
+          "A creator-led hype campaign with a strong social reveal moment.",
+          "A launch built around teaser content, influencer reactions, and urgency.",
+          "A community-first campaign that turns product features into shareable moments."
+        ],
+        coding: [
+          "A learn-by-building roadmap with tiny wins every week.",
+          "A project-based plan that turns theory into mini apps quickly.",
+          "A steady 8-week system with review checkpoints and confidence boosts."
+        ],
+        branding: [
+          "A human-feeling content plan with trust-building and soft selling.",
+          "A month of posts split between education, behind-the-scenes, and offers.",
+          "A community-driven Instagram calendar with a clear brand voice."
+        ],
+        creative: [
+          "A stylish concept with a strong identity and tightly scoped execution.",
+          "A bold but coherent direction that fills in missing details creatively.",
+          "A polished framework that turns a vague ask into a memorable concept."
+        ]
+      };
+
+      const challengeKey = challenge.tags.find(tag => fallbacks[tag]) || (state.difficulty === "hard" ? "creative" : challenge.tags[0]);
+      const fallbackPool = fallbacks[challengeKey] || fallbacks.creative;
+      const inventedDirection = fallbackPool[(text.length + challenge.title.length) % fallbackPool.length];
+
+      const pickedUp = [];
+      if (/budget/i.test(text)) pickedUp.push("budget awareness");
+      if (/beginner/i.test(text)) pickedUp.push("beginner-friendly guidance");
+      if (/advanced/i.test(text)) pickedUp.push("advanced depth");
+      if (/quick|fast/i.test(text)) pickedUp.push("fast-to-scan ideas");
+      if (/detailed/i.test(text)) pickedUp.push("extra detail");
+      if (/example|sample/i.test(text)) pickedUp.push("examples");
+
+      if (!text) {
+        return "AI: I need at least a few words before I can respond.";
       }
-      return `AI: I can respond, but some parts are unclear. Based on your prompt:\n\n"${short}"\n\nI may need to guess missing details.`;
+
+      if (result.score < 55) {
+        return [
+          "AI: Your prompt is open-ended, so I made some smart creative choices.",
+          "Invented direction: " + inventedDirection,
+          "Response style: " + tones + ", delivered in " + requestedFormat + ".",
+          "Unique angle: " + uniqueAngle + ".",
+          pickedUp.length ? "Hints detected: " + pickedUp.join(", ") + "." : "I filled in the missing details to avoid a generic answer.",
+          "I can still make this feel specific even when the prompt is vague."
+        ].join("
+
+");
+      }
+
+      return [
+        "AI: I understand the task clearly and can produce a tailored response.",
+        pickedUp.length ? "Hints detected: " + pickedUp.join(", ") + "." : "I kept your intent intact while sharpening the structure.",
+        "Response style: " + tones + ", delivered in " + requestedFormat + ".",
+        "Unique angle: " + uniqueAngle + "."
+      ].join("
+
+");
     }
 
     function submitPrompt() {
@@ -757,9 +849,9 @@
       const result = scorePrompt(prompt, challenge);
 
       appendMessage("user", `User: ${prompt || "[empty prompt]"}`);
-      appendMessage("ai", makeAiPreview(prompt, challenge, result));
+      appendMessage("ai", buildUniqueResponse(prompt, challenge, result));
 
-      state.score += result.score;
+      state.score += result.score + (result.score < 55 ? 10 : 0);
       state.streak = result.score >= challenge.target ? state.streak + 1 : 0;
       state.best = Math.max(state.best, state.score);
       localStorage.setItem("promptClashBest", String(state.best));
@@ -767,7 +859,7 @@
       el.resultBox.classList.remove("hidden");
       el.scoreBanner.innerHTML = `
         <strong>Round score: ${result.score}/100</strong><br>
-        ${result.verdict} ${result.score >= challenge.target ? "✅ Target beaten." : "❌ Target missed."}
+        ${result.verdict} ${result.score >= challenge.target ? "✅ Target beaten." : "❌ Target missed."}${result.score < 55 ? "<br>Creative recovery bonus: +10" : ""}
       `;
       el.feedbackBox.textContent = result.feedback;
 
