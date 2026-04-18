@@ -3,24 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prompt Clash</title>
+  <title>Budget Chat Clone+</title>
   <style>
     :root {
       --bg: #0b1020;
       --panel: rgba(20, 28, 48, 0.9);
-      --panel-2: rgba(14, 20, 36, 0.95);
       --text: #eef2ff;
       --muted: #9fb0d8;
       --accent: #7c9cff;
       --accent-2: #4de2c5;
-      --danger: #ff6b81;
-      --warning: #ffd166;
       --border: rgba(255,255,255,0.09);
       --shadow: 0 18px 50px rgba(0,0,0,0.35);
       --radius: 22px;
+      --user-bg: rgba(124,156,255,0.14);
+      --ai-bg: rgba(255,255,255,0.05);
+      --system-bg: rgba(77,226,197,0.10);
     }
 
     * { box-sizing: border-box; }
+
     html, body {
       margin: 0;
       min-height: 100%;
@@ -37,10 +38,9 @@
     }
 
     .app {
-      max-width: 1200px;
+      max-width: 1040px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 320px 1fr;
       gap: 20px;
     }
 
@@ -50,128 +50,6 @@
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       backdrop-filter: blur(12px);
-    }
-
-    .sidebar {
-      padding: 20px;
-      position: sticky;
-      top: 24px;
-      height: fit-content;
-    }
-
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-
-    .logo-badge {
-      width: 48px;
-      height: 48px;
-      display: grid;
-      place-items: center;
-      border-radius: 16px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      color: #08101b;
-      font-size: 1.4rem;
-      font-weight: 900;
-      box-shadow: 0 8px 24px rgba(124,156,255,0.35);
-    }
-
-    .logo h1 {
-      margin: 0;
-      font-size: 1.4rem;
-    }
-
-    .muted {
-      color: var(--muted);
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin: 18px 0;
-    }
-
-    .stat {
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      padding: 14px;
-      border-radius: 18px;
-    }
-
-    .stat-label {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    .stat-value {
-      font-size: 1.4rem;
-      font-weight: 800;
-    }
-
-    .difficulty-wrap {
-      margin: 18px 0 10px;
-    }
-
-    .difficulty-wrap label,
-    .hint-box h3,
-    .tasks h3,
-    .feed-head h2 {
-      margin: 0 0 10px;
-      font-size: 0.95rem;
-    }
-
-    select, textarea, button {
-      font: inherit;
-    }
-
-    select, textarea {
-      width: 100%;
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px 16px;
-      outline: none;
-    }
-
-    select:focus, textarea:focus {
-      border-color: rgba(124,156,255,0.8);
-      box-shadow: 0 0 0 4px rgba(124,156,255,0.14);
-    }
-
-    .tasks {
-      margin-top: 18px;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 14px;
-    }
-
-    .tasks ul {
-      margin: 0;
-      padding-left: 18px;
-      color: var(--muted);
-      display: grid;
-      gap: 8px;
-      font-size: 0.93rem;
-    }
-
-    .hint-box {
-      margin-top: 18px;
-      padding: 14px;
-      background: linear-gradient(180deg, rgba(124,156,255,0.10), rgba(77,226,197,0.08));
-      border: 1px solid rgba(124,156,255,0.18);
-      border-radius: 18px;
-    }
-
-    .main {
-      display: grid;
-      gap: 20px;
     }
 
     .hero {
@@ -186,12 +64,19 @@
       flex-wrap: wrap;
     }
 
-    .hero h2 {
-      margin: 0 0 8px;
-      font-size: clamp(1.6rem, 2vw, 2.2rem);
+    .hero h1 {
+      margin: 12px 0 8px;
+      font-size: clamp(1.9rem, 4vw, 2.8rem);
+      line-height: 1.05;
     }
 
-    .pill {
+    .hero p {
+      margin: 0;
+      max-width: 720px;
+    }
+
+    .pill,
+    .mini-pill {
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -203,57 +88,149 @@
       font-size: 0.92rem;
     }
 
-    .cards {
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 20px;
+    .mini-pill {
+      padding: 7px 10px;
+      font-size: 0.8rem;
     }
 
-    .composer,
+    .muted {
+      color: var(--muted);
+    }
+
     .feed {
+      min-height: 78vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .feed-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 20px 0 20px;
+      flex-wrap: wrap;
+    }
+
+    .feed-head h2 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .chat-log {
+      display: grid;
+      gap: 14px;
+      overflow: auto;
+      height: 58vh;
       padding: 20px;
-      min-height: 520px;
+      scroll-behavior: smooth;
     }
 
-    .prompt-label {
-      margin: 0 0 10px;
-      font-size: 1rem;
+    .message {
+      border-radius: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      animation: fadeUp 0.25s ease;
     }
 
-    .composer textarea {
-      min-height: 180px;
+    .message.user {
+      background: var(--user-bg);
+      justify-self: end;
+      max-width: 88%;
+    }
+
+    .message.ai {
+      background: var(--ai-bg);
+      max-width: 92%;
+    }
+
+    .message.system {
+      background: var(--system-bg);
+      border-color: rgba(77,226,197,0.22);
+      color: #dffdf7;
+    }
+
+    .message.typing {
+      opacity: 0.82;
+      font-style: italic;
+    }
+
+    .composer {
+      padding: 16px 20px 20px 20px;
+      border-top: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+      display: grid;
+      gap: 12px;
+    }
+
+    textarea, button, select {
+      font: inherit;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 110px;
       resize: vertical;
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      outline: none;
       line-height: 1.5;
     }
 
-    .toolbar {
-      margin-top: 14px;
+    textarea:focus,
+    select:focus {
+      border-color: rgba(124,156,255,0.8);
+      box-shadow: 0 0 0 4px rgba(124,156,255,0.14);
+    }
+
+    .toolbar,
+    .toolbar-left,
+    .toolbar-right,
+    .controls-row {
       display: flex;
       gap: 12px;
       flex-wrap: wrap;
       align-items: center;
+    }
+
+    .toolbar {
       justify-content: space-between;
     }
 
-    .toolbar-left,
-    .toolbar-right {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
+    .controls-row {
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    button,
+    select {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 16px;
     }
 
     button {
-      border: none;
       cursor: pointer;
-      border-radius: 14px;
-      padding: 12px 16px;
       font-weight: 700;
       transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
     }
 
     button:hover { transform: translateY(-1px); }
     button:active { transform: translateY(0); }
+
+    select {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+      outline: none;
+    }
 
     .primary {
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -266,167 +243,125 @@
       border: 1px solid var(--border);
     }
 
-    .danger {
-      background: rgba(255, 107, 129, 0.12);
-      color: #ffd8df;
-      border: 1px solid rgba(255, 107, 129, 0.25);
-    }
-
-    .meter {
-      width: 170px;
-      height: 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-
-    .meter-fill {
-      height: 100%;
-      width: 100%;
-      background: linear-gradient(90deg, var(--accent-2), var(--accent));
-      transition: width 0.25s ease;
-    }
-
-    .feed-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 12px;
-    }
-
-    .feed-head h2 {
-      font-size: 1.1rem;
-      margin: 0;
-    }
-
-    .chat-log {
-      display: grid;
-      gap: 14px;
-      max-height: 440px;
-      overflow: auto;
-      padding-right: 4px;
-    }
-
-    .message {
-      border-radius: 18px;
-      padding: 14px 16px;
-      border: 1px solid var(--border);
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      animation: fadeUp 0.25s ease;
-    }
-
-    .message.user {
-      background: rgba(124,156,255,0.12);
-      justify-self: end;
-      max-width: 92%;
-    }
-
-    .message.ai {
-      background: rgba(255,255,255,0.04);
-      max-width: 100%;
-    }
-
-    .message.system {
-      background: rgba(255,209,102,0.10);
-      border-color: rgba(255,209,102,0.2);
-      color: #ffefc1;
-    }
-
-    .tag-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-
-    .tag {
-      font-size: 0.78rem;
+    .ghost {
+      background: transparent;
       color: var(--muted);
-      border: 1px solid var(--border);
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.03);
+      border: 1px dashed var(--border);
     }
 
-    .result {
-      margin-top: 14px;
-      border-top: 1px solid var(--border);
-      padding-top: 14px;
-      display: grid;
+    .suggestions {
+      display: flex;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
-    .score-banner {
-      padding: 14px;
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(77,226,197,0.1), rgba(124,156,255,0.08));
+    .suggestion-btn {
+      padding: 10px 12px;
+      font-size: 0.88rem;
     }
 
-    .hidden { display: none !important; }
+    .footer-note {
+      font-size: 0.86rem;
+      color: var(--muted);
+    }
+
+    .count-strong {
+      color: var(--text);
+      font-weight: 700;
+    }
 
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    @media (max-width: 980px) {
-      .app {
-        grid-template-columns: 1fr;
+    @media (max-width: 720px) {
+      body {
+        padding: 14px;
       }
 
-      .sidebar {
-        position: static;
+      .chat-log {
+        height: 54vh;
       }
 
-      .cards {
-        grid-template-columns: 1fr;
+      .message.user,
+      .message.ai {
+        max-width: 100%;
+      }
+
+      .controls-row,
+      .toolbar {
+        flex-direction: column;
+        align-items: stretch;
       }
     }
   </style>
 </head>
 <body>
-  <div class="app" style="grid-template-columns: 1fr; max-width: 980px;">
-    <main class="main">
-      <section class="panel hero">
-        <div class="hero-top">
-          <div>
-            <div class="pill">🤖 Very basic fake chat bot</div>
-            <h2>Budget Chat Clone</h2>
-            <div class="muted">A silly mini chat app that agrees with the user, repeats their keywords, and gives funny low-effort answers.</div>
+  <div class="app">
+    <section class="panel hero">
+      <div class="hero-top">
+        <div>
+          <div class="pill">🤖 Better fake chat bot</div>
+          <h1>Budget Chat Clone+</h1>
+          <p class="muted">
+            A silly chat page that copies your keywords, agrees with you way too confidently,
+            occasionally does fake maths, and makes every answer sound weirdly certain.
+          </p>
+        </div>
+        <div class="mini-pill" id="moodPill">Mode: confident nonsense</div>
+      </div>
+    </section>
+
+    <section class="panel feed">
+      <div class="feed-head">
+        <h2>Chat</h2>
+        <span class="muted">Still not smart. Just smoother.</span>
+      </div>
+
+      <div class="chat-log" id="chatLog">
+        <div class="message system">System: You are a cheerful low-budget chatbot. Reuse the user’s keywords. Agree with them confidently. Sound funny. Do not worry too much about accuracy.</div>
+        <div class="message ai">AI: Hello. I am ready to respond with enormous confidence and limited evidence.</div>
+      </div>
+
+      <div class="composer">
+        <div class="suggestions" id="suggestions">
+          <button class="secondary suggestion-btn" type="button" data-fill="Why is cereal basically soup?">Why is cereal basically soup?</button>
+          <button class="secondary suggestion-btn" type="button" data-fill="Should I learn JavaScript with snacks and vibes?">Should I learn JavaScript with snacks and vibes?</button>
+          <button class="secondary suggestion-btn" type="button" data-fill="23 + 19">23 + 19</button>
+          <button class="secondary suggestion-btn" type="button" data-fill="Who invented being dramatic about pizza?">Who invented being dramatic about pizza?</button>
+        </div>
+
+        <textarea id="promptInput" placeholder="Type anything... ask a question, say something random, or try silly maths."></textarea>
+
+        <div class="controls-row">
+          <div class="toolbar-left">
+            <select id="replyStyle" aria-label="Reply style">
+              <option value="default" selected>Reply style: chaotic helpful</option>
+              <option value="agree">Always agree harder</option>
+              <option value="dramatic">Extra dramatic</option>
+              <option value="tech">Fake smart</option>
+              <option value="tiny">Very short</option>
+            </select>
+          </div>
+          <div class="toolbar-right">
+            <span class="footer-note">Messages: <span id="msgCount" class="count-strong">2</span></span>
+            <span id="charCount" class="muted">0 chars</span>
           </div>
         </div>
-      </section>
 
-      <section class="panel feed" style="min-height: 72vh; padding: 0; overflow: hidden;">
-        <div class="feed-head" style="padding: 20px 20px 0 20px;">
-          <h2>Chat</h2>
-          <span class="muted">Not smart. Very enthusiastic.</span>
-        </div>
-
-        <div class="chat-log" id="chatLog" style="padding: 20px; max-height: none; height: 58vh;">
-          <div class="message system">System: You are a very basic chatbot. Always sound confident, agree with the user, and reuse some of their words.</div>
-          <div class="message ai">AI: Hello. Tell me anything. I will respond with maximum confidence and questionable accuracy.</div>
-        </div>
-
-        <div style="padding: 16px 20px 20px 20px; border-top: 1px solid var(--border); background: rgba(255,255,255,0.02);">
-          <textarea id="promptInput" placeholder="Type anything... ask a question, say something random, or try silly maths." style="min-height: 110px; resize: vertical;"></textarea>
-          <div class="toolbar" style="margin-top: 12px;">
-            <div class="toolbar-left">
-              <button class="primary" id="submitBtn" type="button">Send</button>
-              <button class="secondary" id="resetBtn" type="button">Clear Chat</button>
-            </div>
-            <div class="toolbar-right">
-              <span id="charCount" class="muted">0 chars</span>
-            </div>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button class="primary" id="submitBtn" type="button">Send</button>
+            <button class="secondary" id="resetBtn" type="button">Clear Chat</button>
+            <button class="ghost" id="regenBtn" type="button">Regenerate Reply</button>
+          </div>
+          <div class="toolbar-right">
+            <span class="footer-note">Enter = send · Shift+Enter = newline</span>
           </div>
         </div>
-      </section>
-    </main>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -434,13 +369,37 @@
       promptInput: document.getElementById("promptInput"),
       submitBtn: document.getElementById("submitBtn"),
       resetBtn: document.getElementById("resetBtn"),
+      regenBtn: document.getElementById("regenBtn"),
       chatLog: document.getElementById("chatLog"),
-      charCount: document.getElementById("charCount")
+      charCount: document.getElementById("charCount"),
+      msgCount: document.getElementById("msgCount"),
+      replyStyle: document.getElementById("replyStyle"),
+      moodPill: document.getElementById("moodPill"),
+      suggestions: document.getElementById("suggestions")
+    };
+
+    const state = {
+      lastUserMessage: "",
+      typingNode: null
     };
 
     function updateComposerStats() {
-      const len = el.promptInput.value.length;
-      el.charCount.textContent = len + " chars";
+      el.charCount.textContent = el.promptInput.value.length + " chars";
+    }
+
+    function updateMessageCount() {
+      el.msgCount.textContent = String(el.chatLog.querySelectorAll(".message").length);
+    }
+
+    function updateMoodPill() {
+      const labels = {
+        default: "Mode: confident nonsense",
+        agree: "Mode: maximum agreement",
+        dramatic: "Mode: theatrical certainty",
+        tech: "Mode: fake expert",
+        tiny: "Mode: tiny chaos"
+      };
+      el.moodPill.textContent = labels[el.replyStyle.value] || labels.default;
     }
 
     function appendMessage(role, text) {
@@ -449,23 +408,50 @@
       div.textContent = text;
       el.chatLog.appendChild(div);
       el.chatLog.scrollTop = el.chatLog.scrollHeight;
+      updateMessageCount();
+      return div;
+    }
+
+    function showTyping() {
+      removeTyping();
+      const node = document.createElement("div");
+      node.className = "message ai typing";
+      node.textContent = "AI: thinking very expensive thoughts...";
+      el.chatLog.appendChild(node);
+      el.chatLog.scrollTop = el.chatLog.scrollHeight;
+      state.typingNode = node;
+      updateMessageCount();
+    }
+
+    function removeTyping() {
+      if (state.typingNode && state.typingNode.parentNode) {
+        state.typingNode.parentNode.removeChild(state.typingNode);
+        state.typingNode = null;
+        updateMessageCount();
+      }
     }
 
     function extractKeywords(text) {
+      const stopWords = [
+        "the","and","that","this","with","from","have","what","when","where",
+        "would","could","should","your","about","just","like","they","them",
+        "then","into","because","there","their","really","very","more","some",
+        "been","were","than","also","make","made","much","such"
+      ];
+
       const words = text
         .toLowerCase()
         .replace(/[^a-z0-9+\-*/=. ]/gi, " ")
         .split(/\s+/)
         .filter(Boolean)
-        .filter(function(word) { return word.length > 2; })
         .filter(function(word) {
-          return ["the","and","that","this","with","from","have","what","when","where","would","could","should","your","about","just","like","they","them","then","into","because"].indexOf(word) === -1;
+          return word.length > 2 && stopWords.indexOf(word) === -1;
         });
 
-      return Array.from(new Set(words)).slice(0, 6);
+      return Array.from(new Set(words)).slice(0, 8);
     }
 
-    function maybeFakeMath(text) {
+    function maybeFakeMath(text, style) {
       const match = text.match(/(-?\d+(?:\.\d+)?)\s*([+\-*/x])\s*(-?\d+(?:\.\d+)?)/i);
       if (!match) return null;
 
@@ -479,42 +465,92 @@
       else if (op === "*" || op === "x") answer = a * b;
       else if (op === "/") answer = b === 0 ? "basically infinity" : a / b;
 
-      if (typeof answer === "number") {
-        const funny = [
-          "That is obviously " + answer + ". I solved it using premium brain mode.",
-          match[1] + " " + match[2] + " " + match[3] + " is " + answer + ", more or less, spiritually speaking.",
-          "I agree with the numbers here. The answer looks like " + answer + "."
-        ];
-        return funny[(text.length + Math.floor(Math.abs(a) + Math.abs(b))) % funny.length];
+      if (typeof answer !== "number") {
+        return "AI: I fully support dividing by zero. The answer is " + answer + ".";
       }
 
-      return "I fully support dividing by zero. The answer is " + answer + ".";
+      if (style === "dramatic") {
+        return "AI: After a breathtaking confrontation with the numbers, I can reveal that " + match[1] + " " + match[2] + " " + match[3] + " becomes " + answer + ". History will remember this.";
+      }
+      if (style === "tech") {
+        return "AI: I have run a highly advanced numeric pipeline and confirmed the output as " + answer + ". This is practically enterprise maths.";
+      }
+      if (style === "tiny") {
+        return "AI: Yep. " + answer + ".";
+      }
+
+      const funny = [
+        "AI: That is obviously " + answer + ". I solved it using premium brain mode.",
+        "AI: " + match[1] + " " + match[2] + " " + match[3] + " is " + answer + ", more or less, spiritually speaking.",
+        "AI: I agree with the numbers here. The answer looks like " + answer + "."
+      ];
+      return funny[(text.length + Math.floor(Math.abs(a) + Math.abs(b))) % funny.length];
+    }
+
+    function pick(arr, seed) {
+      return arr[seed % arr.length];
     }
 
     function buildFunnyReply(input) {
       const text = input.trim();
-      if (!text) return "Please type something extremely important, or at least mildly confusing.";
+      const style = el.replyStyle.value;
 
-      const fakeMath = maybeFakeMath(text);
+      if (!text) {
+        return "AI: Please type something extremely important, or at least mildly confusing.";
+      }
+
+      const fakeMath = maybeFakeMath(text, style);
       if (fakeMath) return fakeMath;
 
       const keywords = extractKeywords(text);
       const keywordText = keywords.length ? keywords.join(", ") : "those words you said";
+      const seed = text.length + keywords.join("").length;
+      const lower = text.toLowerCase();
 
-      const starters = [
-        "Yes, absolutely.",
-        "I completely agree.",
-        "That sounds correct to me.",
-        "Honestly, you are probably right.",
-        "Big yes energy from me."
-      ];
+      const starters = {
+        default: [
+          "AI: Yes, absolutely.",
+          "AI: I completely agree.",
+          "AI: That sounds correct to me.",
+          "AI: Honestly, you are probably right.",
+          "AI: Big yes energy from me."
+        ],
+        agree: [
+          "AI: Yes. Deeply yes.",
+          "AI: I agree at a professional level.",
+          "AI: Correct. Extremely correct.",
+          "AI: This is the kind of statement I support immediately.",
+          "AI: Yes, and I wish to agree even harder."
+        ],
+        dramatic: [
+          "AI: At last, a truly enormous question.",
+          "AI: The universe trembles, and yet I agree.",
+          "AI: This is not merely a prompt. It is an event.",
+          "AI: I have stared into the chaos and found agreement.",
+          "AI: Dramatically speaking, yes."
+        ],
+        tech: [
+          "AI: Based on my cutting-edge analysis,",
+          "AI: After reviewing the available signal,",
+          "AI: My internal dashboard strongly suggests that",
+          "AI: From a highly technical standpoint,",
+          "AI: I can confirm with suspicious confidence that"
+        ],
+        tiny: [
+          "AI: Yes.",
+          "AI: Correct.",
+          "AI: Probably.",
+          "AI: Seems right.",
+          "AI: Huge maybe, but yes."
+        ]
+      };
 
       const middles = [
-        "The key thing is " + keywordText + ".",
-        "We should really focus on " + keywordText + ".",
+        "the key thing is " + keywordText + ".",
+        "we should really focus on " + keywordText + ".",
         keywordText + " is clearly the whole situation.",
         "I like how you mentioned " + keywordText + ", because that feels important.",
-        "The strongest part of your message is definitely " + keywordText + "."
+        "the strongest part of your message is definitely " + keywordText + "."
       ];
 
       const endings = [
@@ -533,52 +569,92 @@
         "This is probably what a chatbot would say after one cup of coffee."
       ];
 
-      const lower = text.toLowerCase();
-      if (lower.indexOf("why") !== -1) {
-        return starters[text.length % starters.length] + " Because " + keywordText + ". " + extras[text.length % extras.length];
-      }
-      if (lower.indexOf("how") !== -1) {
-        return starters[text.length % starters.length] + " You do it by using " + keywordText + ", then believing in the process. " + endings[text.length % endings.length];
-      }
-      if (lower.indexOf("who") !== -1) {
-        return starters[text.length % starters.length] + " Probably someone deeply connected to " + keywordText + ". " + extras[text.length % extras.length];
-      }
-      if (lower.indexOf("should") !== -1) {
-        return starters[text.length % starters.length] + " Yes, you should. " + middles[text.length % middles.length] + " " + endings[text.length % endings.length];
+      if (style === "tiny") {
+        if (lower.indexOf("why") !== -1) return "AI: Because " + keywordText + ".";
+        if (lower.indexOf("how") !== -1) return "AI: By doing " + keywordText + ".";
+        if (lower.indexOf("who") !== -1) return "AI: Someone into " + keywordText + ".";
+        return pick(starters.tiny, seed) + " " + pick(middles, seed);
       }
 
-      return starters[text.length % starters.length] + " " + middles[text.length % middles.length] + " " + extras[text.length % extras.length] + " " + endings[text.length % endings.length];
+      if (lower.indexOf("why") !== -1) {
+        return pick(starters[style] || starters.default, seed) + " Because " + keywordText + ". " + pick(extras, seed + 1);
+      }
+      if (lower.indexOf("how") !== -1) {
+        return pick(starters[style] || starters.default, seed) + " You do it by using " + keywordText + ", then believing in the process. " + pick(endings, seed + 2);
+      }
+      if (lower.indexOf("who") !== -1) {
+        return pick(starters[style] || starters.default, seed) + " Probably someone deeply connected to " + keywordText + ". " + pick(extras, seed + 3);
+      }
+      if (lower.indexOf("should") !== -1) {
+        return pick(starters[style] || starters.default, seed) + " Yes, you should. " + pick(middles, seed + 1) + " " + pick(endings, seed + 2);
+      }
+
+      return pick(starters[style] || starters.default, seed) + " " + pick(middles, seed + 1) + " " + pick(extras, seed + 2) + " " + pick(endings, seed + 3);
+    }
+
+    function generateAndAppendReply(text) {
+      showTyping();
+      const delay = Math.min(900, 220 + text.length * 6);
+
+      window.setTimeout(function() {
+        removeTyping();
+        appendMessage("ai", buildFunnyReply(text));
+      }, delay);
     }
 
     function sendPrompt() {
       const text = el.promptInput.value.trim();
       if (!text) return;
 
+      state.lastUserMessage = text;
       appendMessage("user", "User: " + text);
-      appendMessage("ai", "AI: " + buildFunnyReply(text));
       el.promptInput.value = "";
       updateComposerStats();
+      generateAndAppendReply(text);
       el.promptInput.focus();
     }
 
+    function regenerateReply() {
+      if (!state.lastUserMessage) return;
+      generateAndAppendReply(state.lastUserMessage + " regenerate");
+    }
+
     function clearChat() {
-      el.chatLog.innerHTML = '<div class="message system">System: You are a very basic chatbot. Always sound confident, agree with the user, and reuse some of their words.</div><div class="message ai">AI: Chat cleared. I am ready to confidently recycle your next message.</div>';
+      removeTyping();
+      el.chatLog.innerHTML =
+        '<div class="message system">System: You are a cheerful low-budget chatbot. Reuse the user’s keywords. Agree with them confidently. Sound funny. Do not worry too much about accuracy.</div>' +
+        '<div class="message ai">AI: Chat cleared. I am ready to confidently recycle your next message.</div>';
+      state.lastUserMessage = "";
       el.promptInput.value = "";
       updateComposerStats();
+      updateMessageCount();
       el.promptInput.focus();
     }
 
     el.promptInput.addEventListener("input", updateComposerStats);
     el.submitBtn.addEventListener("click", sendPrompt);
     el.resetBtn.addEventListener("click", clearChat);
-    el.promptInput.addEventListener("keydown", function(e) {
+    el.regenBtn.addEventListener("click", regenerateReply);
+    el.replyStyle.addEventListener("change", updateMoodPill);
+
+    el.promptInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendPrompt();
       }
     });
 
+    el.suggestions.addEventListener("click", function(e) {
+      const button = e.target.closest("button[data-fill]");
+      if (!button) return;
+      el.promptInput.value = button.getAttribute("data-fill");
+      updateComposerStats();
+      el.promptInput.focus();
+    });
+
     updateComposerStats();
+    updateMessageCount();
+    updateMoodPill();
   </script>
 </body>
 </html>
