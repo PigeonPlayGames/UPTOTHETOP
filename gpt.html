@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompt Clash</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(20, 28, 48, 0.9);
+      --panel-2: rgba(14, 20, 36, 0.95);
+      --text: #eef2ff;
+      --muted: #9fb0d8;
+      --accent: #7c9cff;
+      --accent-2: #4de2c5;
+      --danger: #ff6b81;
+      --warning: #ffd166;
+      --border: rgba(255,255,255,0.09);
+      --shadow: 0 18px 50px rgba(0,0,0,0.35);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(124,156,255,0.18), transparent 35%),
+        radial-gradient(circle at top right, rgba(77,226,197,0.12), transparent 30%),
+        linear-gradient(180deg, #08101b 0%, #0b1020 100%);
+      color: var(--text);
+    }
+
+    body {
+      padding: 24px;
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .sidebar {
+      padding: 20px;
+      position: sticky;
+      top: 24px;
+      height: fit-content;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .logo-badge {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #08101b;
+      font-size: 1.4rem;
+      font-weight: 900;
+      box-shadow: 0 8px 24px rgba(124,156,255,0.35);
+    }
+
+    .logo h1 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    .stat {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      padding: 14px;
+      border-radius: 18px;
+    }
+
+    .stat-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    .difficulty-wrap {
+      margin: 18px 0 10px;
+    }
+
+    .difficulty-wrap label,
+    .hint-box h3,
+    .tasks h3,
+    .feed-head h2 {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+    }
+
+    select, textarea, button {
+      font: inherit;
+    }
+
+    select, textarea {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      outline: none;
+    }
+
+    select:focus, textarea:focus {
+      border-color: rgba(124,156,255,0.8);
+      box-shadow: 0 0 0 4px rgba(124,156,255,0.14);
+    }
+
+    .tasks {
+      margin-top: 18px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .tasks ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      display: grid;
+      gap: 8px;
+      font-size: 0.93rem;
+    }
+
+    .hint-box {
+      margin-top: 18px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(124,156,255,0.10), rgba(77,226,197,0.08));
+      border: 1px solid rgba(124,156,255,0.18);
+      border-radius: 18px;
+    }
+
+    .main {
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero {
+      padding: 24px;
+    }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .hero h2 {
+      margin: 0 0 8px;
+      font-size: clamp(1.6rem, 2vw, 2.2rem);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 20px;
+    }
+
+    .composer,
+    .feed {
+      padding: 20px;
+      min-height: 520px;
+    }
+
+    .prompt-label {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+
+    .composer textarea {
+      min-height: 180px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .toolbar {
+      margin-top: 14px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-weight: 700;
+      transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+
+    .primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #07111d;
+    }
+
+    .secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .danger {
+      background: rgba(255, 107, 129, 0.12);
+      color: #ffd8df;
+      border: 1px solid rgba(255, 107, 129, 0.25);
+    }
+
+    .meter {
+      width: 170px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .meter-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--accent-2), var(--accent));
+      transition: width 0.25s ease;
+    }
+
+    .feed-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .feed-head h2 {
+      font-size: 1.1rem;
+      margin: 0;
+    }
+
+    .chat-log {
+      display: grid;
+      gap: 14px;
+      max-height: 440px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .message {
+      border-radius: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      animation: fadeUp 0.25s ease;
+    }
+
+    .message.user {
+      background: rgba(124,156,255,0.12);
+      justify-self: end;
+      max-width: 92%;
+    }
+
+    .message.ai {
+      background: rgba(255,255,255,0.04);
+      max-width: 100%;
+    }
+
+    .message.system {
+      background: rgba(255,209,102,0.10);
+      border-color: rgba(255,209,102,0.2);
+      color: #ffefc1;
+    }
+
+    .tag-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .tag {
+      font-size: 0.78rem;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .result {
+      margin-top: 14px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .score-banner {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(77,226,197,0.1), rgba(124,156,255,0.08));
+    }
+
+    .hidden { display: none !important; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel sidebar">
+      <div class="logo">
+        <div class="logo-badge">✦</div>
+        <div>
+          <h1>Prompt Clash</h1>
+          <div class="muted">A prompt-writing strategy game</div>
+        </div>
+      </div>
+
+      <p class="muted">
+        Write prompts like you're speaking to an AI assistant. The better your prompt,
+        the higher your score.
+      </p>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">Round</div>
+          <div class="stat-value" id="roundValue">1</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Score</div>
+          <div class="stat-value" id="scoreValue">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Streak</div>
+          <div class="stat-value" id="streakValue">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Best</div>
+          <div class="stat-value" id="bestValue">0</div>
+        </div>
+      </div>
+
+      <div class="difficulty-wrap">
+        <label for="difficulty">Difficulty</label>
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+
+      <div class="tasks">
+        <h3>How scoring works</h3>
+        <ul>
+          <li>Be clear about the goal</li>
+          <li>Include constraints and format</li>
+          <li>Use useful details and context</li>
+          <li>Avoid vague one-line prompts</li>
+        </ul>
+      </div>
+
+      <div class="hint-box">
+        <h3>Live hint</h3>
+        <div class="muted" id="liveHint">Ask for a specific output format to boost your score.</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel hero">
+        <div class="hero-top">
+          <div>
+            <div class="pill">🤖 Inspired by AI prompting</div>
+            <h2 id="challengeTitle">Create a travel plan for a 3-day Tokyo trip.</h2>
+            <div class="muted" id="challengeDescription">
+              Write the best possible prompt so the AI gives a helpful, well-structured answer.
+            </div>
+          </div>
+          <div class="pill">Target score: <strong id="targetScore">70</strong></div>
+        </div>
+      </section>
+
+      <section class="cards">
+        <div class="panel composer">
+          <h3 class="prompt-label">Your prompt</h3>
+          <div class="tag-row" id="tagRow"></div>
+          <textarea id="promptInput" placeholder="Example: Plan a 3-day Tokyo itinerary for two adults in April, focused on food and culture, with a budget of $250 per day. Include morning, afternoon, and evening activities in a table..."></textarea>
+
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <button class="primary" id="submitBtn">Send Prompt</button>
+              <button class="secondary" id="nextBtn">Next Challenge</button>
+              <button class="danger" id="resetBtn">Reset Game</button>
+            </div>
+            <div class="toolbar-right">
+              <span class="muted">Prompt power</span>
+              <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+              <span id="charCount" class="muted">0 chars</span>
+            </div>
+          </div>
+
+          <div class="result hidden" id="resultBox">
+            <div class="score-banner" id="scoreBanner"></div>
+            <div class="panel message ai" id="feedbackBox"></div>
+          </div>
+        </div>
+
+        <div class="panel feed">
+          <div class="feed-head">
+            <h2>Conversation preview</h2>
+            <span class="muted">How your prompt would look in a chat UI</span>
+          </div>
+          <div class="chat-log" id="chatLog">
+            <div class="message system">System: You are a helpful AI. Better prompts earn more points.</div>
+            <div class="message ai">AI: Ready for your prompt. Be specific, structured, and detailed.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const challenges = {
+      easy: [
+        {
+          title: "Create a travel plan for a 3-day Tokyo trip.",
+          description: "Ask the AI to make a practical plan with structure and useful details.",
+          tags: ["travel", "itinerary", "budget"],
+          target: 70,
+          ideal: ["days", "budget", "interests", "table", "morning", "evening"]
+        },
+        {
+          title: "Write a healthy weekly meal plan.",
+          description: "Prompt for dietary preferences, shopping simplicity, and output format.",
+          tags: ["food", "planning", "health"],
+          target: 68,
+          ideal: ["7-day", "budget", "dietary", "shopping list", "calories", "table"]
+        },
+        {
+          title: "Generate a beginner workout routine.",
+          description: "Include safety, schedule, and progression details.",
+          tags: ["fitness", "routine", "beginner"],
+          target: 66,
+          ideal: ["days per week", "equipment", "warm-up", "sets", "reps", "safety"]
+        }
+      ],
+      medium: [
+        {
+          title: "Plan a product launch campaign for a new gaming headset.",
+          description: "Prompt for audience, channels, timeline, and deliverables.",
+          tags: ["marketing", "launch", "strategy"],
+          target: 78,
+          ideal: ["target audience", "timeline", "social", "email", "budget", "KPIs"]
+        },
+        {
+          title: "Design a study plan to learn JavaScript in 8 weeks.",
+          description: "Ask for weekly milestones, projects, and practice schedule.",
+          tags: ["coding", "learning", "roadmap"],
+          target: 76,
+          ideal: ["8 weeks", "projects", "daily", "resources", "milestones", "review"]
+        },
+        {
+          title: "Create a content calendar for a small business Instagram account.",
+          description: "Include content pillars, posting cadence, captions, and calls to action.",
+          tags: ["social media", "calendar", "branding"],
+          target: 77,
+          ideal: ["30 days", "content pillars", "captions", "CTA", "posting schedule", "table"]
+        }
+      ],
+      hard: [
+        {
+          title: "Write a prompt to generate a complete indie game concept document.",
+          description: "The output should cover mechanics, story, scope, monetization, and risks.",
+          tags: ["game design", "creative", "document"],
+          target: 86,
+          ideal: ["genre", "core loop", "target platform", "art style", "scope", "risks", "monetization"]
+        },
+        {
+          title: "Create a hiring assistant prompt for screening frontend developer candidates.",
+          description: "Ask for a scoring rubric, interview questions, and red flags.",
+          tags: ["hiring", "rubric", "evaluation"],
+          target: 85,
+          ideal: ["rubric", "criteria", "questions", "red flags", "scorecard", "experience level"]
+        },
+        {
+          title: "Build a prompt for generating a startup pitch deck outline.",
+          description: "Request slide structure, investor focus, metrics, and storytelling flow.",
+          tags: ["startup", "pitch deck", "investors"],
+          target: 84,
+          ideal: ["slides", "problem", "solution", "market size", "traction", "ask"]
+        }
+      ]
+    };
+
+    const state = {
+      difficulty: "medium",
+      index: 0,
+      score: 0,
+      streak: 0,
+      best: Number(localStorage.getItem("promptClashBest") || 0),
+      round: 1
+    };
+
+    const el = {
+      difficulty: document.getElementById("difficulty"),
+      roundValue: document.getElementById("roundValue"),
+      scoreValue: document.getElementById("scoreValue"),
+      streakValue: document.getElementById("streakValue"),
+      bestValue: document.getElementById("bestValue"),
+      challengeTitle: document.getElementById("challengeTitle"),
+      challengeDescription: document.getElementById("challengeDescription"),
+      targetScore: document.getElementById("targetScore"),
+      tagRow: document.getElementById("tagRow"),
+      promptInput: document.getElementById("promptInput"),
+      submitBtn: document.getElementById("submitBtn"),
+      nextBtn: document.getElementById("nextBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      chatLog: document.getElementById("chatLog"),
+      resultBox: document.getElementById("resultBox"),
+      scoreBanner: document.getElementById("scoreBanner"),
+      feedbackBox: document.getElementById("feedbackBox"),
+      charCount: document.getElementById("charCount"),
+      meterFill: document.getElementById("meterFill"),
+      liveHint: document.getElementById("liveHint")
+    };
+
+    function getCurrentChallenge() {
+      const list = challenges[state.difficulty];
+      return list[state.index % list.length];
+    }
+
+    function renderChallenge() {
+      const challenge = getCurrentChallenge();
+      el.challengeTitle.textContent = challenge.title;
+      el.challengeDescription.textContent = challenge.description;
+      el.targetScore.textContent = challenge.target;
+      el.tagRow.innerHTML = challenge.tags.map(tag => `<span class="tag">${tag}</span>`).join("");
+      el.promptInput.value = "";
+      el.resultBox.classList.add("hidden");
+      el.chatLog.innerHTML = `
+        <div class="message system">System: You are a helpful AI. Better prompts earn more points.</div>
+        <div class="message ai">AI: Challenge loaded — ${challenge.title}</div>
+      `;
+      updateComposerStats();
+      setHint();
+    }
+
+    function updateStats() {
+      el.roundValue.textContent = state.round;
+      el.scoreValue.textContent = state.score;
+      el.streakValue.textContent = state.streak;
+      el.bestValue.textContent = state.best;
+    }
+
+    function updateComposerStats() {
+      const text = el.promptInput.value.trim();
+      const len = text.length;
+      el.charCount.textContent = `${len} chars`;
+      const power = Math.min(100, Math.max(6, len / 3));
+      el.meterFill.style.width = power + "%";
+    }
+
+    function setHint() {
+      const hints = [
+        "Ask for a specific output format to boost your score.",
+        "Mention audience, budget, timing, or preferences.",
+        "Break the request into sections for clearer results.",
+        "Tell the AI what to avoid, not just what to include.",
+        "Ask for examples, tables, or step-by-step output."
+      ];
+      el.liveHint.textContent = hints[Math.floor(Math.random() * hints.length)];
+    }
+
+    function appendMessage(role, text) {
+      const div = document.createElement("div");
+      div.className = `message ${role}`;
+      div.textContent = text;
+      el.chatLog.appendChild(div);
+      el.chatLog.scrollTop = el.chatLog.scrollHeight;
+    }
+
+    function scorePrompt(prompt, challenge) {
+      const text = prompt.trim();
+      const lower = text.toLowerCase();
+      let score = 0;
+      const notes = [];
+
+      if (!text) {
+        return {
+          score: 0,
+          verdict: "No prompt submitted.",
+          feedback: "Type a prompt first. Strong prompts include a clear task, context, constraints, and desired output format.",
+          strengths: [],
+          improvements: ["Write an actual prompt."]
+        };
+      }
+
+      if (text.length >= 40) { score += 10; notes.push("Good starting length."); }
+      else { notes.push("Too short to fully guide the AI."); }
+
+      if (text.length >= 100) score += 12;
+      if (text.length >= 180) score += 8;
+
+      const structuralWords = ["include", "use", "format", "steps", "table", "bullet", "sections", "output", "organize"];
+      const contextWords = ["for", "with", "budget", "audience", "beginner", "advanced", "timeline", "goal", "constraints", "tone"];
+      const specificityWords = ["3-day", "7-day", "8 weeks", "daily", "weekly", "examples", "specific", "detailed", "practical"];
+
+      const structureHits = structuralWords.filter(word => lower.includes(word)).length;
+      const contextHits = contextWords.filter(word => lower.includes(word)).length;
+      const specificityHits = specificityWords.filter(word => lower.includes(word)).length;
+      const idealHits = challenge.ideal.filter(word => lower.includes(word.toLowerCase())).length;
+
+      score += Math.min(18, structureHits * 4);
+      score += Math.min(18, contextHits * 3);
+      score += Math.min(16, specificityHits * 4);
+      score += Math.min(24, idealHits * 5);
+
+      const hasNumbers = /\d/.test(text);
+      const hasConstraints = /(under|within|no more than|at least|avoid|must|should|limit|budget)/i.test(text);
+      const asksFormat = /(table|bullet|json|sections|columns|checklist|step-by-step)/i.test(text);
+      const asksExamples = /(example|sample)/i.test(text);
+
+      if (hasNumbers) score += 6;
+      if (hasConstraints) score += 8;
+      if (asksFormat) score += 8;
+      if (asksExamples) score += 4;
+
+      score = Math.min(100, Math.round(score));
+
+      const strengths = [];
+      const improvements = [];
+
+      if (text.length >= 100) strengths.push("You gave the AI enough detail to work with.");
+      else improvements.push("Add more detail so the AI has stronger guidance.");
+
+      if (idealHits >= 3) strengths.push("You matched the challenge with relevant specifics.");
+      else improvements.push("Include more challenge-specific details.");
+
+      if (asksFormat) strengths.push("You asked for a clear response format.");
+      else improvements.push("Ask for a format like a table, bullets, or sections.");
+
+      if (hasConstraints) strengths.push("You included useful constraints or rules.");
+      else improvements.push("Add constraints such as budget, timing, tone, or limits.");
+
+      if (!hasNumbers) improvements.push("Numbers make prompts more concrete.");
+
+      let verdict = "Solid prompt.";
+      if (score >= 90) verdict = "Elite prompt engineer move.";
+      else if (score >= 80) verdict = "Excellent prompt.";
+      else if (score >= 70) verdict = "Strong prompt.";
+      else if (score >= 55) verdict = "Decent prompt, but it needs more precision.";
+      else verdict = "Too vague — the AI would have to guess a lot.";
+
+      const feedback = [
+        verdict,
+        strengths.length ? `Strengths: ${strengths.join(" ")}` : "",
+        improvements.length ? `Improve next time: ${improvements.join(" ")}` : ""
+      ].filter(Boolean).join("\n\n");
+
+      return { score, verdict, feedback, strengths, improvements, notes };
+    }
+
+    function makeAiPreview(prompt, challenge, result) {
+      const short = prompt.length > 220 ? prompt.slice(0, 220) + "..." : prompt;
+      if (result.score >= challenge.target) {
+        return `AI: Great prompt detected. I understand the task clearly and can generate a structured answer based on this request:\n\n"${short}"\n\nExpected quality: high.`;
+      }
+      return `AI: I can respond, but some parts are unclear. Based on your prompt:\n\n"${short}"\n\nI may need to guess missing details.`;
+    }
+
+    function submitPrompt() {
+      const prompt = el.promptInput.value;
+      const challenge = getCurrentChallenge();
+      const result = scorePrompt(prompt, challenge);
+
+      appendMessage("user", `User: ${prompt || "[empty prompt]"}`);
+      appendMessage("ai", makeAiPreview(prompt, challenge, result));
+
+      state.score += result.score;
+      state.streak = result.score >= challenge.target ? state.streak + 1 : 0;
+      state.best = Math.max(state.best, state.score);
+      localStorage.setItem("promptClashBest", String(state.best));
+
+      el.resultBox.classList.remove("hidden");
+      el.scoreBanner.innerHTML = `
+        <strong>Round score: ${result.score}/100</strong><br>
+        ${result.verdict} ${result.score >= challenge.target ? "✅ Target beaten." : "❌ Target missed."}
+      `;
+      el.feedbackBox.textContent = result.feedback;
+
+      state.round += 1;
+      updateStats();
+    }
+
+    function nextChallenge() {
+      state.index += 1;
+      renderChallenge();
+      updateStats();
+    }
+
+    function resetGame() {
+      state.index = 0;
+      state.score = 0;
+      state.streak = 0;
+      state.round = 1;
+      renderChallenge();
+      updateStats();
+    }
+
+    el.promptInput.addEventListener("input", updateComposerStats);
+    el.submitBtn.addEventListener("click", submitPrompt);
+    el.nextBtn.addEventListener("click", nextChallenge);
+    el.resetBtn.addEventListener("click", resetGame);
+    el.difficulty.addEventListener("change", (e) => {
+      state.difficulty = e.target.value;
+      state.index = 0;
+      state.round = 1;
+      renderChallenge();
+      updateStats();
+    });
+
+    updateStats();
+    renderChallenge();
+  </script>
+</body>
+</html>
