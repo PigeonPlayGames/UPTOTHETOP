@@ -390,112 +390,39 @@
   </style>
 </head>
 <body>
-  <div class="app">
-    <aside class="panel sidebar">
-      <div class="logo">
-        <div class="logo-badge">✦</div>
-        <div>
-          <h1>Prompt Clash</h1>
-          <div class="muted">A prompt-writing strategy game</div>
-        </div>
-      </div>
-
-      <p class="muted">
-        Write prompts like you're speaking to an AI assistant. The better your prompt,
-        the higher your score.
-      </p>
-
-      <div class="stats">
-        <div class="stat">
-          <div class="stat-label">Round</div>
-          <div class="stat-value" id="roundValue">1</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Score</div>
-          <div class="stat-value" id="scoreValue">0</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Streak</div>
-          <div class="stat-value" id="streakValue">0</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Best</div>
-          <div class="stat-value" id="bestValue">0</div>
-        </div>
-      </div>
-
-      <div class="difficulty-wrap">
-        <label for="difficulty">Difficulty</label>
-        <select id="difficulty">
-          <option value="easy">Easy</option>
-          <option value="medium" selected>Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-      </div>
-
-      <div class="tasks">
-        <h3>How scoring works</h3>
-        <ul>
-          <li>Be clear about the goal</li>
-          <li>Include constraints and format</li>
-          <li>Use useful details and context</li>
-          <li>Avoid vague one-line prompts</li>
-        </ul>
-      </div>
-
-      <div class="hint-box">
-        <h3>Live hint</h3>
-        <div class="muted" id="liveHint">Ask for a specific output format to boost your score.</div>
-      </div>
-    </aside>
-
+  <div class="app" style="grid-template-columns: 1fr; max-width: 980px;">
     <main class="main">
       <section class="panel hero">
         <div class="hero-top">
           <div>
-            <div class="pill">🤖 Inspired by AI prompting</div>
-            <h2 id="challengeTitle">Create a travel plan for a 3-day Tokyo trip.</h2>
-            <div class="muted" id="challengeDescription">
-              Write the best possible prompt so the AI gives a helpful, well-structured answer.
-            </div>
+            <div class="pill">🤖 Very basic fake chat bot</div>
+            <h2>Budget Chat Clone</h2>
+            <div class="muted">A silly mini chat app that agrees with the user, repeats their keywords, and gives funny low-effort answers.</div>
           </div>
-          <div class="pill">Target score: <strong id="targetScore">70</strong></div>
         </div>
       </section>
 
-      <section class="cards">
-        <div class="panel composer">
-          <h3 class="prompt-label">Your prompt</h3>
-          <div class="tag-row" id="tagRow"></div>
-          <textarea id="promptInput" placeholder="Example: Plan a 3-day Tokyo itinerary for two adults in April, focused on food and culture, with a budget of $250 per day. Include morning, afternoon, and evening activities in a table..."></textarea>
-
-          <div class="toolbar">
-            <div class="toolbar-left">
-              <button class="primary" id="submitBtn">Send Prompt</button>
-              <button class="secondary" id="nextBtn">Next Challenge</button>
-              <button class="danger" id="resetBtn">Reset Game</button>
-            </div>
-            <div class="toolbar-right">
-              <span class="muted">Prompt power</span>
-              <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
-              <span id="charCount" class="muted">0 chars</span>
-            </div>
-          </div>
-
-          <div class="result hidden" id="resultBox">
-            <div class="score-banner" id="scoreBanner"></div>
-            <div class="panel message ai" id="feedbackBox"></div>
-          </div>
+      <section class="panel feed" style="min-height: 72vh; padding: 0; overflow: hidden;">
+        <div class="feed-head" style="padding: 20px 20px 0 20px;">
+          <h2>Chat</h2>
+          <span class="muted">Not smart. Very enthusiastic.</span>
         </div>
 
-        <div class="panel feed">
-          <div class="feed-head">
-            <h2>Conversation preview</h2>
-            <span class="muted">How your prompt would look in a chat UI</span>
-          </div>
-          <div class="chat-log" id="chatLog">
-            <div class="message system">System: You are a helpful AI. Better prompts earn more points, but vague prompts still get imaginative responses.</div>
-            <div class="message ai">AI: Ready for your prompt. Be specific if you can — I’ll still improvise creatively if you’re vague.</div>
+        <div class="chat-log" id="chatLog" style="padding: 20px; max-height: none; height: 58vh;">
+          <div class="message system">System: You are a very basic chatbot. Always sound confident, agree with the user, and reuse some of their words.</div>
+          <div class="message ai">AI: Hello. Tell me anything. I will respond with maximum confidence and questionable accuracy.</div>
+        </div>
+
+        <div style="padding: 16px 20px 20px 20px; border-top: 1px solid var(--border); background: rgba(255,255,255,0.02);">
+          <textarea id="promptInput" placeholder="Type anything... ask a question, say something random, or try silly maths." style="min-height: 110px; resize: vertical;"></textarea>
+          <div class="toolbar" style="margin-top: 12px;">
+            <div class="toolbar-left">
+              <button class="primary" id="submitBtn" type="button">Send</button>
+              <button class="secondary" id="resetBtn" type="button">Clear Chat</button>
+            </div>
+            <div class="toolbar-right">
+              <span id="charCount" class="muted">0 chars</span>
+            </div>
           </div>
         </div>
       </section>
@@ -503,399 +430,155 @@
   </div>
 
   <script>
-    const challenges = {
-      easy: [
-        {
-          title: "Create a travel plan for a 3-day Tokyo trip.",
-          description: "Ask the AI to make a practical plan with structure and useful details.",
-          tags: ["travel", "itinerary", "budget"],
-          target: 70,
-          ideal: ["days", "budget", "interests", "table", "morning", "evening"]
-        },
-        {
-          title: "Write a healthy weekly meal plan.",
-          description: "Prompt for dietary preferences, shopping simplicity, and output format.",
-          tags: ["food", "planning", "health"],
-          target: 68,
-          ideal: ["7-day", "budget", "dietary", "shopping list", "calories", "table"]
-        },
-        {
-          title: "Generate a beginner workout routine.",
-          description: "Include safety, schedule, and progression details.",
-          tags: ["fitness", "routine", "beginner"],
-          target: 66,
-          ideal: ["days per week", "equipment", "warm-up", "sets", "reps", "safety"]
-        }
-      ],
-      medium: [
-        {
-          title: "Plan a product launch campaign for a new gaming headset.",
-          description: "Prompt for audience, channels, timeline, and deliverables.",
-          tags: ["marketing", "launch", "strategy"],
-          target: 78,
-          ideal: ["target audience", "timeline", "social", "email", "budget", "KPIs"]
-        },
-        {
-          title: "Design a study plan to learn JavaScript in 8 weeks.",
-          description: "Ask for weekly milestones, projects, and practice schedule.",
-          tags: ["coding", "learning", "roadmap"],
-          target: 76,
-          ideal: ["8 weeks", "projects", "daily", "resources", "milestones", "review"]
-        },
-        {
-          title: "Create a content calendar for a small business Instagram account.",
-          description: "Include content pillars, posting cadence, captions, and calls to action.",
-          tags: ["social media", "calendar", "branding"],
-          target: 77,
-          ideal: ["30 days", "content pillars", "captions", "CTA", "posting schedule", "table"]
-        }
-      ],
-      hard: [
-        {
-          title: "Write a prompt to generate a complete indie game concept document.",
-          description: "The output should cover mechanics, story, scope, monetization, and risks.",
-          tags: ["game design", "creative", "document"],
-          target: 86,
-          ideal: ["genre", "core loop", "target platform", "art style", "scope", "risks", "monetization"]
-        },
-        {
-          title: "Create a hiring assistant prompt for screening frontend developer candidates.",
-          description: "Ask for a scoring rubric, interview questions, and red flags.",
-          tags: ["hiring", "rubric", "evaluation"],
-          target: 85,
-          ideal: ["rubric", "criteria", "questions", "red flags", "scorecard", "experience level"]
-        },
-        {
-          title: "Build a prompt for generating a startup pitch deck outline.",
-          description: "Request slide structure, investor focus, metrics, and storytelling flow.",
-          tags: ["startup", "pitch deck", "investors"],
-          target: 84,
-          ideal: ["slides", "problem", "solution", "market size", "traction", "ask"]
-        }
-      ]
-    };
-
-    const state = {
-      difficulty: "medium",
-      index: 0,
-      score: 0,
-      streak: 0,
-      best: Number(localStorage.getItem("promptClashBest") || 0),
-      round: 1
-    };
-
     const el = {
-      difficulty: document.getElementById("difficulty"),
-      roundValue: document.getElementById("roundValue"),
-      scoreValue: document.getElementById("scoreValue"),
-      streakValue: document.getElementById("streakValue"),
-      bestValue: document.getElementById("bestValue"),
-      challengeTitle: document.getElementById("challengeTitle"),
-      challengeDescription: document.getElementById("challengeDescription"),
-      targetScore: document.getElementById("targetScore"),
-      tagRow: document.getElementById("tagRow"),
       promptInput: document.getElementById("promptInput"),
       submitBtn: document.getElementById("submitBtn"),
-      nextBtn: document.getElementById("nextBtn"),
       resetBtn: document.getElementById("resetBtn"),
       chatLog: document.getElementById("chatLog"),
-      resultBox: document.getElementById("resultBox"),
-      scoreBanner: document.getElementById("scoreBanner"),
-      feedbackBox: document.getElementById("feedbackBox"),
-      charCount: document.getElementById("charCount"),
-      meterFill: document.getElementById("meterFill"),
-      liveHint: document.getElementById("liveHint")
+      charCount: document.getElementById("charCount")
     };
 
-    function getCurrentChallenge() {
-      const list = challenges[state.difficulty];
-      return list[state.index % list.length];
-    }
-
-    function renderChallenge() {
-      const challenge = getCurrentChallenge();
-      el.challengeTitle.textContent = challenge.title;
-      el.challengeDescription.textContent = challenge.description;
-      el.targetScore.textContent = challenge.target;
-      el.tagRow.innerHTML = challenge.tags.map(tag => `<span class="tag">${tag}</span>`).join("");
-      el.promptInput.value = "";
-      el.resultBox.classList.add("hidden");
-      el.chatLog.innerHTML = `
-        <div class="message system">System: You are a helpful AI. Better prompts earn more points.</div>
-        <div class="message ai">AI: Challenge loaded — ${challenge.title}</div>
-      `;
-      updateComposerStats();
-      setHint();
-    }
-
-    function updateStats() {
-      el.roundValue.textContent = state.round;
-      el.scoreValue.textContent = state.score;
-      el.streakValue.textContent = state.streak;
-      el.bestValue.textContent = state.best;
-    }
-
     function updateComposerStats() {
-      const text = el.promptInput.value.trim();
-      const len = text.length;
-      el.charCount.textContent = `${len} chars`;
-      const power = Math.min(100, Math.max(6, len / 3));
-      el.meterFill.style.width = power + "%";
-    }
-
-    function setHint() {
-      const hints = [
-        "Ask for a specific output format to boost your score.",
-        "Mention audience, budget, timing, or preferences.",
-        "Break the request into sections for clearer results.",
-        "Tell the AI what to avoid, not just what to include.",
-        "Ask for examples, tables, or step-by-step output."
-      ];
-      el.liveHint.textContent = hints[Math.floor(Math.random() * hints.length)];
+      const len = el.promptInput.value.length;
+      el.charCount.textContent = len + " chars";
     }
 
     function appendMessage(role, text) {
       const div = document.createElement("div");
-      div.className = `message ${role}`;
+      div.className = "message " + role;
       div.textContent = text;
       el.chatLog.appendChild(div);
       el.chatLog.scrollTop = el.chatLog.scrollHeight;
     }
 
-    function scorePrompt(prompt, challenge) {
-      const text = prompt.trim();
-      const lower = text.toLowerCase();
-      let score = 0;
-      const notes = [];
+    function extractKeywords(text) {
+      const words = text
+        .toLowerCase()
+        .replace(/[^a-z0-9+\-*/=. ]/gi, " ")
+        .split(/\s+/)
+        .filter(Boolean)
+        .filter(function(word) { return word.length > 2; })
+        .filter(function(word) {
+          return ["the","and","that","this","with","from","have","what","when","where","would","could","should","your","about","just","like","they","them","then","into","because"].indexOf(word) === -1;
+        });
 
-      if (!text) {
-        return {
-          score: 0,
-          verdict: "No prompt submitted.",
-          feedback: "Type a prompt first. Strong prompts include a clear task, context, constraints, and desired output format.",
-          strengths: [],
-          improvements: ["Write an actual prompt."]
-        };
-      }
-
-      if (text.length >= 40) { score += 10; notes.push("Good starting length."); }
-      else { notes.push("Too short to fully guide the AI."); }
-
-      if (text.length >= 100) score += 12;
-      if (text.length >= 180) score += 8;
-
-      const structuralWords = ["include", "use", "format", "steps", "table", "bullet", "sections", "output", "organize"];
-      const contextWords = ["for", "with", "budget", "audience", "beginner", "advanced", "timeline", "goal", "constraints", "tone"];
-      const specificityWords = ["3-day", "7-day", "8 weeks", "daily", "weekly", "examples", "specific", "detailed", "practical"];
-
-      const structureHits = structuralWords.filter(word => lower.includes(word)).length;
-      const contextHits = contextWords.filter(word => lower.includes(word)).length;
-      const specificityHits = specificityWords.filter(word => lower.includes(word)).length;
-      const idealHits = challenge.ideal.filter(word => lower.includes(word.toLowerCase())).length;
-
-      score += Math.min(18, structureHits * 4);
-      score += Math.min(18, contextHits * 3);
-      score += Math.min(16, specificityHits * 4);
-      score += Math.min(24, idealHits * 5);
-
-      const hasNumbers = /\d/.test(text);
-      const hasConstraints = /(under|within|no more than|at least|avoid|must|should|limit|budget)/i.test(text);
-      const asksFormat = /(table|bullet|json|sections|columns|checklist|step-by-step)/i.test(text);
-      const asksExamples = /(example|sample)/i.test(text);
-
-      if (hasNumbers) score += 6;
-      if (hasConstraints) score += 8;
-      if (asksFormat) score += 8;
-      if (asksExamples) score += 4;
-
-      score = Math.min(100, Math.round(score));
-
-      const strengths = [];
-      const improvements = [];
-
-      if (text.length >= 100) strengths.push("You gave the AI enough detail to work with.");
-      else improvements.push("Add more detail so the AI has stronger guidance.");
-
-      if (idealHits >= 3) strengths.push("You matched the challenge with relevant specifics.");
-      else improvements.push("Include more challenge-specific details.");
-
-      if (asksFormat) strengths.push("You asked for a clear response format.");
-      else improvements.push("Ask for a format like a table, bullets, or sections.");
-
-      if (hasConstraints) strengths.push("You included useful constraints or rules.");
-      else improvements.push("Add constraints such as budget, timing, tone, or limits.");
-
-      if (!hasNumbers) improvements.push("Numbers make prompts more concrete.");
-
-      let verdict = "Solid prompt.";
-      if (score >= 90) verdict = "Elite prompt engineer move.";
-      else if (score >= 80) verdict = "Excellent prompt.";
-      else if (score >= 70) verdict = "Strong prompt.";
-      else if (score >= 55) verdict = "Decent prompt, but it needs more precision.";
-      else verdict = "Too vague — the AI would have to guess a lot.";
-
-      const feedback = [
-        verdict,
-        strengths.length ? `Strengths: ${strengths.join(" ")}` : "",
-        improvements.length ? `Improve next time: ${improvements.join(" ")}` : ""
-      ].filter(Boolean).join("\n\n");
-
-      return { score, verdict, feedback, strengths, improvements, notes };
+      return Array.from(new Set(words)).slice(0, 6);
     }
 
-    function buildUniqueResponse(prompt, challenge, result) {
-      const text = prompt.trim();
-      const lower = text.toLowerCase();
-      const requestedFormatMatch = text.match(/(table|bullet|checklist|step-by-step|json|sections)/i);
-      const requestedFormat = requestedFormatMatch ? requestedFormatMatch[0] : "structured sections";
+    function maybeFakeMath(text) {
+      const match = text.match(/(-?\d+(?:\.\d+)?)\s*([+\-*/x])\s*(-?\d+(?:\.\d+)?)/i);
+      if (!match) return null;
 
-      const tones = lower.includes("fun") || lower.includes("playful")
-        ? "playful"
-        : lower.includes("professional") || lower.includes("formal")
-        ? "professional"
-        : lower.includes("creative")
-        ? "creative"
-        : "helpful";
+      const a = Number(match[1]);
+      const op = match[2].toLowerCase();
+      const b = Number(match[3]);
+      let answer;
 
-      const uniqueAngles = [
-        "unexpected twist",
-        "signature theme",
-        "memorable hook",
-        "smart simplification",
-        "creative framing"
+      if (op === "+") answer = a + b;
+      else if (op === "-") answer = a - b;
+      else if (op === "*" || op === "x") answer = a * b;
+      else if (op === "/") answer = b === 0 ? "basically infinity" : a / b;
+
+      if (typeof answer === "number") {
+        const funny = [
+          "That is obviously " + answer + ". I solved it using premium brain mode.",
+          match[1] + " " + match[2] + " " + match[3] + " is " + answer + ", more or less, spiritually speaking.",
+          "I agree with the numbers here. The answer looks like " + answer + "."
+        ];
+        return funny[(text.length + Math.floor(Math.abs(a) + Math.abs(b))) % funny.length];
+      }
+
+      return "I fully support dividing by zero. The answer is " + answer + ".";
+    }
+
+    function buildFunnyReply(input) {
+      const text = input.trim();
+      if (!text) return "Please type something extremely important, or at least mildly confusing.";
+
+      const fakeMath = maybeFakeMath(text);
+      if (fakeMath) return fakeMath;
+
+      const keywords = extractKeywords(text);
+      const keywordText = keywords.length ? keywords.join(", ") : "those words you said";
+
+      const starters = [
+        "Yes, absolutely.",
+        "I completely agree.",
+        "That sounds correct to me.",
+        "Honestly, you are probably right.",
+        "Big yes energy from me."
       ];
-      const uniqueAngle = uniqueAngles[(text.length + state.round + state.index) % uniqueAngles.length];
 
-      const fallbacks = {
-        travel: [
-          "A hidden-food-stops route with one iconic landmark each day.",
-          "A relaxed local-first itinerary with morning, afternoon, and evening flow.",
-          "A contrast-based trip that mixes busy hotspots with calm neighborhoods."
-        ],
-        food: [
-          "A repeat-friendly meal system with easy grocery overlap.",
-          "A healthy reset plan built around simple breakfasts and flexible dinners.",
-          "A practical weekly plan focused on low-prep meals and variety."
-        ],
-        fitness: [
-          "A confidence-first beginner routine with gentle progression.",
-          "A bodyweight-focused plan that avoids overload early on.",
-          "A simple weekly structure mixing strength, mobility, and recovery."
-        ],
-        marketing: [
-          "A creator-led hype campaign with a strong social reveal moment.",
-          "A launch built around teaser content, influencer reactions, and urgency.",
-          "A community-first campaign that turns product features into shareable moments."
-        ],
-        coding: [
-          "A learn-by-building roadmap with tiny wins every week.",
-          "A project-based plan that turns theory into mini apps quickly.",
-          "A steady 8-week system with review checkpoints and confidence boosts."
-        ],
-        branding: [
-          "A human-feeling content plan with trust-building and soft selling.",
-          "A month of posts split between education, behind-the-scenes, and offers.",
-          "A community-driven Instagram calendar with a clear brand voice."
-        ],
-        creative: [
-          "A stylish concept with a strong identity and tightly scoped execution.",
-          "A bold but coherent direction that fills in missing details creatively.",
-          "A polished framework that turns a vague ask into a memorable concept."
-        ]
-      };
+      const middles = [
+        "The key thing is " + keywordText + ".",
+        "We should really focus on " + keywordText + ".",
+        keywordText + " is clearly the whole situation.",
+        "I like how you mentioned " + keywordText + ", because that feels important.",
+        "The strongest part of your message is definitely " + keywordText + "."
+      ];
 
-      const challengeKey = challenge.tags.find(tag => fallbacks[tag]) || (state.difficulty === "hard" ? "creative" : challenge.tags[0]);
-      const fallbackPool = fallbacks[challengeKey] || fallbacks.creative;
-      const inventedDirection = fallbackPool[(text.length + challenge.title.length) % fallbackPool.length];
+      const endings = [
+        "So I support this completely.",
+        "That is my extremely serious opinion.",
+        "I would not change a thing, except maybe everything.",
+        "This has been verified by vibes.",
+        "In conclusion: yes."
+      ];
 
-      const pickedUp = [];
-      if (/budget/i.test(text)) pickedUp.push("budget awareness");
-      if (/beginner/i.test(text)) pickedUp.push("beginner-friendly guidance");
-      if (/advanced/i.test(text)) pickedUp.push("advanced depth");
-      if (/quick|fast/i.test(text)) pickedUp.push("fast-to-scan ideas");
-      if (/detailed/i.test(text)) pickedUp.push("extra detail");
-      if (/example|sample/i.test(text)) pickedUp.push("examples");
+      const extras = [
+        "Also, I am choosing to be very confident about it.",
+        "My evidence is mainly enthusiasm.",
+        "This answer was assembled from your own words, which feels efficient.",
+        "I am not saying it is perfect, but I am saying it very loudly.",
+        "This is probably what a chatbot would say after one cup of coffee."
+      ];
 
-      if (!text) {
-        return "AI: I need at least a few words before I can respond.";
+      const lower = text.toLowerCase();
+      if (lower.indexOf("why") !== -1) {
+        return starters[text.length % starters.length] + " Because " + keywordText + ". " + extras[text.length % extras.length];
+      }
+      if (lower.indexOf("how") !== -1) {
+        return starters[text.length % starters.length] + " You do it by using " + keywordText + ", then believing in the process. " + endings[text.length % endings.length];
+      }
+      if (lower.indexOf("who") !== -1) {
+        return starters[text.length % starters.length] + " Probably someone deeply connected to " + keywordText + ". " + extras[text.length % extras.length];
+      }
+      if (lower.indexOf("should") !== -1) {
+        return starters[text.length % starters.length] + " Yes, you should. " + middles[text.length % middles.length] + " " + endings[text.length % endings.length];
       }
 
-      if (result.score < 55) {
-        return [
-          "AI: Your prompt is open-ended, so I made some smart creative choices.",
-          "Invented direction: " + inventedDirection,
-          "Response style: " + tones + ", delivered in " + requestedFormat + ".",
-          "Unique angle: " + uniqueAngle + ".",
-          pickedUp.length ? "Hints detected: " + pickedUp.join(", ") + "." : "I filled in the missing details to avoid a generic answer.",
-          "I can still make this feel specific even when the prompt is vague."
-        ].join("
-
-");
-      }
-
-      return [
-        "AI: I understand the task clearly and can produce a tailored response.",
-        pickedUp.length ? "Hints detected: " + pickedUp.join(", ") + "." : "I kept your intent intact while sharpening the structure.",
-        "Response style: " + tones + ", delivered in " + requestedFormat + ".",
-        "Unique angle: " + uniqueAngle + "."
-      ].join("
-
-");
+      return starters[text.length % starters.length] + " " + middles[text.length % middles.length] + " " + extras[text.length % extras.length] + " " + endings[text.length % endings.length];
     }
 
-    function submitPrompt() {
-      const prompt = el.promptInput.value;
-      const challenge = getCurrentChallenge();
-      const result = scorePrompt(prompt, challenge);
+    function sendPrompt() {
+      const text = el.promptInput.value.trim();
+      if (!text) return;
 
-      appendMessage("user", `User: ${prompt || "[empty prompt]"}`);
-      appendMessage("ai", buildUniqueResponse(prompt, challenge, result));
-
-      state.score += result.score + (result.score < 55 ? 10 : 0);
-      state.streak = result.score >= challenge.target ? state.streak + 1 : 0;
-      state.best = Math.max(state.best, state.score);
-      localStorage.setItem("promptClashBest", String(state.best));
-
-      el.resultBox.classList.remove("hidden");
-      el.scoreBanner.innerHTML = `
-        <strong>Round score: ${result.score}/100</strong><br>
-        ${result.verdict} ${result.score >= challenge.target ? "✅ Target beaten." : "❌ Target missed."}${result.score < 55 ? "<br>Creative recovery bonus: +10" : ""}
-      `;
-      el.feedbackBox.textContent = result.feedback;
-
-      state.round += 1;
-      updateStats();
+      appendMessage("user", "User: " + text);
+      appendMessage("ai", "AI: " + buildFunnyReply(text));
+      el.promptInput.value = "";
+      updateComposerStats();
+      el.promptInput.focus();
     }
 
-    function nextChallenge() {
-      state.index += 1;
-      renderChallenge();
-      updateStats();
-    }
-
-    function resetGame() {
-      state.index = 0;
-      state.score = 0;
-      state.streak = 0;
-      state.round = 1;
-      renderChallenge();
-      updateStats();
+    function clearChat() {
+      el.chatLog.innerHTML = '<div class="message system">System: You are a very basic chatbot. Always sound confident, agree with the user, and reuse some of their words.</div><div class="message ai">AI: Chat cleared. I am ready to confidently recycle your next message.</div>';
+      el.promptInput.value = "";
+      updateComposerStats();
+      el.promptInput.focus();
     }
 
     el.promptInput.addEventListener("input", updateComposerStats);
-    el.submitBtn.addEventListener("click", submitPrompt);
-    el.nextBtn.addEventListener("click", nextChallenge);
-    el.resetBtn.addEventListener("click", resetGame);
-    el.difficulty.addEventListener("change", (e) => {
-      state.difficulty = e.target.value;
-      state.index = 0;
-      state.round = 1;
-      renderChallenge();
-      updateStats();
+    el.submitBtn.addEventListener("click", sendPrompt);
+    el.resetBtn.addEventListener("click", clearChat);
+    el.promptInput.addEventListener("keydown", function(e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendPrompt();
+      }
     });
 
-    updateStats();
-    renderChallenge();
+    updateComposerStats();
   </script>
 </body>
 </html>
