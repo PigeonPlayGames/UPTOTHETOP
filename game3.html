@@ -62,6 +62,13 @@
       gap: 5px;
     }
 
+    .ui-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 5px;
+    }
+
     .ui-center {
       position: absolute;
       left: 50%;
@@ -120,6 +127,29 @@
       background: rgba(255, 0, 255, 0.3);
       border: 1px solid #f0f;
       color: #f0f;
+    }
+
+    .mute-btn {
+      pointer-events: auto;
+      background: transparent;
+      border: 1px solid #0ff;
+      color: #0ff;
+      padding: 4px 10px;
+      font-family: 'Courier New', monospace;
+      font-size: clamp(10px, 2vw, 12px);
+      cursor: pointer;
+      text-shadow: 0 0 5px #0ff;
+      transition: all 0.2s;
+    }
+
+    .mute-btn:hover {
+      background: rgba(0, 255, 255, 0.2);
+    }
+
+    .mute-btn.muted {
+      color: #f55;
+      border-color: #f55;
+      text-shadow: 0 0 5px #f55;
     }
 
     .overlay {
@@ -392,7 +422,10 @@
         <div class="level-display" id="level">WAVE 1</div>
         <div class="combo-display" id="combo">COMBO x1</div>
       </div>
-      <div id="highScoreUI" style="color: #f0f; text-shadow: 0 0 10px #f0f;">HIGH: 0</div>
+      <div class="ui-right">
+        <div id="highScoreUI" style="color: #f0f; text-shadow: 0 0 10px #f0f;">HIGH: 0</div>
+        <button class="mute-btn" id="muteBtn">🔊 SOUND</button>
+      </div>
     </div>
 
     <div class="screen-flash" id="screenFlash"></div>
@@ -422,6 +455,7 @@
           <p>← → or A D — Rotate</p>
           <p>SPACE — Fire</p>
           <p>P or ESC — Pause</p>
+          <p>M — Mute/Unmute</p>
         </div>
         <div class="mobile-controls">
           <p>Left side — Virtual joystick to rotate</p>
@@ -446,6 +480,334 @@
   <script>
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d', { alpha: false });
+    
+    // ===== AUDIO SYSTEM =====
+    let audioCtx = null;
+    let masterGain = null;
+    let isMuted = false;
+    let bgMusicOsc = null;
+    let bgMusicGain = null;
+    let thrustOsc = null;
+    let thrustGain = null;
+    let thrustPlaying = false;
+
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.5;
+      masterGain.connect(audioCtx.destination);
+    }
+
+    function setMuted(muted) {
+      isMuted = muted;
+      if (masterGain) {
+        masterGain.gain.setTargetAtTime(muted ? 0 : 0.5, audioCtx.currentTime, 0.1);
+      }
+      const btn = document.getElementById('muteBtn');
+      btn.textContent = muted ? '🔇 MUTED' : '🔊 SOUND';
+      btn.classList.toggle('muted', muted);
+    }
+
+    document.getElementById('muteBtn').addEventListener('click', () => {
+      initAudio();
+      setMuted(!isMuted);
+    });
+
+    // Sound: Laser shot
+    function playShoot() {
+      if (!audioCtx || isMuted) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(220, audioCtx.currentTime + 0.1);
+      
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    // Sound: Explosion (asteroid destroyed)
+    function playExplosion(size) {
+      if (!audioCtx || isMuted) return;
+      const duration = 0.2 + size * 0.1;
+      const baseFreq = 150 - size * 30;
+      
+      // Noise burst
+      const bufferSize = audioCtx.sampleRate * duration;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+      }
+      
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'lowpass';
+      noiseFilter.frequency.setValueAtTime(baseFreq * 3, audioCtx.currentTime);
+      noiseFilter.frequency.exponentialRampToValueAtTime(baseFreq, audioCtx.currentTime + duration);
+      
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noise.start();
+      
+      // Low thump
+      const osc = audioCtx.createOscillator();
+      const oscGain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + duration);
+      oscGain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      osc.connect(oscGain);
+      oscGain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // Sound: Ship hit / damage
+    function playDamage() {
+      if (!audioCtx || isMuted) return;
+      const duration = 0.4;
+      
+      // Noise
+      const bufferSize = audioCtx.sampleRate * duration;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
+      }
+      
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      noise.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noise.start();
+      
+      // Low tone
+      const osc = audioCtx.createOscillator();
+      const oscGain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + duration);
+      oscGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      osc.connect(oscGain);
+      oscGain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // Sound: Shield absorb
+    function playShieldHit() {
+      if (!audioCtx || isMuted) return;
+      const duration = 0.3;
+      
+      const osc = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc2.type = 'sine';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.05);
+      osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + duration);
+      osc2.frequency.setValueAtTime(803, audioCtx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(2006, audioCtx.currentTime + 0.05);
+      osc2.frequency.exponentialRampToValueAtTime(402, audioCtx.currentTime + duration);
+      
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      osc.connect(gain);
+      osc2.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+      osc2.start();
+      osc.stop(audioCtx.currentTime + duration);
+      osc2.stop(audioCtx.currentTime + duration);
+    }
+
+    // Sound: Powerup collected
+    function playPowerup() {
+      if (!audioCtx || isMuted) return;
+      const duration = 0.3;
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.1);
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.2);
+      
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // Sound: New wave
+    function playNewWave() {
+      if (!audioCtx || isMuted) return;
+      const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+      
+      notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        
+        const startTime = audioCtx.currentTime + i * 0.1;
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.15, startTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+        
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(startTime);
+        osc.stop(startTime + 0.3);
+      });
+    }
+
+    // Sound: Game over
+    function playGameOver() {
+      if (!audioCtx || isMuted) return;
+      const notes = [400, 350, 300, 200];
+      
+      notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.value = freq;
+        
+        const startTime = audioCtx.currentTime + i * 0.2;
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.15, startTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+        
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(startTime);
+        osc.stop(startTime + 0.4);
+      });
+    }
+
+    // Thrust sound (continuous)
+    function startThrust() {
+      if (!audioCtx || isMuted || thrustPlaying) return;
+      thrustPlaying = true;
+      
+      // Create noise for thrust
+      const bufferSize = audioCtx.sampleRate * 2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      
+      thrustOsc = audioCtx.createBufferSource();
+      thrustOsc.buffer = buffer;
+      thrustOsc.loop = true;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 300;
+      
+      thrustGain = audioCtx.createGain();
+      thrustGain.gain.value = 0;
+      thrustGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 0.05);
+      
+      thrustOsc.connect(filter);
+      filter.connect(thrustGain);
+      thrustGain.connect(masterGain);
+      thrustOsc.start();
+    }
+
+    function stopThrust() {
+      if (!thrustPlaying || !thrustGain) return;
+      thrustPlaying = false;
+      thrustGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+      setTimeout(() => {
+        if (thrustOsc) {
+          thrustOsc.stop();
+          thrustOsc = null;
+        }
+      }, 200);
+    }
+
+    // Background music
+    function startBgMusic() {
+      if (!audioCtx || bgMusicOsc) return;
+      
+      bgMusicGain = audioCtx.createGain();
+      bgMusicGain.gain.value = 0.05;
+      bgMusicGain.connect(masterGain);
+      
+      // Create a simple ambient drone
+      const baseFreq = 55; // A1
+      
+      bgMusicOsc = [];
+      [1, 1.5, 2, 3].forEach((mult, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = baseFreq * mult;
+        
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.value = 0.3 / (i + 1);
+        
+        osc.connect(oscGain);
+        oscGain.connect(bgMusicGain);
+        osc.start();
+        bgMusicOsc.push({ osc, gain: oscGain });
+      });
+      
+      // Slow LFO for subtle movement
+      const lfo = audioCtx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.1;
+      const lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 10;
+      lfo.connect(lfoGain);
+      lfoGain.connect(bgMusicOsc[0].osc.frequency);
+      lfo.start();
+      bgMusicOsc.push({ osc: lfo, gain: lfoGain });
+    }
+
+    function stopBgMusic() {
+      if (!bgMusicOsc) return;
+      bgMusicGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+      setTimeout(() => {
+        bgMusicOsc.forEach(o => o.osc.stop());
+        bgMusicOsc = null;
+      }, 1000);
+    }
     
     // Responsive canvas sizing
     let W, H, scale;
@@ -526,6 +888,9 @@
     // Screen shake
     let screenShake = 0;
     let shakeX = 0, shakeY = 0;
+
+    // Track previous thrust state for sound
+    let wasThrusting = false;
 
     // Update high score display
     document.getElementById('highScoreDisplay').textContent = `HIGH SCORE: ${highScore}`;
@@ -610,7 +975,7 @@
         this.config = POWERUP_TYPES[type];
         this.radius = 12 * scale;
         this.angle = 0;
-        this.life = 600; // 10 seconds
+        this.life = 600;
         this.pulsePhase = 0;
         
         const angle = Math.random() * Math.PI * 2;
@@ -643,21 +1008,17 @@
         ctx.rotate(this.angle);
         ctx.globalAlpha = alpha;
         
-        // Glow
         ctx.shadowColor = this.config.color;
         ctx.shadowBlur = 15 * pulse;
         
-        // Outer ring
         ctx.strokeStyle = this.config.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(0, 0, this.radius * pulse, 0, Math.PI * 2);
         ctx.stroke();
         
-        // Inner shape based on type
         ctx.fillStyle = this.config.color;
         if (this.type === 'SHIELD') {
-          // Shield icon
           ctx.beginPath();
           ctx.moveTo(0, -8 * scale);
           ctx.lineTo(7 * scale, -3 * scale);
@@ -668,7 +1029,6 @@
           ctx.closePath();
           ctx.stroke();
         } else if (this.type === 'RAPID') {
-          // Lightning bolt
           ctx.beginPath();
           ctx.moveTo(2 * scale, -8 * scale);
           ctx.lineTo(-4 * scale, 0);
@@ -679,7 +1039,6 @@
           ctx.closePath();
           ctx.fill();
         } else if (this.type === 'SPREAD') {
-          // Triple dots
           for (let i = 0; i < 3; i++) {
             const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
             ctx.beginPath();
@@ -710,7 +1069,7 @@
         this.rotSpeed = 0.07;
         this.invincible = 0;
         this.visible = true;
-        this.fireRate = 150; // ms between shots
+        this.fireRate = 150;
         
         this.updateVertices();
       }
@@ -750,6 +1109,14 @@
         
         const isThrusting = keys['ArrowUp'] || keys['KeyW'] || thrustActive;
         
+        // Handle thrust sound
+        if (isThrusting && !wasThrusting) {
+          startThrust();
+        } else if (!isThrusting && wasThrusting) {
+          stopThrust();
+        }
+        wasThrusting = isThrusting;
+        
         if (isThrusting) {
           const cos = Math.cos(this.angle);
           const sin = Math.sin(this.angle);
@@ -784,7 +1151,6 @@
           this.visible = true;
         }
 
-        // Update fire rate based on powerup
         this.fireRate = activePowerups.RAPID > 0 ? 80 : 150;
       }
 
@@ -795,7 +1161,6 @@
         ctx.translate(this.x + shakeX, this.y + shakeY);
         ctx.rotate(this.angle);
         
-        // Shield effect
         if (activePowerups.SHIELD > 0) {
           ctx.strokeStyle = `rgba(0, 255, 255, ${0.3 + Math.sin(Date.now() / 100) * 0.2})`;
           ctx.lineWidth = 3;
@@ -807,7 +1172,6 @@
         ctx.strokeStyle = activePowerups.SHIELD > 0 ? '#0ff' : '#0ff';
         ctx.lineWidth = 2;
         
-        // Glow effect when powered up
         if (activePowerups.RAPID > 0 || activePowerups.SPREAD > 0) {
           ctx.shadowColor = activePowerups.RAPID > 0 ? '#ff0' : '#f0f';
           ctx.shadowBlur = 10;
@@ -827,13 +1191,13 @@
       shoot() {
         if (bulletPool.active.length >= MAX_BULLETS) return;
         
+        playShoot();
         shotsFired++;
         const s = scale;
         const cos = Math.cos(this.angle);
         const sin = Math.sin(this.angle);
         
         if (activePowerups.SPREAD > 0) {
-          // Spread shot - 3 bullets
           for (let i = -1; i <= 1; i++) {
             const spreadAngle = this.angle + i * 0.2;
             const spreadCos = Math.cos(spreadAngle);
@@ -958,29 +1322,27 @@
       }
 
       break() {
+        playExplosion(this.size);
+        
         const basePoints = [20, 50, 100][3 - this.size];
         const comboMultiplier = Math.min(combo, 10);
         const points = basePoints * comboMultiplier;
         score += points;
         asteroidsDestroyed++;
         
-        // Update combo
         combo++;
-        comboTimer = 120; // 2 seconds
+        comboTimer = 120;
         maxCombo = Math.max(maxCombo, combo);
         
-        // Show floating text
         const text = combo > 1 ? `+${points} x${combo}` : `+${points}`;
         floatingTexts.push(new FloatingText(this.x, this.y, text, combo > 5 ? '#f0f' : '#ff0'));
         
-        // Screen shake on large asteroids
         if (this.size === 3) {
           screenShake = 8;
         } else if (this.size === 2) {
           screenShake = 4;
         }
         
-        // Particles
         const particleCount = Math.min(this.size * 4, MAX_PARTICLES - particlePool.active.length);
         for (let i = 0; i < particleCount; i++) {
           const angle = Math.random() * Math.PI * 2;
@@ -993,7 +1355,6 @@
           );
         }
 
-        // Chance to spawn powerup (higher chance from bigger asteroids)
         const powerupChance = this.size === 3 ? 0.15 : this.size === 2 ? 0.08 : 0.03;
         if (Math.random() < powerupChance) {
           const types = Object.keys(POWERUP_TYPES);
@@ -1075,13 +1436,12 @@
 
     // Ship hit
     function shipHit() {
-      // Shield absorbs hit
       if (activePowerups.SHIELD > 0) {
         activePowerups.SHIELD = 0;
         screenShake = 10;
         flashScreen('rgba(0, 255, 255, 0.3)');
+        playShieldHit();
         
-        // Particles
         for (let i = 0; i < 15; i++) {
           const angle = Math.random() * Math.PI * 2;
           const speed = (Math.random() * 4 + 2) * scale;
@@ -1095,6 +1455,7 @@
         return;
       }
       
+      playDamage();
       lives--;
       combo = 1;
       comboTimer = 0;
@@ -1148,7 +1509,6 @@
         comboEl.classList.remove('active');
       }
 
-      // Powerup indicators
       document.getElementById('shieldIcon').classList.toggle('active', activePowerups.SHIELD > 0);
       document.getElementById('rapidIcon').classList.toggle('active', activePowerups.RAPID > 0);
       document.getElementById('spreadIcon').classList.toggle('active', activePowerups.SPREAD > 0);
@@ -1202,7 +1562,6 @@
         gamepadFirePressed = fireButton;
       }
       
-      // Start button to unpause or start
       if (gp.buttons[9]?.pressed) {
         if (paused) {
           togglePause();
@@ -1345,19 +1704,22 @@
       if (!gameRunning || gameOver) return;
       paused = !paused;
       document.getElementById('pauseOverlay').classList.toggle('active', paused);
+      
+      if (paused) {
+        stopThrust();
+        wasThrusting = false;
+      }
+      
       if (!paused) gameLoop();
     }
 
     // ===== GAME LOOP =====
-    let frameTime = 0;
-    
     function gameLoop(timestamp) {
       if (!gameRunning || paused) return;
 
       handleGamepad();
       handleTouchFire();
 
-      // Update screen shake
       if (screenShake > 0) {
         shakeX = (Math.random() - 0.5) * screenShake;
         shakeY = (Math.random() - 0.5) * screenShake;
@@ -1368,7 +1730,6 @@
         shakeY = 0;
       }
 
-      // Update combo timer
       if (comboTimer > 0) {
         comboTimer--;
         if (comboTimer <= 0) {
@@ -1377,7 +1738,6 @@
         }
       }
 
-      // Update powerup timers
       for (const type in activePowerups) {
         if (activePowerups[type] > 0) {
           activePowerups[type]--;
@@ -1387,11 +1747,9 @@
         }
       }
 
-      // Clear
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, W, H);
 
-      // Draw twinkling stars
       const time = timestamp / 1000;
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
@@ -1404,7 +1762,6 @@
       ship.update();
       ship.draw();
 
-      // Update bullets
       const activeBullets = bulletPool.active;
       for (let i = activeBullets.length - 1; i >= 0; i--) {
         const b = activeBullets[i];
@@ -1415,13 +1772,11 @@
         }
       }
 
-      // Update asteroids
       for (let i = 0; i < asteroids.length; i++) {
         asteroids[i].update();
         asteroids[i].draw();
       }
 
-      // Update powerups
       for (let i = powerups.length - 1; i >= 0; i--) {
         if (!powerups[i].update()) {
           powerups.splice(i, 1);
@@ -1430,7 +1785,6 @@
         }
       }
 
-      // Update floating texts
       for (let i = floatingTexts.length - 1; i >= 0; i--) {
         if (!floatingTexts[i].update()) {
           floatingTexts.splice(i, 1);
@@ -1439,7 +1793,6 @@
         }
       }
 
-      // Update particles
       const activeParticles = particlePool.active;
       for (let i = activeParticles.length - 1; i >= 0; i--) {
         const p = activeParticles[i];
@@ -1450,7 +1803,6 @@
         }
       }
 
-      // Bullet-asteroid collisions
       const bullets = bulletPool.active;
       outer: for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
@@ -1466,7 +1818,6 @@
         }
       }
 
-      // Ship-asteroid collision
       if (ship.invincible <= 0) {
         for (let i = 0; i < asteroids.length; i++) {
           if (circleCollisionSq(ship, asteroids[i])) {
@@ -1476,27 +1827,26 @@
         }
       }
 
-      // Ship-powerup collision
       for (let i = powerups.length - 1; i >= 0; i--) {
         if (circleCollisionSq(ship, powerups[i])) {
           const powerup = powerups[i];
           activePowerups[powerup.type] = POWERUP_TYPES[powerup.type].duration;
           powerups.splice(i, 1);
           
+          playPowerup();
           floatingTexts.push(new FloatingText(powerup.x, powerup.y, powerup.config.name + '!', powerup.config.color));
           flashScreen(powerup.config.color.replace(')', ', 0.2)').replace('rgb', 'rgba'));
           updateUI();
         }
       }
 
-      // Next wave
       if (asteroids.length === 0) {
         wave++;
+        playNewWave();
         const asteroidCount = Math.min(4 + wave, 12);
         spawnAsteroids(asteroidCount);
         updateUI();
         
-        // Bonus points for clearing wave
         const waveBonus = wave * 100;
         score += waveBonus;
         floatingTexts.push(new FloatingText(W / 2, H / 2, `WAVE ${wave} - +${waveBonus}`, '#0ff'));
@@ -1507,6 +1857,7 @@
 
     // Start game
     function startGame() {
+      initAudio();
       resizeCanvas();
       
       bulletPool = new ObjectPool(createBullet, resetBullet, MAX_BULLETS);
@@ -1530,6 +1881,7 @@
       thrustActive = false;
       firePressed = false;
       screenShake = 0;
+      wasThrusting = false;
       
       activePowerups = { SHIELD: 0, RAPID: 0, SPREAD: 0 };
 
@@ -1540,6 +1892,7 @@
       document.getElementById('gameOverScreen').classList.add('hidden');
       document.getElementById('pauseOverlay').classList.remove('active');
 
+      startBgMusic();
       requestAnimationFrame(gameLoop);
     }
 
@@ -1547,6 +1900,10 @@
     function endGame() {
       gameRunning = false;
       gameOver = true;
+      
+      stopThrust();
+      stopBgMusic();
+      playGameOver();
       
       const isNewHighScore = score > highScore;
       if (isNewHighScore) {
@@ -1570,6 +1927,13 @@
     document.addEventListener('keydown', e => {
       keys[e.code] = true;
       
+      if (e.code === 'KeyM') {
+        initAudio();
+        setMuted(!isMuted);
+        e.preventDefault();
+        return;
+      }
+      
       if ((e.code === 'KeyP' || e.code === 'Escape') && gameRunning && !gameOver) {
         togglePause();
         e.preventDefault();
@@ -1591,7 +1955,6 @@
 
     document.addEventListener('dblclick', (e) => e.preventDefault());
     
-    // Handle visibility change (pause when tab hidden)
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && gameRunning && !gameOver && !paused) {
         togglePause();
