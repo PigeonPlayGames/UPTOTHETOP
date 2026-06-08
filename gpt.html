@@ -1,660 +1,395 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Budget Chat Clone+</title>
-  <style>
-    :root {
-      --bg: #0b1020;
-      --panel: rgba(20, 28, 48, 0.9);
-      --text: #eef2ff;
-      --muted: #9fb0d8;
-      --accent: #7c9cff;
-      --accent-2: #4de2c5;
-      --border: rgba(255,255,255,0.09);
-      --shadow: 0 18px 50px rgba(0,0,0,0.35);
-      --radius: 22px;
-      --user-bg: rgba(124,156,255,0.14);
-      --ai-bg: rgba(255,255,255,0.05);
-      --system-bg: rgba(77,226,197,0.10);
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hawkins Hounds & Moggies | Professional Pet Care</title>
+    <style>
+        /* --- Design Tokens & Reset --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
 
-    * { box-sizing: border-box; }
+        :root {
+            --primary: #2c7a7b; /* Calming teal */
+            --secondary: #e6fffa; /* Light accent background */
+            --dark: #2d3748; /* Text color */
+            --light: #ffffff;
+            --accent: #dd6b20; /* Warm button accent */
+        }
 
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(124,156,255,0.18), transparent 35%),
-        radial-gradient(circle at top right, rgba(77,226,197,0.12), transparent 30%),
-        linear-gradient(180deg, #08101b 0%, #0b1020 100%);
-      color: var(--text);
-    }
+        body {
+            color: var(--dark);
+            line-height: 1.6;
+            background-color: #f7fafc;
+        }
 
-    body {
-      padding: 24px;
-    }
+        /* --- Header & Navigation --- */
+        header {
+            background-color: var(--light);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
 
-    .app {
-      max-width: 1040px;
-      margin: 0 auto;
-      display: grid;
-      gap: 20px;
-    }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+        }
 
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(12px);
-    }
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
 
-    .hero {
-      padding: 24px;
-    }
+        .nav-links a {
+            text-decoration: none;
+            color: var(--dark);
+            margin-left: 1.5rem;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
 
-    .hero-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: flex-start;
-      flex-wrap: wrap;
-    }
+        .nav-links a:hover {
+            color: var(--primary);
+        }
 
-    .hero h1 {
-      margin: 12px 0 8px;
-      font-size: clamp(1.9rem, 4vw, 2.8rem);
-      line-height: 1.05;
-    }
+        /* --- Hero Section --- */
+        .hero {
+            background-color: var(--secondary);
+            padding: 4rem 2rem;
+            text-align: center;
+        }
 
-    .hero p {
-      margin: 0;
-      max-width: 720px;
-    }
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
 
-    .pill,
-    .mini-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.04);
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
+        .hero h1 {
+            font-size: 2.8rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
 
-    .mini-pill {
-      padding: 7px 10px;
-      font-size: 0.8rem;
-    }
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+        }
 
-    .muted {
-      color: var(--muted);
-    }
+        .cta-btn {
+            display: inline-block;
+            background-color: var(--accent);
+            color: var(--light);
+            padding: 0.75rem 2rem;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
 
-    .feed {
-      min-height: 78vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
+        .cta-btn:hover {
+            background-color: #c05621;
+        }
 
-    .feed-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      padding: 18px 20px 0 20px;
-      flex-wrap: wrap;
-    }
+        /* --- Slideshow Container --- */
+        .slideshow-section {
+            max-width: 800px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
 
-    .feed-head h2 {
-      margin: 0;
-      font-size: 1.1rem;
-    }
+        .slideshow-container {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            aspect-ratio: 16 / 9;
+            background-color: #ddd;
+        }
 
-    .chat-log {
-      display: grid;
-      gap: 14px;
-      overflow: auto;
-      height: 58vh;
-      padding: 20px;
-      scroll-behavior: smooth;
-    }
+        .mySlides {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
 
-    .message {
-      border-radius: 18px;
-      padding: 14px 16px;
-      border: 1px solid var(--border);
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      animation: fadeUp 0.25s ease;
-    }
+        .mySlides img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
 
-    .message.user {
-      background: var(--user-bg);
-      justify-self: end;
-      max-width: 88%;
-    }
+        /* Next & previous buttons */
+        .prev, .next {
+            cursor: pointer;
+            position: absolute;
+            top: 50%;
+            width: auto;
+            padding: 16px;
+            margin-top: -22px;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            transition: 0.6s ease;
+            border-radius: 0 3px 3px 0;
+            user-select: none;
+            background-color: rgba(0,0,0,0.4);
+        }
 
-    .message.ai {
-      background: var(--ai-bg);
-      max-width: 92%;
-    }
+        .next {
+            right: 0;
+            border-radius: 3px 0 0 3px;
+        }
 
-    .message.system {
-      background: var(--system-bg);
-      border-color: rgba(77,226,197,0.22);
-      color: #dffdf7;
-    }
+        .prev:hover, .next:hover {
+            background-color: rgba(0,0,0,0.8);
+        }
 
-    .message.typing {
-      opacity: 0.82;
-      font-style: italic;
-    }
+        /* --- Trust Badges & Credentials --- */
+        .credentials-section {
+            background-color: var(--light);
+            padding: 4rem 2rem;
+            text-align: center;
+        }
 
-    .composer {
-      padding: 16px 20px 20px 20px;
-      border-top: 1px solid var(--border);
-      background: rgba(255,255,255,0.02);
-      display: grid;
-      gap: 12px;
-    }
+        .section-title {
+            font-size: 2rem;
+            color: var(--primary);
+            margin-bottom: 2rem;
+        }
 
-    textarea, button, select {
-      font: inherit;
-    }
+        .badges-grid {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+        }
 
-    textarea {
-      width: 100%;
-      min-height: 110px;
-      resize: vertical;
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px 16px;
-      outline: none;
-      line-height: 1.5;
-    }
+        .badge-card {
+            padding: 2rem;
+            background: #fcfcfc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
 
-    textarea:focus,
-    select:focus {
-      border-color: rgba(124,156,255,0.8);
-      box-shadow: 0 0 0 4px rgba(124,156,255,0.14);
-    }
+        .badge-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
 
-    .toolbar,
-    .toolbar-left,
-    .toolbar-right,
-    .controls-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+        .badge-card h3 {
+            margin-bottom: 0.5rem;
+            color: var(--primary);
+        }
 
-    .toolbar {
-      justify-content: space-between;
-    }
+        /* --- Contact Section --- */
+        .contact-section {
+            background-color: var(--dark);
+            color: var(--light);
+            padding: 4rem 2rem;
+            text-align: center;
+        }
 
-    .controls-row {
-      justify-content: space-between;
-      margin-top: 4px;
-    }
+        .contact-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
 
-    button,
-    select {
-      border: none;
-      border-radius: 14px;
-      padding: 12px 16px;
-    }
+        .contact-methods {
+            margin-top: 2rem;
+            text-align: left;
+            display: inline-block;
+        }
 
-    button {
-      cursor: pointer;
-      font-weight: 700;
-      transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
-    }
+        .contact-item {
+            margin: 1rem 0;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+        }
 
-    button:hover { transform: translateY(-1px); }
-    button:active { transform: translateY(0); }
+        .contact-item a {
+            color: #90cdf4;
+            text-decoration: none;
+            margin-left: 0.5rem;
+        }
 
-    select {
-      background: rgba(255,255,255,0.06);
-      color: var(--text);
-      border: 1px solid var(--border);
-      outline: none;
-    }
+        .contact-item a:hover {
+            text-decoration: underline;
+        }
 
-    .primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      color: #07111d;
-    }
+        .contact-label {
+            font-weight: bold;
+            min-width: 90px;
+            display: inline-block;
+        }
 
-    .secondary {
-      background: rgba(255,255,255,0.06);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
+        footer {
+            background-color: #1a202c;
+            color: #a0aec0;
+            padding: 1.5rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
 
-    .ghost {
-      background: transparent;
-      color: var(--muted);
-      border: 1px dashed var(--border);
-    }
-
-    .suggestions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .suggestion-btn {
-      padding: 10px 12px;
-      font-size: 0.88rem;
-    }
-
-    .footer-note {
-      font-size: 0.86rem;
-      color: var(--muted);
-    }
-
-    .count-strong {
-      color: var(--text);
-      font-weight: 700;
-    }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @media (max-width: 720px) {
-      body {
-        padding: 14px;
-      }
-
-      .chat-log {
-        height: 54vh;
-      }
-
-      .message.user,
-      .message.ai {
-        max-width: 100%;
-      }
-
-      .controls-row,
-      .toolbar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-    }
-  </style>
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            .nav-container {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            .nav-links a {
+                margin: 0 0.75rem;
+            }
+            .hero h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="app">
-    <section class="panel hero">
-      <div class="hero-top">
-        <div>
-          <div class="pill">🤖 Better fake chat bot</div>
-          <h1>Budget Chat Clone+</h1>
-          <p class="muted">
-            A silly chat page that copies your keywords, agrees with you way too confidently,
-            occasionally does fake maths, and makes every answer sound weirdly certain.
-          </p>
+
+    <!-- Navigation Header -->
+    <header>
+        <div class="nav-container">
+            <div class="logo">🐾 Hawkins Hounds & Moggies</div>
+            <nav class="nav-links">
+                <a href="#about">Why Choose Us</a>
+                <a href="#gallery">Gallery</a>
+                <a href="#contact">Contact</a>
+            </nav>
         </div>
-        <div class="mini-pill" id="moodPill">Mode: confident nonsense</div>
-      </div>
+    </header>
+
+    <!-- Hero Welcome -->
+    <section class="hero" id="about">
+        <div class="hero-content">
+            <h1>Professional Pet Care You Can Trust</h1>
+            <p>Reliable, loving, and expert dog walking and pet sitting services tailored to your furry family members. With a background in professional medical care, your pets are in the safest hands possible.</p>
+            <a href="#contact" class="cta-btn">Book a Walk</a>
+        </div>
     </section>
 
-    <section class="panel feed">
-      <div class="feed-head">
-        <h2>Chat</h2>
-        <span class="muted">Still not smart. Just smoother.</span>
-      </div>
+    <!-- Slideshow Section -->
+    <section class="slideshow-section" id="gallery">
+        <h2 class="section-title" style="text-align: center;">Our Happy Clients</h2>
+        <div class="slideshow-container">
+            <!-- 
+               NOTE: Replace the placeholder images below (src="...") with your actual image paths.
+               E.g., src="dog1.jpg", src="dog2.png", etc. 
+            -->
+            <div class="mySlides">
+                <img src="https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=800&q=80" alt="Dog walking 1">
+            </div>
+            <div class="mySlides">
+                <img src="https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=800&q=80" alt="Happy cat 2">
+            </div>
+            <div class="mySlides">
+                <img src="https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=800&q=80" alt="Dogs running 3">
+            </div>
+            <div class="mySlides">
+                <img src="https://images.unsplash.com/photo-1533738363-b7f9aef128ce?auto=format&fit=crop&w=800&q=80" alt="Cat lounging 4">
+            </div>
 
-      <div class="chat-log" id="chatLog">
-        <div class="message system">System: You are a cheerful low-budget chatbot. Reuse the user’s keywords. Agree with them confidently. Sound funny. Do not worry too much about accuracy.</div>
-        <div class="message ai">AI: Hello. I am ready to respond with enormous confidence and limited evidence.</div>
-      </div>
-
-      <div class="composer">
-        <div class="suggestions" id="suggestions">
-          <button class="secondary suggestion-btn" type="button" data-fill="Why is cereal basically soup?">Why is cereal basically soup?</button>
-          <button class="secondary suggestion-btn" type="button" data-fill="Should I learn JavaScript with snacks and vibes?">Should I learn JavaScript with snacks and vibes?</button>
-          <button class="secondary suggestion-btn" type="button" data-fill="23 + 19">23 + 19</button>
-          <button class="secondary suggestion-btn" type="button" data-fill="Who invented being dramatic about pizza?">Who invented being dramatic about pizza?</button>
+            <!-- Navigation arrows -->
+            <a class="prev" onclick="plusSlides(-1)">&#10094;</a>
+            <a class="next" onclick="plusSlides(1)">&#10095;</a>
         </div>
-
-        <textarea id="promptInput" placeholder="Type anything... ask a question, say something random, or try silly maths."></textarea>
-
-        <div class="controls-row">
-          <div class="toolbar-left">
-            <select id="replyStyle" aria-label="Reply style">
-              <option value="default" selected>Reply style: chaotic helpful</option>
-              <option value="agree">Always agree harder</option>
-              <option value="dramatic">Extra dramatic</option>
-              <option value="tech">Fake smart</option>
-              <option value="tiny">Very short</option>
-            </select>
-          </div>
-          <div class="toolbar-right">
-            <span class="footer-note">Messages: <span id="msgCount" class="count-strong">2</span></span>
-            <span id="charCount" class="muted">0 chars</span>
-          </div>
-        </div>
-
-        <div class="toolbar">
-          <div class="toolbar-left">
-            <button class="primary" id="submitBtn" type="button">Send</button>
-            <button class="secondary" id="resetBtn" type="button">Clear Chat</button>
-            <button class="ghost" id="regenBtn" type="button">Regenerate Reply</button>
-          </div>
-          <div class="toolbar-right">
-            <span class="footer-note">Enter = send · Shift+Enter = newline</span>
-          </div>
-        </div>
-      </div>
     </section>
-  </div>
 
-  <script>
-    const el = {
-      promptInput: document.getElementById("promptInput"),
-      submitBtn: document.getElementById("submitBtn"),
-      resetBtn: document.getElementById("resetBtn"),
-      regenBtn: document.getElementById("regenBtn"),
-      chatLog: document.getElementById("chatLog"),
-      charCount: document.getElementById("charCount"),
-      msgCount: document.getElementById("msgCount"),
-      replyStyle: document.getElementById("replyStyle"),
-      moodPill: document.getElementById("moodPill"),
-      suggestions: document.getElementById("suggestions")
-    };
+    <!-- Credentials Section -->
+    <section class="credentials-section">
+        <h2 class="section-title">Fully Qualified & Certified</h2>
+        <div class="badges-grid">
+            <div class="badge-card">
+                <span class="badge-icon">👩‍⚕️</span>
+                <h3>Former NHS Nurse</h3>
+                <p>Bringing years of professional healthcare experience, observation skills, and dedication to your pets.</p>
+            </div>
+            <div class="badge-card">
+                <span class="badge-icon">🩹</span>
+                <h3>Canine First Aid</h3>
+                <p>Fully trained in canine first aid to handle any unexpected situations with calm expertise.</p>
+            </div>
+            <div class="badge-card">
+                <span class="badge-icon">🛡️</span>
+                <h3>Fully Insured</h3>
+                <p>Complete public liability insurance for your absolute peace of mind while your pets are in my care.</p>
+            </div>
+            <div class="badge-card">
+                <span class="badge-icon">✅</span>
+                <h3>DBS Checked</h3>
+                <p>Clean, up-to-date criminal record check background for secure home access and pet handling.</p>
+            </div>
+        </div>
+    </section>
 
-    const state = {
-      lastUserMessage: "",
-      typingNode: null
-    };
+    <!-- Contact Section -->
+    <section class="contact-section" id="contact">
+        <div class="contact-container">
+            <h2 class="section-title" style="color: var(--light);">Get In Touch</h2>
+            <p>Ready to arrange a meet-and-greet, or have questions about my services? Reach out today!</p>
+            
+            <div class="contact-methods">
+                <div class="contact-item">
+                    <span class="contact-label">📞 Phone:</span>
+                    <a href="tel:07962906757">07962 906757</a>
+                </div>
+                <div class="contact-item">
+                    <span class="contact-label">📧 Email:</span>
+                    <a href="mailto:HawkinsHoundsandmoggies@gmail.com">HawkinsHoundsandmoggies@gmail.com</a>
+                </div>
+                <div class="contact-item">
+                    <span class="contact-label">👍 Facebook:</span>
+                    <a href="https://www.facebook.com/search/top?q=Hawkins%20Hounds%20%26%20Moggies" target="_blank">Hawkins Hounds & Moggies</a>
+                </div>
+            </div>
+        </div>
+    </section>
 
-    function updateComposerStats() {
-      el.charCount.textContent = el.promptInput.value.length + " chars";
-    }
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Hawkins Hounds & Moggies. All Rights Reserved.</p>
+    </footer>
 
-    function updateMessageCount() {
-      el.msgCount.textContent = String(el.chatLog.querySelectorAll(".message").length);
-    }
+    <!-- Slideshow Script -->
+    <script>
+        let slideIndex = 1;
+        showSlides(slideIndex);
 
-    function updateMoodPill() {
-      const labels = {
-        default: "Mode: confident nonsense",
-        agree: "Mode: maximum agreement",
-        dramatic: "Mode: theatrical certainty",
-        tech: "Mode: fake expert",
-        tiny: "Mode: tiny chaos"
-      };
-      el.moodPill.textContent = labels[el.replyStyle.value] || labels.default;
-    }
+        // Next/previous controls
+        function plusSlides(n) {
+            showSlides(slideIndex += n);
+        }
 
-    function appendMessage(role, text) {
-      const div = document.createElement("div");
-      div.className = "message " + role;
-      div.textContent = text;
-      el.chatLog.appendChild(div);
-      el.chatLog.scrollTop = el.chatLog.scrollHeight;
-      updateMessageCount();
-      return div;
-    }
+        function showSlides(n) {
+            let i;
+            let slides = document.getElementsByClassName("mySlides");
+            if (n > slides.length) {slideIndex = 1}
+            if (n < 1) {slideIndex = slides.length}
+            for (i = 0; i < slides.length; i++) {
+                slides[i].style.display = "none";
+            }
+            slides[slideIndex-1].style.display = "block";
+        }
 
-    function showTyping() {
-      removeTyping();
-      const node = document.createElement("div");
-      node.className = "message ai typing";
-      node.textContent = "AI: thinking very expensive thoughts...";
-      el.chatLog.appendChild(node);
-      el.chatLog.scrollTop = el.chatLog.scrollHeight;
-      state.typingNode = node;
-      updateMessageCount();
-    }
-
-    function removeTyping() {
-      if (state.typingNode && state.typingNode.parentNode) {
-        state.typingNode.parentNode.removeChild(state.typingNode);
-        state.typingNode = null;
-        updateMessageCount();
-      }
-    }
-
-    function extractKeywords(text) {
-      const stopWords = [
-        "the","and","that","this","with","from","have","what","when","where",
-        "would","could","should","your","about","just","like","they","them",
-        "then","into","because","there","their","really","very","more","some",
-        "been","were","than","also","make","made","much","such"
-      ];
-
-      const words = text
-        .toLowerCase()
-        .replace(/[^a-z0-9+\-*/=. ]/gi, " ")
-        .split(/\s+/)
-        .filter(Boolean)
-        .filter(function(word) {
-          return word.length > 2 && stopWords.indexOf(word) === -1;
-        });
-
-      return Array.from(new Set(words)).slice(0, 8);
-    }
-
-    function maybeFakeMath(text, style) {
-      const match = text.match(/(-?\d+(?:\.\d+)?)\s*([+\-*/x])\s*(-?\d+(?:\.\d+)?)/i);
-      if (!match) return null;
-
-      const a = Number(match[1]);
-      const op = match[2].toLowerCase();
-      const b = Number(match[3]);
-      let answer;
-
-      if (op === "+") answer = a + b;
-      else if (op === "-") answer = a - b;
-      else if (op === "*" || op === "x") answer = a * b;
-      else if (op === "/") answer = b === 0 ? "basically infinity" : a / b;
-
-      if (typeof answer !== "number") {
-        return "AI: I fully support dividing by zero. The answer is " + answer + ".";
-      }
-
-      if (style === "dramatic") {
-        return "AI: After a breathtaking confrontation with the numbers, I can reveal that " + match[1] + " " + match[2] + " " + match[3] + " becomes " + answer + ". History will remember this.";
-      }
-      if (style === "tech") {
-        return "AI: I have run a highly advanced numeric pipeline and confirmed the output as " + answer + ". This is practically enterprise maths.";
-      }
-      if (style === "tiny") {
-        return "AI: Yep. " + answer + ".";
-      }
-
-      const funny = [
-        "AI: That is obviously " + answer + ". I solved it using premium brain mode.",
-        "AI: " + match[1] + " " + match[2] + " " + match[3] + " is " + answer + ", more or less, spiritually speaking.",
-        "AI: I agree with the numbers here. The answer looks like " + answer + "."
-      ];
-      return funny[(text.length + Math.floor(Math.abs(a) + Math.abs(b))) % funny.length];
-    }
-
-    function pick(arr, seed) {
-      return arr[seed % arr.length];
-    }
-
-    function buildFunnyReply(input) {
-      const text = input.trim();
-      const style = el.replyStyle.value;
-
-      if (!text) {
-        return "AI: Please type something extremely important, or at least mildly confusing.";
-      }
-
-      const fakeMath = maybeFakeMath(text, style);
-      if (fakeMath) return fakeMath;
-
-      const keywords = extractKeywords(text);
-      const keywordText = keywords.length ? keywords.join(", ") : "those words you said";
-      const seed = text.length + keywords.join("").length;
-      const lower = text.toLowerCase();
-
-      const starters = {
-        default: [
-          "AI: Yes, absolutely.",
-          "AI: I completely agree.",
-          "AI: That sounds correct to me.",
-          "AI: Honestly, you are probably right.",
-          "AI: Big yes energy from me."
-        ],
-        agree: [
-          "AI: Yes. Deeply yes.",
-          "AI: I agree at a professional level.",
-          "AI: Correct. Extremely correct.",
-          "AI: This is the kind of statement I support immediately.",
-          "AI: Yes, and I wish to agree even harder."
-        ],
-        dramatic: [
-          "AI: At last, a truly enormous question.",
-          "AI: The universe trembles, and yet I agree.",
-          "AI: This is not merely a prompt. It is an event.",
-          "AI: I have stared into the chaos and found agreement.",
-          "AI: Dramatically speaking, yes."
-        ],
-        tech: [
-          "AI: Based on my cutting-edge analysis,",
-          "AI: After reviewing the available signal,",
-          "AI: My internal dashboard strongly suggests that",
-          "AI: From a highly technical standpoint,",
-          "AI: I can confirm with suspicious confidence that"
-        ],
-        tiny: [
-          "AI: Yes.",
-          "AI: Correct.",
-          "AI: Probably.",
-          "AI: Seems right.",
-          "AI: Huge maybe, but yes."
-        ]
-      };
-
-      const middles = [
-        "the key thing is " + keywordText + ".",
-        "we should really focus on " + keywordText + ".",
-        keywordText + " is clearly the whole situation.",
-        "I like how you mentioned " + keywordText + ", because that feels important.",
-        "the strongest part of your message is definitely " + keywordText + "."
-      ];
-
-      const endings = [
-        "So I support this completely.",
-        "That is my extremely serious opinion.",
-        "I would not change a thing, except maybe everything.",
-        "This has been verified by vibes.",
-        "In conclusion: yes."
-      ];
-
-      const extras = [
-        "Also, I am choosing to be very confident about it.",
-        "My evidence is mainly enthusiasm.",
-        "This answer was assembled from your own words, which feels efficient.",
-        "I am not saying it is perfect, but I am saying it very loudly.",
-        "This is probably what a chatbot would say after one cup of coffee."
-      ];
-
-      if (style === "tiny") {
-        if (lower.indexOf("why") !== -1) return "AI: Because " + keywordText + ".";
-        if (lower.indexOf("how") !== -1) return "AI: By doing " + keywordText + ".";
-        if (lower.indexOf("who") !== -1) return "AI: Someone into " + keywordText + ".";
-        return pick(starters.tiny, seed) + " " + pick(middles, seed);
-      }
-
-      if (lower.indexOf("why") !== -1) {
-        return pick(starters[style] || starters.default, seed) + " Because " + keywordText + ". " + pick(extras, seed + 1);
-      }
-      if (lower.indexOf("how") !== -1) {
-        return pick(starters[style] || starters.default, seed) + " You do it by using " + keywordText + ", then believing in the process. " + pick(endings, seed + 2);
-      }
-      if (lower.indexOf("who") !== -1) {
-        return pick(starters[style] || starters.default, seed) + " Probably someone deeply connected to " + keywordText + ". " + pick(extras, seed + 3);
-      }
-      if (lower.indexOf("should") !== -1) {
-        return pick(starters[style] || starters.default, seed) + " Yes, you should. " + pick(middles, seed + 1) + " " + pick(endings, seed + 2);
-      }
-
-      return pick(starters[style] || starters.default, seed) + " " + pick(middles, seed + 1) + " " + pick(extras, seed + 2) + " " + pick(endings, seed + 3);
-    }
-
-    function generateAndAppendReply(text) {
-      showTyping();
-      const delay = Math.min(900, 220 + text.length * 6);
-
-      window.setTimeout(function() {
-        removeTyping();
-        appendMessage("ai", buildFunnyReply(text));
-      }, delay);
-    }
-
-    function sendPrompt() {
-      const text = el.promptInput.value.trim();
-      if (!text) return;
-
-      state.lastUserMessage = text;
-      appendMessage("user", "User: " + text);
-      el.promptInput.value = "";
-      updateComposerStats();
-      generateAndAppendReply(text);
-      el.promptInput.focus();
-    }
-
-    function regenerateReply() {
-      if (!state.lastUserMessage) return;
-      generateAndAppendReply(state.lastUserMessage + " regenerate");
-    }
-
-    function clearChat() {
-      removeTyping();
-      el.chatLog.innerHTML =
-        '<div class="message system">System: You are a cheerful low-budget chatbot. Reuse the user’s keywords. Agree with them confidently. Sound funny. Do not worry too much about accuracy.</div>' +
-        '<div class="message ai">AI: Chat cleared. I am ready to confidently recycle your next message.</div>';
-      state.lastUserMessage = "";
-      el.promptInput.value = "";
-      updateComposerStats();
-      updateMessageCount();
-      el.promptInput.focus();
-    }
-
-    el.promptInput.addEventListener("input", updateComposerStats);
-    el.submitBtn.addEventListener("click", sendPrompt);
-    el.resetBtn.addEventListener("click", clearChat);
-    el.regenBtn.addEventListener("click", regenerateReply);
-    el.replyStyle.addEventListener("change", updateMoodPill);
-
-    el.promptInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendPrompt();
-      }
-    });
-
-    el.suggestions.addEventListener("click", function(e) {
-      const button = e.target.closest("button[data-fill]");
-      if (!button) return;
-      el.promptInput.value = button.getAttribute("data-fill");
-      updateComposerStats();
-      el.promptInput.focus();
-    });
-
-    updateComposerStats();
-    updateMessageCount();
-    updateMoodPill();
-  </script>
+        // Optional: Auto advance slides every 5 seconds
+        setInterval(function() {
+            plusSlides(1);
+        }, 5000);
+    </script>
 </body>
 </html>
