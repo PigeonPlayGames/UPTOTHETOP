@@ -28,24 +28,6 @@ let villageDataLoaded = false; // Flag to indicate if initial data is loaded and
 
 // 🔹 DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
-    // --- Windmill Animation Logic (New) ---
-    const windmillBlades = document.getElementById('windmill-blades');
-    const numberOfFrames = 8; // You have 8 images (0 to 7)
-    let currentFrame = 0;
-    const animationSpeed = 100; // Milliseconds per frame (adjust for faster/slower spin)
-
-    function animateWindmill() {
-        if (windmillBlades) { // Ensure the element exists before trying to update its src
-            windmillBlades.src = `windmill_frame_${currentFrame}.png`;
-            currentFrame = (currentFrame + 1) % numberOfFrames; // Cycle through frames 0-7
-        }
-    }
-
-    // Start the windmill animation as soon as the DOM is ready
-    setInterval(animateWindmill, animationSpeed);
-    // --- End Windmill Animation Logic ---
-
-
     onAuthStateChanged(auth, async (loggedInUser) => {
         if (!loggedInUser) {
             alert("You must be logged in to play!");
@@ -172,7 +154,7 @@ async function calculateOfflineResourcesAndSave() {
                 alert(`My Lord Welcome back! While you were away, your village generated:\nWood: ${Math.round(generatedWood)}\nStone: ${Math.round(generatedStone)}\nIron: ${Math.round(generatedIron)}`);
             }
         }
-        
+
         // Prepare this working data for saving to Firestore
         dataForFirestore = {
             ...workingVillageData,
@@ -226,11 +208,11 @@ async function saveVillageData() {
 
     // Always update lastLogin timestamp to serverTimestamp when saving
     // The villageData object is already updated locally by ongoing game actions
-    villageData.lastLogin = serverTimestamp(); 
+    villageData.lastLogin = serverTimestamp();
 
     // Deep copy to ensure no undefined fields are present for Firestore write
     const dataToSave = JSON.parse(JSON.stringify(villageData));
-    
+
     // Explicitly handle lastBattleMessage to be null if undefined
     if (dataToSave.lastBattleMessage === undefined) {
         delete dataToSave.lastBattleMessage;
@@ -246,7 +228,6 @@ async function saveVillageData() {
 }
 
 // 🔹 UI Update
-// (No changes needed, as it correctly reads from the global villageData)
 function updateUI() {
     if (!villageData) return;
 
@@ -264,17 +245,20 @@ function updateUI() {
     document.getElementById("sword-count").textContent = villageData.troops.sword;
     document.getElementById("axe-count").textContent = villageData.troops.axe;
 
-    // This querySelectorAll(".building") might not find elements if they're not directly
-    // marked with the class "building" or if the "building-overlay" elements are dynamic.
-    // Based on your HTML, it seems you use "building-overlay" as the container.
-    // You might want to adjust this to: document.querySelectorAll(".building-overlay")
-    // or ensure your building elements also have a "building" class.
-    document.querySelectorAll(".building-overlay").forEach(buildingElement => {
-        const type = buildingElement.querySelector(".upgrade-btn").getAttribute("data-building");
+    // FIX: your building markup uses class="building", not "building-overlay" —
+    // the old selector never matched anything, so upgrade costs stayed frozen
+    // at their initial value no matter how far a building had leveled up.
+    document.querySelectorAll(".building").forEach(buildingElement => {
+        const btn = buildingElement.querySelector(".upgrade-btn");
+        const costEl = buildingElement.querySelector(".upgrade-cost");
+        if (!btn || !costEl) return;
+
+        const type = btn.getAttribute("data-building");
         const level = villageData.buildings[type];
+        if (level === undefined) return;
+
         const cost = level * 50;
-        buildingElement.querySelector(".upgrade-cost").innerText =
-            `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
+        costEl.innerText = `Upgrade Cost: Wood: ${cost}, Stone: ${cost}, Iron: ${cost}`;
     });
 }
 
