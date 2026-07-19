@@ -10,7 +10,7 @@ app.use(express.json());
 const cors = require('cors');
 // Configure CORS to allow requests from your GitHub Pages domain and localhost
 const corsOptions = {
-  origin: ['https://uptothe.top'], // Use your live domain here
+  origin: ['https://uptothe.top', 'https://eongames.co.uk', 'https://www.eongames.co.uk'], // Use your live domain(s) here
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   allowedHeaders: 'Content-Type,Authorization',
 };
