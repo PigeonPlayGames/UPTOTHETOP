@@ -21,6 +21,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore();
 
+// 🔹 The 'game' Cloud Function (Express app) that resolves attacks server-side.
+// PASTE YOUR DEPLOYED FUNCTION'S BASE URL HERE — you'll see it printed in the
+// terminal after `firebase deploy --only functions`, or in the Firebase
+// console under Functions. It looks something like:
+// https://us-central1-up-to-battle.cloudfunctions.net/game
+const GAME_FUNCTION_BASE_URL = "PASTE_YOUR_DEPLOYED_FUNCTION_URL_HERE";
+
 // 🔹 State
 let user = null;
 let villageData = null;
@@ -416,119 +423,41 @@ async function loadWorldMap() {
                     return alert("Not enough troops in your village to send that many.");
                 }
 
-                const attackerStrength = spear * 1 + sword * 2 + axe * 3;
-                const defenderSpear = v.troops?.spear || 0;
-                const defenderSword = v.troops?.sword || 0;
-                const defenderAxe = v.troops?.axe || 0;
-                const defenderStrength = defenderSpear * 1 + defenderSword * 2 + defenderAxe * 3;
+                // 🔹 Battle resolution now happens server-side in the 'game' Cloud
+                // Function's /attack route, inside a single transaction covering
+                // both villages. The client only says how many troops to send —
+                // it never decides (or writes) the outcome. This also fixes the
+                // old bug where the defender's document silently failed to
+                // update, since a player's browser was never allowed to write
+                // another player's village directly.
+                try {
+                    const idToken = await user.getIdToken();
+                    const res = await fetch(`${GAME_FUNCTION_BASE_URL}/attack`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${idToken}`
+                        },
+                        body: JSON.stringify({
+                            defenderId: v.id,
+                            troops: { spear, sword, axe }
+                        })
+                    });
 
-                let remainingSpear = spear;
-                let remainingSword = sword;
-                let remainingAxe = axe;
+                    const outcome = await res.json();
 
-                if (attackerStrength > defenderStrength) {
-                    const initialDefenderSpear = v.troops?.spear || 0;
-                    const initialDefenderSword = v.troops?.sword || 0;
-                    const initialDefenderAxe = v.troops?.axe || 0;
-
-                    let damageToAttackerTroops = defenderStrength;
-                    const attackerLosses = { spear: 0, sword: 0, axe: 0 };
-
-                    const calculateLoss = (currentCount, troopPower) => {
-                        const loss = Math.min(currentCount, Math.floor(damageToAttackerTroops / troopPower));
-                        damageToAttackerTroops -= loss * troopPower;
-                        return loss;
-                    };
-
-                    attackerLosses.axe = calculateLoss(axe, 3);
-                    attackerLosses.sword = calculateLoss(sword, 2);
-                    attackerLosses.spear = calculateLoss(spear, 1);
-
-                    villageData.troops.spear -= attackerLosses.spear;
-                    villageData.troops.sword -= attackerLosses.sword;
-                    villageData.troops.axe -= attackerLosses.axe;
-
-                    const scouted = {
-                        wood: v.wood || 0,
-                        stone: v.stone || 0,
-                        iron: v.iron || 0
-                    };
-
-                    const totalRemainingAttackerTroops = (spear - attackerLosses.spear) + (sword - attackerLosses.sword) + (axe - attackerLosses.axe);
-                    const totalCapacity = totalRemainingAttackerTroops * 30;
-
-                    const plundered = { wood: 0, stone: 0, iron: 0 };
-                    let remainingCapacity = totalCapacity;
-
-                    const resourcesArray = [
-                        { name: 'wood', amount: scouted.wood },
-                        { name: 'stone', amount: scouted.stone },
-                        { name: 'iron', amount: scouted.iron }
-                    ];
-
-                    for (const res of resourcesArray) {
-                        if (remainingCapacity <= 0) break;
-                        const takeAmount = Math.min(res.amount, remainingCapacity);
-                        plundered[res.name] = takeAmount;
-                        remainingCapacity -= takeAmount;
+                    if (!res.ok) {
+                        alert(outcome.error || "The attack could not be resolved. Please try again.");
+                    } else {
+                        alert(outcome.message);
                     }
-
-                    villageData.wood += plundered.wood;
-                    villageData.stone += plundered.stone;
-                    villageData.iron += plundered.iron;
-                    villageData.score += 20;
-
-                    const report = `
-🛡️ Battle Report: Victory!
-You attacked ${v.username}'s village.
--------------------------------
-💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
-⚔️ Your Losses: Spear: ${attackerLosses.spear}, Sword: ${attackerLosses.sword}, Axe: ${attackerLosses.axe}
-👥 Enemy Troops Defeated: Spear: ${initialDefenderSpear}, Sword: ${initialDefenderSword}, Axe: ${initialDefenderAxe} (All wiped out!)
-🎯 Plundered: Wood: ${Math.round(plundered.wood)}, Stone: ${Math.round(plundered.stone)}, Iron: ${Math.round(plundered.iron)}
-`;
-                    alert(report);
-
-                    // --- SECURITY WARNING: This direct write to DEFENDER's data is insecure ---
-                    // This will likely be blocked by the new security rules.
-                    // A Firebase Cloud Function is required for secure cross-user updates.
-                    await updateDoc(doc(db, "villages", v.id), {
-                        "troops.spear": 0,
-                        "troops.sword": 0,
-                        "troops.axe": 0,
-                        wood: Math.max(0, scouted.wood - plundered.wood),
-                        stone: Math.max(0, scouted.stone - plundered.stone),
-                        iron: Math.max(0, scouted.iron - plundered.iron),
-                        lastBattleMessage: `Your village was attacked by ${villageData.username} and lost the battle! You lost all your troops and some resources.`
-                    });
-
-                } else {
-                    // ❌ Defeat
-                    villageData.troops.spear -= spear;
-                    villageData.troops.sword -= sword;
-                    villageData.troops.axe -= axe;
-                    villageData.score = Math.max(0, villageData.score - 5);
-
-                    const report = `
-🛡️ Battle Report: Defeat!
-You attacked ${v.username}'s village.
--------------------------------
-💥 Your Troops Sent: Spear: ${spear}, Sword: ${sword}, Axe: ${axe}
-☠️ All your attacking troops were lost!
-👥 Enemy Troops Remaining: Spear: ${defenderSpear}, Sword: ${defenderSword}, Axe: ${defenderAxe}
-`;
-                    alert(report);
-
-                    // --- SECURITY WARNING: This direct write to DEFENDER's data is insecure ---
-                    // This will likely be blocked by the new security rules.
-                    // A Firebase Cloud Function is required for secure cross-user updates.
-                    await updateDoc(doc(db, "villages", v.id), {
-                        lastBattleMessage: `Your village was attacked by ${villageData.username} and defended successfully!`
-                    });
+                } catch (err) {
+                    console.error("Attack failed:", err);
+                    alert("The attack could not be resolved. Please try again.");
                 }
 
-                await saveVillageData(); // Save attacker's updated data
-                updateUI();
+                // villageData updates via the onSnapshot listener once the function
+                // writes to Firestore — no local mutation or saveVillageData() needed here.
                 loadWorldMap();
             });
 
