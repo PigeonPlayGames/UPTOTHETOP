@@ -22,11 +22,7 @@ const auth = getAuth();
 const db = getFirestore();
 
 // 🔹 The 'game' Cloud Function (Express app) that resolves attacks server-side.
-// PASTE YOUR DEPLOYED FUNCTION'S BASE URL HERE — you'll see it printed in the
-// terminal after `firebase deploy --only functions`, or in the Firebase
-// console under Functions. It looks something like:
-// https://us-central1-up-to-battle.cloudfunctions.net/game
-const GAME_FUNCTION_BASE_URL = "PASTE_YOUR_DEPLOYED_FUNCTION_URL_HERE";
+const GAME_FUNCTION_BASE_URL = "https://game-hxidlvyhiq-uc.a.run.app";
 
 // 🔹 State
 let user = null;
@@ -385,7 +381,7 @@ async function loadWorldMap() {
             const v = docSnap.data();
             v.id = docSnap.id;
 
-            if (!v.x || !v.y) return;
+            if (v.x == null || v.y == null) return;
 
             const el = document.createElement("div");
             el.className = "village-tile";
