@@ -20,6 +20,7 @@
     },
     "movements": {
       ".read": "auth != null",
+      ".indexOn": ["resolved"],
       "$movementId": {
         ".write": "auth != null && (!data.exists() || data.child('originOwnerId').val() === auth.uid || data.child('targetOwnerId').val() === auth.uid)"
       }
