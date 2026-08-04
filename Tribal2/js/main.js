@@ -50,7 +50,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const userSnap = await db.ref(`users/${user.uid}`).get();
     const userData = userSnap.val();
     if (!userData || !userData.villageIds) {
-      console.error('No village found for this user.');
+      document.querySelector('main').innerHTML = `
+        <div class="panel">
+          <h3>No village found</h3>
+          <p>Your account is logged in correctly (UID: ${user.uid}), but there's no
+          village data saved for it in the database yet.</p>
+          <p>Raw data found at <code>users/${user.uid}</code>:</p>
+          <pre style="white-space:pre-wrap;background:#faf8f2;padding:10px;border-radius:4px;">${JSON.stringify(userData, null, 2) || 'null (nothing there at all)'}</pre>
+        </div>`;
       return;
     }
     myVillageId = Object.keys(userData.villageIds)[0];
