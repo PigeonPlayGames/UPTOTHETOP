@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tribal Wars Clone - Login</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <h1>Village Wars</h1>
+
+    <form id="login-form" style="display:flex;">
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <button type="submit">Log In</button>
+    </form>
+
+    <form id="signup-form" style="display:none;">
+      <input type="text" name="username" placeholder="Village lord name" required minlength="3">
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Password (6+ chars)" required minlength="6">
+      <button type="submit">Create Account</button>
+    </form>
+
+    <div id="auth-error"></div>
+
+    <div class="auth-toggle">
+      <span id="show-signup">New here? <a>Create an account</a></span>
+      <span id="show-login" style="display:none">Already have an account? <a>Log in</a></span>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/game-data.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    document.getElementById('show-signup').addEventListener('click', () => {
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('signup-form').style.display = 'flex';
+      document.getElementById('show-signup').style.display = 'none';
+      document.getElementById('show-login').style.display = 'inline';
+    });
+    document.getElementById('show-login').addEventListener('click', () => {
+      document.getElementById('signup-form').style.display = 'none';
+      document.getElementById('login-form').style.display = 'flex';
+      document.getElementById('show-login').style.display = 'none';
+      document.getElementById('show-signup').style.display = 'inline';
+    });
+  </script>
+</body>
+</html>
