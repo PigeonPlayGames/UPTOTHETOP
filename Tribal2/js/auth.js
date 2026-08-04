@@ -38,6 +38,13 @@ async function createStartingVillage(uid, username) {
     createdAt: firebase.database.ServerValue.TIMESTAMP,
   });
 
+  // Read back what we just wrote to make sure it actually landed (catches
+  // silent rules/permission issues that a resolved promise can mask).
+  const check = await db.ref(`villages/${villageId}/resources`).get();
+  if (!check.exists()) {
+    throw new Error('Village was not saved. Check your Realtime Database rules are published.');
+  }
+
   return villageId;
 }
 
