@@ -42,6 +42,14 @@
   #movements .move-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); font-size:13px; margin-bottom:6px; }
   #movements .move-line.incoming { border-color:var(--danger); background:#fbeeec; }
 
+  #account-panel input { width:100%; padding:8px; border:1px solid var(--border); border-radius:4px; font-size:13px; margin:6px 0; }
+  #account-panel button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; }
+  #account-panel button:hover { background:var(--accent-dark); }
+  #account-status { font-size:12px; min-height:16px; margin-top:4px; }
+  #account-status.error { color:var(--danger); }
+  #account-status.success { color:var(--accent-dark); }
+  .toggle-link { font-size:12px; color:var(--accent-dark); cursor:pointer; text-decoration:underline; }
+
   #log { display:flex; flex-direction:column-reverse; gap:6px; max-height:200px; overflow-y:auto; font-size:13px; }
   .log-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); }
   .log-line.new { animation: flash 1.5s ease-out; }
@@ -58,6 +66,13 @@
     <input id="name-input" type="text" placeholder="Your lord name" maxlength="16">
     <button id="join-btn">Enter the Realm</button>
     <div id="join-status"></div>
+    <p style="margin-top:16px;"><span class="toggle-link" id="show-login-link">Already saved an account? Log in</span></p>
+    <div id="login-form" style="display:none;">
+      <input id="login-email" type="email" placeholder="Email">
+      <input id="login-password" type="password" placeholder="Password">
+      <button id="login-btn" style="width:100%;">Log In</button>
+      <div id="login-status" style="font-size:12px;color:var(--muted);min-height:16px;"></div>
+    </div>
   </div>
 
   <div id="game">
@@ -73,6 +88,11 @@
       <div>&#129777; <span id="res-clay">0</span><span class="rate">/ <span id="cap-clay"></span> clay</span></div>
       <div>&#9881;&#65039; <span id="res-iron">0</span><span class="rate">/ <span id="cap-iron"></span> iron</span></div>
       <div>&#128101; <span id="res-pop">0</span><span class="rate">/ <span id="cap-pop"></span> pop</span></div>
+    </div>
+
+    <div class="panel" id="account-panel">
+      <h3>Account</h3>
+      <div id="account-content"></div>
     </div>
 
     <div class="panel">
@@ -102,7 +122,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v4</div>
+  <div id="build-tag">build: realm-v5</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -525,6 +545,76 @@
     return { x: Math.floor(Math.random() * GRID_SIZE), y: Math.floor(Math.random() * GRID_SIZE) };
   }
 
+  // ---- Account (optional portable login) ---------------------------
+  // Upgrades the current anonymous session in place via linkWithCredential,
+  // so the uid never changes and the existing village/banner data just
+  // keeps working with zero migration. This is the whole reason it's
+  // much safer than a normal signup flow: there's no separate account
+  // being created that a village then has to be attached to afterwards.
+  function isLinked() {
+    const u = auth.currentUser;
+    return !!(u && u.providerData.some((p) => p.providerId === 'password'));
+  }
+
+  function renderAccountPanel() {
+    const box = document.getElementById('account-content');
+    if (isLinked()) {
+      box.innerHTML = `
+        <p class="muted">Signed in as <strong>${auth.currentUser.email}</strong> — this village follows you to any device.</p>
+        <button id="logout-btn">Log Out</button>
+      `;
+      document.getElementById('logout-btn').addEventListener('click', () => auth.signOut().then(() => location.reload()));
+    } else {
+      box.innerHTML = `
+        <p class="muted">Playing as a guest on this device — clearing browser data would lose this village.</p>
+        <input id="link-email" type="email" placeholder="Email">
+        <input id="link-password" type="password" placeholder="Password (6+ characters)">
+        <button id="link-btn">Save Account</button>
+        <div id="account-status"></div>
+      `;
+      document.getElementById('link-btn').addEventListener('click', doLinkAccount);
+    }
+  }
+
+  async function doLinkAccount() {
+    const email = document.getElementById('link-email').value.trim();
+    const password = document.getElementById('link-password').value;
+    const statusBox = document.getElementById('account-status');
+    statusBox.className = ''; statusBox.textContent = 'Saving...';
+    try {
+      const credential = firebase.auth.EmailAuthProvider.credential(email, password);
+      await auth.currentUser.linkWithCredential(credential);
+      renderAccountPanel();
+    } catch (err) {
+      if (err.code === 'auth/email-already-in-use') {
+        statusBox.className = 'error';
+        statusBox.innerHTML = 'That email already has a saved village on a different session. <span class="toggle-link" id="switch-login">Log in to it instead?</span> (this replaces your current guest village with that one)';
+        document.getElementById('switch-login').addEventListener('click', () => loginWithEmail(email, password, statusBox));
+      } else {
+        statusBox.className = 'error';
+        statusBox.textContent = 'Error: ' + (err.message || String(err));
+      }
+    }
+  }
+
+  // Used both for the "log in on a new device" join-screen flow and for
+  // the "that email is already in use" recovery flow above. A full page
+  // reload after switching identity is deliberate — it's the simplest
+  // way to guarantee every listener re-subscribes cleanly under the new
+  // uid, rather than trying to hot-swap them mid-session.
+  async function loginWithEmail(email, password, statusBox) {
+    statusBox.className = ''; statusBox.textContent = 'Logging in...';
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      statusBox.className = 'success';
+      statusBox.textContent = 'Logged in — loading your village...';
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      statusBox.className = 'error';
+      statusBox.textContent = 'Error: ' + (err.message || String(err));
+    }
+  }
+
   // ---- Boot ---------------------------------------------------
   async function showGame(banner, name) {
     myName = name;
@@ -537,6 +627,7 @@
     db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
     db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
 
+    renderAccountPanel();
     renderMyStats();
     setInterval(async () => {
       if (!myLocalBanner) { const s = await db.ref(`banners/${myUid}`).get(); myLocalBanner = s.val(); }
@@ -583,6 +674,16 @@
   });
   document.getElementById('name-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('join-btn').click();
+  });
+
+  document.getElementById('show-login-link').addEventListener('click', () => {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('show-login-link').style.display = 'none';
+  });
+  document.getElementById('login-btn').addEventListener('click', () => {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    loginWithEmail(email, password, document.getElementById('login-status'));
   });
 </script>
 </body>
