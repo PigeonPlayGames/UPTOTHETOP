@@ -63,15 +63,22 @@
   <div id="join-screen">
     <h1>&#127984; The Realm</h1>
     <p class="muted">Drop your banner on the shared map. Everyone sees it live.</p>
-    <input id="name-input" type="text" placeholder="Your lord name" maxlength="16">
-    <button id="join-btn">Enter the Realm</button>
-    <div id="join-status"></div>
-    <p style="margin-top:16px;"><span class="toggle-link" id="show-login-link">Already saved an account? Log in</span></p>
-    <div id="login-form" style="display:none;">
+
+    <div style="text-align:left;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+      <strong style="font-size:13px;">Returning player?</strong>
+      <p class="muted" style="margin:4px 0 8px;">If you've ever clicked "Save Account" before, log in here — don't just type your old name below, that starts a brand new village instead.</p>
       <input id="login-email" type="email" placeholder="Email">
       <input id="login-password" type="password" placeholder="Password">
       <button id="login-btn" style="width:100%;">Log In</button>
       <div id="login-status" style="font-size:12px;color:var(--muted);min-height:16px;"></div>
+    </div>
+
+    <div style="text-align:left;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+      <strong style="font-size:13px;">New player?</strong>
+      <p class="muted" style="margin:4px 0 8px;">Pick a name and jump straight in — no account needed to start.</p>
+      <input id="name-input" type="text" placeholder="Your lord name" maxlength="16">
+      <button id="join-btn">Start a New Village</button>
+      <div id="join-status"></div>
     </div>
   </div>
 
@@ -122,7 +129,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v5</div>
+  <div id="build-tag">build: realm-v6</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -571,8 +578,25 @@
         <input id="link-password" type="password" placeholder="Password (6+ characters)">
         <button id="link-btn">Save Account</button>
         <div id="account-status"></div>
+        <p style="margin-top:14px;"><span class="toggle-link" id="show-switch-login">Not this village? Log in to a different saved account</span></p>
+        <div id="switch-login-form" style="display:none;margin-top:8px;">
+          <input id="switch-email" type="email" placeholder="Email">
+          <input id="switch-password" type="password" placeholder="Password">
+          <button id="switch-login-btn">Log In</button>
+          <div id="switch-login-status" style="font-size:12px;color:var(--muted);min-height:16px;"></div>
+          <p class="muted" style="font-size:11px;">Note: this leaves the current guest village exactly as it is, just no longer open in this browser tab — it isn't deleted, but without a saved account of its own you won't be able to get back into it later.</p>
+        </div>
       `;
       document.getElementById('link-btn').addEventListener('click', doLinkAccount);
+      document.getElementById('show-switch-login').addEventListener('click', () => {
+        document.getElementById('switch-login-form').style.display = 'block';
+        document.getElementById('show-switch-login').style.display = 'none';
+      });
+      document.getElementById('switch-login-btn').addEventListener('click', () => {
+        const email = document.getElementById('switch-email').value.trim();
+        const password = document.getElementById('switch-password').value;
+        loginWithEmail(email, password, document.getElementById('switch-login-status'));
+      });
     }
   }
 
@@ -641,7 +665,13 @@
     setStatus('Connecting...');
     try {
       const existing = await db.ref('banners').get();
-      const spot = randomFreeSpot(existing.val());
+      const banners = existing.val() || {};
+      const nameTaken = Object.values(banners).some((b) => b.name.toLowerCase() === name.toLowerCase());
+      if (nameTaken) {
+        setStatus(`A village named "${name}" already exists. If that's you, use Log In above instead — this box always starts a brand new, separate village.`);
+        return;
+      }
+      const spot = randomFreeSpot(banners);
       const startingBanner = {
         name, x: spot.x, y: spot.y,
         resources: { wood: 100, clay: 100, iron: 100 },
@@ -676,10 +706,6 @@
     if (e.key === 'Enter') document.getElementById('join-btn').click();
   });
 
-  document.getElementById('show-login-link').addEventListener('click', () => {
-    document.getElementById('login-form').style.display = 'block';
-    document.getElementById('show-login-link').style.display = 'none';
-  });
   document.getElementById('login-btn').addEventListener('click', () => {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
