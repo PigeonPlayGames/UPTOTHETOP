@@ -33,11 +33,11 @@
   .cell.other:hover { outline:2px solid var(--accent); }
   .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-  .train-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); }
-  .train-row:last-child { border-bottom:none; }
-  .train-row button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; white-space:nowrap; }
-  .train-row button:hover { background:var(--accent-dark); }
-  .train-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
+  .item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); }
+  .item-row:last-child { border-bottom:none; }
+  .item-row button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .item-row button:hover { background:var(--accent-dark); }
+  .item-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
 
   #movements .move-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); font-size:13px; margin-bottom:6px; }
   #movements .move-line.incoming { border-color:var(--danger); background:#fbeeec; }
@@ -82,6 +82,11 @@
     </div>
 
     <div class="panel">
+      <h3>Buildings</h3>
+      <div id="building-list"></div>
+    </div>
+
+    <div class="panel">
       <h3>Barracks</h3>
       <div id="train-list"></div>
     </div>
@@ -97,7 +102,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v3</div>
+  <div id="build-tag">build: realm-v4</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -119,14 +124,25 @@
   // ---- Game constants ------------------------------------------------
   const GRID_SIZE = 8;
   const RATE_PER_SEC = { wood: 0.12, clay: 0.12, iron: 0.1 };
-  const STORAGE_CAP = 500;
+  const BASE_STORAGE_CAP = 500;
   const POP_CAP = 30;
   const SECONDS_PER_TILE = 3;
+
   const UNIT_IDS = ['spearman', 'swordsman'];
   const UNITS = {
     spearman:  { name: 'Spearman',  wood: 20, clay: 10, iron: 5,  pop: 1, attack: 10, defense: 8,  carry: 15, trainSeconds: 15 },
     swordsman: { name: 'Swordsman', wood: 35, clay: 20, iron: 40, pop: 2, attack: 25, defense: 15, carry: 10, trainSeconds: 30 },
   };
+
+  const BUILDING_IDS = ['timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall'];
+  const BUILDINGS = {
+    timber_camp: { name: 'Timber Camp', desc: 'Boosts wood production.', wood: 50, clay: 60, iron: 40, baseTime: 20 },
+    clay_pit:    { name: 'Clay Pit',    desc: 'Boosts clay production.', wood: 65, clay: 50, iron: 40, baseTime: 20 },
+    iron_mine:   { name: 'Iron Mine',   desc: 'Boosts iron production.', wood: 75, clay: 65, iron: 70, baseTime: 20 },
+    warehouse:   { name: 'Warehouse',   desc: 'Increases storage capacity.', wood: 60, clay: 50, iron: 40, baseTime: 20 },
+    wall:        { name: 'Wall',        desc: 'Boosts defense when raided.', wood: 50, clay: 100, iron: 20, baseTime: 25 },
+  };
+  const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
 
   let myUid = null;
   let myName = null;
@@ -144,6 +160,24 @@
     const m = Math.floor(s / 60);
     return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
   }
+  function defaultBuildings() {
+    const b = {}; BUILDING_IDS.forEach((id) => { b[id] = 0; }); return b;
+  }
+  function buildingCost(buildingId, targetLevel) {
+    const base = BUILDINGS[buildingId];
+    const factor = Math.pow(1.28, targetLevel - 1);
+    return { wood: Math.round(base.wood * factor), clay: Math.round(base.clay * factor), iron: Math.round(base.iron * factor) };
+  }
+  function buildingTime(buildingId, targetLevel) {
+    return Math.round(BUILDINGS[buildingId].baseTime * Math.pow(1.2, targetLevel - 1));
+  }
+  function productionRate(resourceKey, buildings) {
+    const level = buildings[RESOURCE_BUILDING[resourceKey]] || 0;
+    return RATE_PER_SEC[resourceKey] * (1 + level * 0.2);
+  }
+  function storageCap(buildings) {
+    return Math.round(BASE_STORAGE_CAP * (1 + (buildings.warehouse || 0) * 0.25));
+  }
 
   function addLogLine(text, isNew) {
     const log = document.getElementById('log');
@@ -155,22 +189,34 @@
   }
 
   // Lazy-resolve: given a banner as stored in the DB, returns what its
-  // resources/troops should be *right now*, based on production since
-  // lastUpdated and any finished training order.
+  // buildings/resources/troops should be *right now*, based on elapsed
+  // time since lastUpdated. Buildings resolve first since they affect
+  // the production rate used for the resources calculation.
   function resolveBanner(banner, now) {
     const elapsed = Math.max(0, (now - (banner.lastUpdated || now)) / 1000);
+
+    const buildings = { ...defaultBuildings(), ...(banner.buildings || {}) };
+    let build = banner.build || null;
+    if (build && build.finishesAt <= now) {
+      buildings[build.building] = (buildings[build.building] || 0) + 1;
+      build = null;
+    }
+    const cap = storageCap(buildings);
+
     const resources = {
-      wood: Math.min(STORAGE_CAP, (banner.resources?.wood || 0) + RATE_PER_SEC.wood * elapsed),
-      clay: Math.min(STORAGE_CAP, (banner.resources?.clay || 0) + RATE_PER_SEC.clay * elapsed),
-      iron: Math.min(STORAGE_CAP, (banner.resources?.iron || 0) + RATE_PER_SEC.iron * elapsed),
+      wood: Math.min(cap, (banner.resources?.wood || 0) + productionRate('wood', buildings) * elapsed),
+      clay: Math.min(cap, (banner.resources?.clay || 0) + productionRate('clay', buildings) * elapsed),
+      iron: Math.min(cap, (banner.resources?.iron || 0) + productionRate('iron', buildings) * elapsed),
     };
+
     const troops = { spearman: banner.troops?.spearman || 0, swordsman: banner.troops?.swordsman || 0 };
     let train = banner.train || null;
     if (train && train.finishesAt <= now) {
       troops[train.unit] = (troops[train.unit] || 0) + train.count;
       train = null;
     }
-    return { resources, troops, train };
+
+    return { resources, troops, train, buildings, build, cap };
   }
 
   // ---- Rendering ---------------------------------------------------
@@ -211,12 +257,49 @@
     document.getElementById('res-wood').textContent = fmt(resolved.resources.wood);
     document.getElementById('res-clay').textContent = fmt(resolved.resources.clay);
     document.getElementById('res-iron').textContent = fmt(resolved.resources.iron);
-    document.getElementById('cap-wood').textContent = STORAGE_CAP;
-    document.getElementById('cap-clay').textContent = STORAGE_CAP;
-    document.getElementById('cap-iron').textContent = STORAGE_CAP;
+    document.getElementById('cap-wood').textContent = resolved.cap;
+    document.getElementById('cap-clay').textContent = resolved.cap;
+    document.getElementById('cap-iron').textContent = resolved.cap;
     document.getElementById('res-pop').textContent = popUsage(resolved.troops);
     document.getElementById('cap-pop').textContent = POP_CAP;
 
+    renderBuildingList(resolved, now);
+    renderTrainList(resolved, now);
+  }
+
+  function renderBuildingList(resolved, now) {
+    const list = document.getElementById('building-list');
+    list.innerHTML = '';
+    BUILDING_IDS.forEach((id) => {
+      const def = BUILDINGS[id];
+      const level = resolved.buildings[id] || 0;
+      const targetLevel = level + 1;
+      const cost = buildingCost(id, targetLevel);
+      const time = buildingTime(id, targetLevel);
+      const building = resolved.build && resolved.build.building === id;
+      const anyBuilding = !!resolved.build;
+      const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
+
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      let status = '';
+      if (building) status = `Building... ${formatDuration(resolved.build.finishesAt - now)} left`;
+      else if (!affordable) status = 'Not enough resources.';
+      row.innerHTML = `
+        <div>
+          <strong>${def.name}</strong> <span class="muted">(level ${level})</span>
+          <div class="muted">${def.desc}</div>
+          <div class="muted">${cost.wood}w / ${cost.clay}c / ${cost.iron}i &middot; ${formatDuration(time * 1000)}</div>
+          <div class="muted">${status}</div>
+        </div>
+        <button ${anyBuilding || !affordable ? 'disabled' : ''} data-building="${id}">Upgrade</button>
+      `;
+      row.querySelector('button').addEventListener('click', () => upgradeBuilding(id));
+      list.appendChild(row);
+    });
+  }
+
+  function renderTrainList(resolved, now) {
     const list = document.getElementById('train-list');
     list.innerHTML = '';
     UNIT_IDS.forEach((id) => {
@@ -228,7 +311,7 @@
       const popOk = popUsage(resolved.troops) + def.pop <= POP_CAP;
 
       const row = document.createElement('div');
-      row.className = 'train-row';
+      row.className = 'item-row';
       let status = '';
       if (training) status = `Training... ${formatDuration(resolved.train.finishesAt - now)} left`;
       else if (!popOk) status = 'Population cap reached.';
@@ -271,10 +354,35 @@
     if (!banner) return null;
     const now = Date.now();
     const resolved = resolveBanner(banner, now);
-    const updated = { ...banner, resources: resolved.resources, troops: resolved.troops, train: resolved.train, lastUpdated: now };
-    await db.ref(`banners/${myUid}`).update({ resources: updated.resources, troops: updated.troops, train: updated.train, lastUpdated: now });
+    const updated = {
+      ...banner,
+      resources: resolved.resources, troops: resolved.troops, train: resolved.train,
+      buildings: resolved.buildings, build: resolved.build, lastUpdated: now,
+    };
+    await db.ref(`banners/${myUid}`).update({
+      resources: updated.resources, troops: updated.troops, train: updated.train,
+      buildings: updated.buildings, build: updated.build, lastUpdated: now,
+    });
     myLocalBanner = updated;
     return updated;
+  }
+
+  async function upgradeBuilding(buildingId) {
+    const banner = await syncMyBanner();
+    if (!banner || banner.build) return;
+    const targetLevel = (banner.buildings[buildingId] || 0) + 1;
+    const cost = buildingCost(buildingId, targetLevel);
+    if (banner.resources.wood < cost.wood || banner.resources.clay < cost.clay || banner.resources.iron < cost.iron) return;
+
+    const now = Date.now();
+    const time = buildingTime(buildingId, targetLevel);
+    const update = {
+      resources: { wood: banner.resources.wood - cost.wood, clay: banner.resources.clay - cost.clay, iron: banner.resources.iron - cost.iron },
+      build: { building: buildingId, finishesAt: now + time * 1000 },
+    };
+    await db.ref(`banners/${myUid}`).update(update);
+    myLocalBanner = { ...banner, ...update };
+    renderMyStats();
   }
 
   async function trainUnit(unitId) {
@@ -343,7 +451,8 @@
     const target = resolveBanner(targetRaw, now);
 
     const atk = UNIT_IDS.reduce((s, id2) => s + (movement.troops[id2] || 0) * UNITS[id2].attack, 0);
-    const def = UNIT_IDS.reduce((s, id2) => s + (target.troops[id2] || 0) * UNITS[id2].defense, 0);
+    const wallBonus = 1 + (target.buildings.wall || 0) * 0.05;
+    const def = UNIT_IDS.reduce((s, id2) => s + (target.troops[id2] || 0) * UNITS[id2].defense, 0) * wallBonus;
 
     let won, myLossRate, targetSurvivors = { spearman: 0, swordsman: 0 }, loot = { wood: 0, clay: 0, iron: 0 };
     if (atk > def) {
@@ -370,11 +479,12 @@
     await db.ref(`banners/${movement.toUid}`).update({
       troops: won ? { spearman: 0, swordsman: 0 } : targetSurvivors,
       resources: { wood: target.resources.wood - loot.wood, clay: target.resources.clay - loot.clay, iron: target.resources.iron - loot.iron },
+      buildings: target.buildings, build: target.build,
       lastUpdated: now,
     });
 
-    // The attacker may have trained more troops while this raid was marching —
-    // resolve their current state fresh before adding survivors + loot back.
+    // The attacker may have trained more troops or upgraded buildings while
+    // this raid was marching — resolve their current state fresh first.
     const attackerSnap = await db.ref(`banners/${movement.fromUid}`).get();
     const attackerRaw = attackerSnap.val();
     if (attackerRaw) {
@@ -382,11 +492,11 @@
       await db.ref(`banners/${movement.fromUid}`).update({
         troops: { spearman: (attacker.troops.spearman || 0) + mySurvivors.spearman, swordsman: (attacker.troops.swordsman || 0) + mySurvivors.swordsman },
         resources: {
-          wood: Math.min(STORAGE_CAP, attacker.resources.wood + loot.wood),
-          clay: Math.min(STORAGE_CAP, attacker.resources.clay + loot.clay),
-          iron: Math.min(STORAGE_CAP, attacker.resources.iron + loot.iron),
+          wood: Math.min(attacker.cap, attacker.resources.wood + loot.wood),
+          clay: Math.min(attacker.cap, attacker.resources.clay + loot.clay),
+          iron: Math.min(attacker.cap, attacker.resources.iron + loot.iron),
         },
-        train: attacker.train,
+        train: attacker.train, buildings: attacker.buildings, build: attacker.build,
         lastUpdated: now,
       });
       if (movement.fromUid === myUid) myLocalBanner = null; // force a fresh read next render
@@ -445,6 +555,8 @@
         name, x: spot.x, y: spot.y,
         resources: { wood: 100, clay: 100, iron: 100 },
         troops: { spearman: 0, swordsman: 0 },
+        buildings: defaultBuildings(),
+        build: null,
         train: null,
         lastUpdated: Date.now(),
       };
