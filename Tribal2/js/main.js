@@ -11,7 +11,11 @@ function switchTab(tabName) {
   document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
 
   if (tabName === 'troops') renderTroops(myVillageId);
-  if (tabName === 'map') { mapCenter = { x: currentVillage.x, y: currentVillage.y }; renderMap(myVillageId); }
+  if (tabName === 'map') {
+    if (!currentVillage) { setTimeout(() => switchTab('map'), 200); return; }
+    mapCenter = { x: currentVillage.x, y: currentVillage.y };
+    renderMap(myVillageId);
+  }
   if (tabName === 'reports') renderMovementsAndReports(auth.currentUser.uid);
 }
 
