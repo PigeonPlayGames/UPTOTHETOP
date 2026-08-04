@@ -15,21 +15,29 @@
   #join-screen button:hover { background:var(--accent-dark); }
   #join-status { font-size:12px; color:var(--muted); min-height:16px; }
 
-  #game { display:none; max-width:720px; margin:0 auto; padding:20px; }
-  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  #game { display:none; max-width:760px; margin:0 auto; padding:20px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
   header h1 { font-size:20px; margin:0; }
   #who { font-size:13px; color:var(--muted); }
   #count { font-size:13px; color:var(--accent-dark); font-weight:600; }
+  #resources { display:flex; gap:14px; font-size:14px; margin:10px 0 16px; }
+  #resources .rate { font-size:11px; color:var(--muted); display:block; }
 
-  #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:16px; }
+  .panel h3 { margin-top:0; font-size:15px; }
+
+  #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; }
   .cell { aspect-ratio:1; background:#efeadf; border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
   .cell.mine { background:#cfe0c6; }
   .cell.other { cursor:pointer; }
   .cell.other:hover { outline:2px solid var(--accent); }
   .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-  #log-panel { margin-top:28px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; }
-  #log-panel h3 { margin-top:0; font-size:15px; }
+  #train-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  #train-row button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; }
+  #train-row button:hover { background:var(--accent-dark); }
+  #train-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
+
   #log { display:flex; flex-direction:column-reverse; gap:6px; max-height:200px; overflow-y:auto; font-size:13px; }
   .log-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); }
   .log-line.new { animation: flash 1.5s ease-out; }
@@ -56,16 +64,37 @@
       </div>
     </header>
 
-    <div id="grid"></div>
-    <p class="muted" style="text-align:center;margin-top:6px;">Click another lord's banner to send a raid &#9876;&#65039;</p>
+    <div id="resources">
+      <div>&#129717; <span id="res-wood">0</span><span class="rate">wood</span></div>
+      <div>&#129777; <span id="res-clay">0</span><span class="rate">clay</span></div>
+      <div>&#9881;&#65039; <span id="res-iron">0</span><span class="rate">iron</span></div>
+      <div>&#128737;&#65039; <span id="res-troops">0</span><span class="rate">spearmen</span></div>
+    </div>
 
-    <div id="log-panel">
+    <div class="panel">
+      <h3>Your village map</h3>
+      <div id="grid"></div>
+      <p class="muted" style="text-align:center;margin:10px 0 0;">Click another lord's banner to send a raid &#9876;&#65039;</p>
+    </div>
+
+    <div class="panel">
+      <h3>Barracks</h3>
+      <div id="train-row">
+        <div>
+          <strong>Spearman</strong> &mdash; <span id="train-cost" class="muted"></span>
+          <div id="train-status" class="muted"></div>
+        </div>
+        <button id="train-btn">Train 1</button>
+      </div>
+    </div>
+
+    <div class="panel">
       <h3>Your event log</h3>
       <div id="log"><div class="muted">Nothing yet — open this page in another window and raid yourself to test.</div></div>
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v1</div>
+  <div id="build-tag">build: realm-v2</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -84,53 +113,19 @@
   const auth = firebase.auth();
   const db = firebase.database();
 
+  // ---- Game constants ------------------------------------------------
   const GRID_SIZE = 8;
+  const RATE_PER_SEC = { wood: 0.12, clay: 0.12, iron: 0.1 };   // ~7/min each
+  const SPEARMAN = { woodCost: 20, clayCost: 10, ironCost: 5, attack: 10, defense: 8, carry: 15, trainSeconds: 15 };
+
   let myUid = null;
   let myName = null;
+  let latestBanners = {};     // last snapshot from the live listener
+  let myLocalBanner = null;   // client-side ticking copy of my own banner, for smooth display
 
-  function setStatus(msg) {
-    document.getElementById('join-status').textContent = msg;
-  }
-
-  function renderGrid(banners) {
-    const grid = document.getElementById('grid');
-    const cells = {};
-    grid.innerHTML = '';
-    for (let y = 0; y < GRID_SIZE; y++) {
-      for (let x = 0; x < GRID_SIZE; x++) {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.dataset.x = x;
-        cell.dataset.y = y;
-        grid.appendChild(cell);
-        cells[`${x}_${y}`] = cell;
-      }
-    }
-    let count = 0;
-    Object.entries(banners || {}).forEach(([uid, b]) => {
-      const cell = cells[`${b.x}_${b.y}`];
-      if (!cell) return;
-      count++;
-      cell.innerHTML = `&#127984;<span class="label">${b.name}</span>`;
-      if (uid === myUid) {
-        cell.classList.add('mine');
-      } else {
-        cell.classList.add('other');
-        cell.addEventListener('click', () => sendRaid(uid, b.name));
-      }
-    });
-    document.getElementById('count').textContent = `${count} lord${count === 1 ? '' : 's'} in the realm`;
-  }
-
-  function sendRaid(targetUid, targetName) {
-    db.ref(`events/${targetUid}`).push({
-      fromUid: myUid,
-      fromName: myName,
-      message: `${myName} raided your village!`,
-      timestamp: firebase.database.ServerValue.TIMESTAMP,
-    });
-    addLogLine(`You raided ${targetName}'s village.`, false);
-  }
+  // ---- Small helpers ---------------------------------------------------
+  function setStatus(msg) { document.getElementById('join-status').textContent = msg; }
+  function fmt(n) { return Math.floor(n).toLocaleString(); }
 
   function addLogLine(text, isNew) {
     const log = document.getElementById('log');
@@ -139,6 +134,202 @@
     div.className = 'log-line' + (isNew ? ' new' : '');
     div.textContent = text;
     log.prepend(div);
+  }
+
+  // Given a banner as stored in the DB, returns what its resources/troops
+  // should be *right now*, accounting for production since lastUpdated and
+  // any training order that has finished. Same "lazy resolve" trick used
+  // in the full game: nothing ticks server-side, we just compute elapsed
+  // time whenever anyone looks.
+  function resolveBanner(banner, now) {
+    const elapsed = Math.max(0, (now - (banner.lastUpdated || now)) / 1000);
+    const resources = {
+      wood: (banner.resources?.wood || 0) + RATE_PER_SEC.wood * elapsed,
+      clay: (banner.resources?.clay || 0) + RATE_PER_SEC.clay * elapsed,
+      iron: (banner.resources?.iron || 0) + RATE_PER_SEC.iron * elapsed,
+    };
+    let spearman = banner.troops?.spearman || 0;
+    let train = banner.train || null;
+    if (train && train.finishesAt <= now) {
+      spearman += train.count;
+      train = null;
+    }
+    return { resources, troops: { spearman }, train };
+  }
+
+  // ---- Rendering ---------------------------------------------------
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    const cells = {};
+    grid.innerHTML = '';
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        grid.appendChild(cell);
+        cells[`${x}_${y}`] = cell;
+      }
+    }
+    let count = 0;
+    Object.entries(latestBanners).forEach(([uid, b]) => {
+      const cell = cells[`${b.x}_${b.y}`];
+      if (!cell) return;
+      count++;
+      cell.innerHTML = `&#127984;<span class="label">${b.name}</span>`;
+      if (uid === myUid) {
+        cell.classList.add('mine');
+      } else {
+        cell.classList.add('other');
+        cell.title = `Raid ${b.name}`;
+        cell.addEventListener('click', () => sendRaid(uid));
+      }
+    });
+    document.getElementById('count').textContent = `${count} lord${count === 1 ? '' : 's'} in the realm`;
+  }
+
+  function renderMyStats() {
+    if (!myLocalBanner) return;
+    const now = Date.now();
+    const resolved = resolveBanner(myLocalBanner, now);
+    document.getElementById('res-wood').textContent = fmt(resolved.resources.wood);
+    document.getElementById('res-clay').textContent = fmt(resolved.resources.clay);
+    document.getElementById('res-iron').textContent = fmt(resolved.resources.iron);
+    document.getElementById('res-troops').textContent = fmt(resolved.troops.spearman);
+
+    const s = SPEARMAN;
+    document.getElementById('train-cost').textContent = `${s.woodCost}w / ${s.clayCost}c / ${s.ironCost}i, ${s.trainSeconds}s`;
+    const trainBtn = document.getElementById('train-btn');
+    const trainStatus = document.getElementById('train-status');
+    if (resolved.train) {
+      const secsLeft = Math.max(0, Math.ceil((resolved.train.finishesAt - now) / 1000));
+      trainStatus.textContent = `Training ${resolved.train.count} more... ${secsLeft}s left`;
+      trainBtn.disabled = true;
+    } else {
+      const affordable = resolved.resources.wood >= s.woodCost && resolved.resources.clay >= s.clayCost && resolved.resources.iron >= s.ironCost;
+      trainStatus.textContent = affordable ? '' : 'Not enough resources yet.';
+      trainBtn.disabled = !affordable;
+    }
+  }
+
+  // ---- Actions ---------------------------------------------------
+  // Pulls the latest copy of my own banner from the DB, resolves it, and
+  // writes the resolved numbers straight back with a fresh lastUpdated.
+  // Called on load and after every action so the DB never drifts far
+  // behind what's on screen.
+  async function syncMyBanner() {
+    const snap = await db.ref(`banners/${myUid}`).get();
+    const banner = snap.val();
+    if (!banner) return null;
+    const now = Date.now();
+    const resolved = resolveBanner(banner, now);
+    const updated = {
+      ...banner,
+      resources: resolved.resources,
+      troops: resolved.troops,
+      train: resolved.train,
+      lastUpdated: now,
+    };
+    await db.ref(`banners/${myUid}`).update({
+      resources: updated.resources, troops: updated.troops, train: updated.train, lastUpdated: now,
+    });
+    myLocalBanner = updated;
+    return updated;
+  }
+
+  async function trainSpearman() {
+    const banner = await syncMyBanner();
+    if (!banner || banner.train) return;
+    const s = SPEARMAN;
+    if (banner.resources.wood < s.woodCost || banner.resources.clay < s.clayCost || banner.resources.iron < s.ironCost) return;
+
+    const now = Date.now();
+    const update = {
+      resources: {
+        wood: banner.resources.wood - s.woodCost,
+        clay: banner.resources.clay - s.clayCost,
+        iron: banner.resources.iron - s.ironCost,
+      },
+      train: { count: 1, finishesAt: now + s.trainSeconds * 1000 },
+    };
+    await db.ref(`banners/${myUid}`).update(update);
+    myLocalBanner = { ...banner, ...update };
+    renderMyStats();
+  }
+
+  // Raids are resolved client-side by the attacker, using a live read of
+  // both banners. Both banners/{uid} nodes are writable by any signed-in
+  // player (see database.rules.json) so this can write the outcome to the
+  // defender directly, the same trusted-client approach the full game
+  // uses for combat. Fine for a small shared demo; a hardened version
+  // would move this into a Cloud Function.
+  async function sendRaid(targetUid) {
+    const myBanner = await syncMyBanner();
+    if (!myBanner || myBanner.troops.spearman < 1) {
+      addLogLine("You have no spearmen to send.", false);
+      return;
+    }
+
+    const targetSnap = await db.ref(`banners/${targetUid}`).get();
+    const targetBanner = targetSnap.val();
+    if (!targetBanner) return;
+    const now = Date.now();
+    const target = resolveBanner(targetBanner, now);
+
+    const atk = myBanner.troops.spearman * SPEARMAN.attack;
+    const def = target.troops.spearman * SPEARMAN.defense;
+
+    let myLossRate, targetSurvivors, loot = { wood: 0, clay: 0, iron: 0 }, won;
+    if (atk > def) {
+      won = true;
+      myLossRate = def > 0 ? def / atk : 0;
+      targetSurvivors = 0;
+      const survivors = Math.round(myBanner.troops.spearman * (1 - myLossRate));
+      const capacity = survivors * SPEARMAN.carry;
+      const available = target.resources.wood + target.resources.clay + target.resources.iron;
+      const totalLoot = Math.min(capacity, available);
+      const share = totalLoot / 3;
+      loot = {
+        wood: Math.min(target.resources.wood, share),
+        clay: Math.min(target.resources.clay, share),
+        iron: Math.min(target.resources.iron, share),
+      };
+    } else {
+      won = false;
+      myLossRate = 1; // attack force wiped
+      const defLossRate = def > 0 ? Math.min(1, atk / def) : 0;
+      targetSurvivors = Math.round(target.troops.spearman * (1 - defLossRate));
+    }
+
+    const mySurvivors = Math.round(myBanner.troops.spearman * (1 - myLossRate));
+
+    await db.ref(`banners/${myUid}`).update({
+      troops: { spearman: mySurvivors },
+      resources: {
+        wood: myBanner.resources.wood + loot.wood,
+        clay: myBanner.resources.clay + loot.clay,
+        iron: myBanner.resources.iron + loot.iron,
+      },
+    });
+    await db.ref(`banners/${targetUid}`).update({
+      troops: { spearman: targetSurvivors },
+      resources: {
+        wood: target.resources.wood - loot.wood,
+        clay: target.resources.clay - loot.clay,
+        iron: target.resources.iron - loot.iron,
+      },
+      lastUpdated: now,
+    });
+
+    const lootTotal = Math.round(loot.wood + loot.clay + loot.iron);
+    await db.ref(`events/${targetUid}`).push({
+      fromUid: myUid, fromName: myName,
+      message: won ? `${myName} raided you and looted ${lootTotal} resources!` : `${myName} attacked you and was fought off!`,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+    });
+
+    myLocalBanner = await syncMyBanner();
+    renderMyStats();
+    addLogLine(won ? `You raided ${targetBanner.name}: looted ${lootTotal} resources.` : `Your raid on ${targetBanner.name} failed — your spearmen were lost.`, false);
   }
 
   function randomFreeSpot(banners) {
@@ -151,36 +342,62 @@
     return { x: Math.floor(Math.random() * GRID_SIZE), y: Math.floor(Math.random() * GRID_SIZE) };
   }
 
+  // ---- Boot ---------------------------------------------------
+  async function showGame(banner, name) {
+    myName = name;
+    myLocalBanner = banner;
+    document.getElementById('join-screen').style.display = 'none';
+    document.getElementById('game').style.display = 'block';
+    document.getElementById('who').textContent = `You are ${name}`;
+
+    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); });
+    db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
+
+    renderMyStats();
+    setInterval(renderMyStats, 1000);       // smooth client-side ticking
+    setInterval(syncMyBanner, 20000);       // periodic write-back to DB
+
+    document.getElementById('train-btn').addEventListener('click', trainSpearman);
+  }
+
   async function enterRealm(name) {
     setStatus('Connecting...');
     try {
-      const cred = await auth.signInAnonymously();
-      myUid = cred.user.uid;
-      myName = name;
-
       const existing = await db.ref('banners').get();
       const spot = randomFreeSpot(existing.val());
-
-      await db.ref(`banners/${myUid}`).set({ name, x: spot.x, y: spot.y });
-      await db.ref(`banners/${myUid}`).onDisconnect().remove();
-
-      document.getElementById('join-screen').style.display = 'none';
-      document.getElementById('game').style.display = 'block';
-      document.getElementById('who').textContent = `You are ${name}`;
-
-      db.ref('banners').on('value', (snap) => renderGrid(snap.val()));
-
-      db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => {
-        addLogLine(snap.val().message, true);
-      });
+      const startingBanner = {
+        name, x: spot.x, y: spot.y,
+        resources: { wood: 100, clay: 100, iron: 100 },
+        troops: { spearman: 0 },
+        train: null,
+        lastUpdated: Date.now(),
+      };
+      await db.ref(`banners/${myUid}`).set(startingBanner);
+      showGame(startingBanner, name);
     } catch (err) {
       setStatus('Error: ' + (err.message || String(err)));
     }
   }
 
+  // On load: sign in anonymously (silent, no form), then check whether
+  // this browser already has a village. If so, skip straight past the
+  // join screen entirely — that's what makes this feel like "logging in"
+  // rather than starting over every visit.
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) { auth.signInAnonymously(); return; }
+    myUid = user.uid;
+    const snap = await db.ref(`banners/${myUid}`).get();
+    const existing = snap.val();
+    if (existing) {
+      showGame(existing, existing.name);
+    }
+    // else: leave the join screen showing, waiting for a name.
+  });
+
   document.getElementById('join-btn').addEventListener('click', () => {
     const name = document.getElementById('name-input').value.trim();
     if (name.length < 2) { setStatus('Enter a name (2+ characters).'); return; }
+    if (!myUid) { setStatus('Still connecting, try again in a second...'); return; }
     enterRealm(name);
   });
   document.getElementById('name-input').addEventListener('keydown', (e) => {
