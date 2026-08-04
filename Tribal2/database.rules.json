@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "villages": {
+      "$villageId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid)"
+      }
+    },
+    "map": {
+      ".read": "auth != null",
+      "$tile": {
+        ".write": "auth != null"
+      }
+    },
+    "movements": {
+      ".read": "auth != null",
+      "$movementId": {
+        ".write": "auth != null && (!data.exists() || data.child('originOwnerId').val() === auth.uid || data.child('targetOwnerId').val() === auth.uid)"
+      }
+    },
+    "reports": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

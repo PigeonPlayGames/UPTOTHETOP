@@ -1,0 +1,90 @@
+:root {
+  --bg: #f4f1ea;
+  --panel: #ffffff;
+  --border: #d8d2c4;
+  --text: #2b2620;
+  --muted: #7a7368;
+  --accent: #5c7a4f;
+  --accent-dark: #46603b;
+  --danger: #a3453b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* --- Auth page --- */
+.auth-wrap {
+  max-width: 380px;
+  margin: 10vh auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+}
+.auth-wrap h1 { margin-top: 0; font-size: 22px; }
+.auth-wrap form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.auth-wrap input {
+  padding: 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px;
+}
+.auth-wrap button, .building-row button, #map-action-panel button {
+  padding: 10px; border: none; border-radius: 4px; background: var(--accent); color: white;
+  font-size: 14px; cursor: pointer;
+}
+.auth-wrap button:hover, .building-row button:hover { background: var(--accent-dark); }
+.auth-wrap button:disabled, .building-row button:disabled { background: #bdb8ab; cursor: not-allowed; }
+#auth-error { color: var(--danger); font-size: 13px; min-height: 18px; }
+.auth-toggle { font-size: 13px; text-align: center; }
+.auth-toggle a { color: var(--accent-dark); cursor: pointer; }
+
+/* --- Game shell --- */
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.topbar .resources { display: flex; gap: 16px; font-size: 14px; }
+.tabs { display: flex; gap: 4px; padding: 10px 20px 0; background: var(--panel); border-bottom: 1px solid var(--border); }
+.tab-button {
+  padding: 10px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.tab-button.active { color: var(--accent-dark); border-bottom-color: var(--accent); font-weight: 600; }
+
+main { max-width: 900px; margin: 0 auto; padding: 20px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.building-row, #troops-list .building-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.building-row:last-child { border-bottom: none; }
+.building-info { flex: 1; }
+.level { font-size: 12px; color: var(--muted); }
+.building-cost { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.queue-item { padding: 6px 0; font-size: 13px; border-bottom: 1px dashed var(--border); }
+.queue-item:last-child { border-bottom: none; }
+
+/* --- Map --- */
+#map-grid { display: grid; gap: 2px; margin: 12px 0; }
+.map-cell {
+  width: 32px; height: 32px; background: #e8e4d8; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer;
+}
+.map-cell.occupied { background: #e3c9c6; }
+.map-cell.mine { background: #cfe0c6; }
+.map-cell:hover { outline: 2px solid var(--accent); }
+.map-controls { display: flex; gap: 6px; align-items: center; }
+.map-controls button { padding: 6px 10px; border: 1px solid var(--border); background: var(--panel); border-radius: 4px; cursor: pointer; }
+
+#map-action-panel { margin-top: 12px; padding: 12px; background: #faf8f2; border-radius: 6px; border: 1px solid var(--border); }
+.troop-select { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
