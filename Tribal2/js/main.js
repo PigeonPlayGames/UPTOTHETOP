@@ -4,7 +4,11 @@
 
 let myVillageId = null;
 
+let activeTab = 'village';
+let mapRetries = 0;
+
 function switchTab(tabName) {
+  activeTab = tabName;
   document.querySelectorAll('.tab-panel').forEach((el) => el.classList.remove('active'));
   document.querySelectorAll('.tab-button').forEach((el) => el.classList.remove('active'));
   document.getElementById(`tab-${tabName}`).classList.add('active');
@@ -12,7 +16,16 @@ function switchTab(tabName) {
 
   if (tabName === 'troops') renderTroops(myVillageId);
   if (tabName === 'map') {
-    if (!currentVillage) { setTimeout(() => switchTab('map'), 200); return; }
+    if (!currentVillage) {
+      mapRetries += 1;
+      if (mapRetries > 10) {
+        console.error('Village never finished loading; map cannot open.');
+        return;
+      }
+      setTimeout(() => { if (activeTab === 'map') switchTab('map'); }, 200);
+      return;
+    }
+    mapRetries = 0;
     mapCenter = { x: currentVillage.x, y: currentVillage.y };
     renderMap(myVillageId);
   }
