@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Realm — a shared world</title>
+<style>
+  :root { --bg:#f4f1ea; --panel:#fff; --border:#d8d2c4; --text:#2b2620; --muted:#7a7368; --accent:#5c7a4f; --accent-dark:#46603b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  #join-screen { max-width:360px; margin:12vh auto; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:28px; text-align:center; }
+  #join-screen h1 { margin-top:0; font-size:22px; }
+  #join-screen input { width:100%; padding:10px; border:1px solid var(--border); border-radius:4px; font-size:14px; margin:12px 0; }
+  #join-screen button { width:100%; padding:10px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
+  #join-screen button:hover { background:var(--accent-dark); }
+  #join-status { font-size:12px; color:var(--muted); min-height:16px; }
+
+  #game { display:none; max-width:720px; margin:0 auto; padding:20px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  header h1 { font-size:20px; margin:0; }
+  #who { font-size:13px; color:var(--muted); }
+  #count { font-size:13px; color:var(--accent-dark); font-weight:600; }
+
+  #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px; }
+  .cell { aspect-ratio:1; background:#efeadf; border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
+  .cell.mine { background:#cfe0c6; }
+  .cell.other { cursor:pointer; }
+  .cell.other:hover { outline:2px solid var(--accent); }
+  .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  #log-panel { margin-top:28px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; }
+  #log-panel h3 { margin-top:0; font-size:15px; }
+  #log { display:flex; flex-direction:column-reverse; gap:6px; max-height:200px; overflow-y:auto; font-size:13px; }
+  .log-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); }
+  .log-line.new { animation: flash 1.5s ease-out; }
+  @keyframes flash { from { background:#f0e6b8; } to { background:#faf8f2; } }
+  .muted { color:var(--muted); font-size:13px; }
+  #build-tag { text-align:center; font-size:10px; color:#bbb; margin-top:20px; }
+</style>
+</head>
+<body>
+
+  <div id="join-screen">
+    <h1>&#127984; The Realm</h1>
+    <p class="muted">Drop your banner on the shared map. Everyone sees it live.</p>
+    <input id="name-input" type="text" placeholder="Your lord name" maxlength="16">
+    <button id="join-btn">Enter the Realm</button>
+    <div id="join-status"></div>
+  </div>
+
+  <div id="game">
+    <header>
+      <h1>&#127984; The Realm</h1>
+      <div>
+        <span id="who"></span> &middot; <span id="count"></span>
+      </div>
+    </header>
+
+    <div id="grid"></div>
+    <p class="muted" style="text-align:center;margin-top:6px;">Click another lord's banner to send a raid &#9876;&#65039;</p>
+
+    <div id="log-panel">
+      <h3>Your event log</h3>
+      <div id="log"><div class="muted">Nothing yet — open this page in another window and raid yourself to test.</div></div>
+    </div>
+  </div>
+
+  <div id="build-tag">build: realm-v1</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBCpMKnBIS30boGuPGkQoYEphy_JWQSdqY",
+    authDomain: "tribalwars-2.firebaseapp.com",
+    databaseURL: "https://tribalwars-2-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "tribalwars-2",
+    storageBucket: "tribalwars-2.firebasestorage.app",
+    messagingSenderId: "649122676235",
+    appId: "1:649122676235:web:1e5e61df4eaf141f6e510e",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
+
+  const GRID_SIZE = 8;
+  let myUid = null;
+  let myName = null;
+
+  function setStatus(msg) {
+    document.getElementById('join-status').textContent = msg;
+  }
+
+  function renderGrid(banners) {
+    const grid = document.getElementById('grid');
+    const cells = {};
+    grid.innerHTML = '';
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.x = x;
+        cell.dataset.y = y;
+        grid.appendChild(cell);
+        cells[`${x}_${y}`] = cell;
+      }
+    }
+    let count = 0;
+    Object.entries(banners || {}).forEach(([uid, b]) => {
+      const cell = cells[`${b.x}_${b.y}`];
+      if (!cell) return;
+      count++;
+      cell.innerHTML = `&#127984;<span class="label">${b.name}</span>`;
+      if (uid === myUid) {
+        cell.classList.add('mine');
+      } else {
+        cell.classList.add('other');
+        cell.addEventListener('click', () => sendRaid(uid, b.name));
+      }
+    });
+    document.getElementById('count').textContent = `${count} lord${count === 1 ? '' : 's'} in the realm`;
+  }
+
+  function sendRaid(targetUid, targetName) {
+    db.ref(`events/${targetUid}`).push({
+      fromUid: myUid,
+      fromName: myName,
+      message: `${myName} raided your village!`,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+    });
+    addLogLine(`You raided ${targetName}'s village.`, false);
+  }
+
+  function addLogLine(text, isNew) {
+    const log = document.getElementById('log');
+    if (log.querySelector('.muted')) log.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'log-line' + (isNew ? ' new' : '');
+    div.textContent = text;
+    log.prepend(div);
+  }
+
+  function randomFreeSpot(banners) {
+    const taken = new Set(Object.values(banners || {}).map((b) => `${b.x}_${b.y}`));
+    for (let tries = 0; tries < 40; tries++) {
+      const x = Math.floor(Math.random() * GRID_SIZE);
+      const y = Math.floor(Math.random() * GRID_SIZE);
+      if (!taken.has(`${x}_${y}`)) return { x, y };
+    }
+    return { x: Math.floor(Math.random() * GRID_SIZE), y: Math.floor(Math.random() * GRID_SIZE) };
+  }
+
+  async function enterRealm(name) {
+    setStatus('Connecting...');
+    try {
+      const cred = await auth.signInAnonymously();
+      myUid = cred.user.uid;
+      myName = name;
+
+      const existing = await db.ref('banners').get();
+      const spot = randomFreeSpot(existing.val());
+
+      await db.ref(`banners/${myUid}`).set({ name, x: spot.x, y: spot.y });
+      await db.ref(`banners/${myUid}`).onDisconnect().remove();
+
+      document.getElementById('join-screen').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+      document.getElementById('who').textContent = `You are ${name}`;
+
+      db.ref('banners').on('value', (snap) => renderGrid(snap.val()));
+
+      db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => {
+        addLogLine(snap.val().message, true);
+      });
+    } catch (err) {
+      setStatus('Error: ' + (err.message || String(err)));
+    }
+  }
+
+  document.getElementById('join-btn').addEventListener('click', () => {
+    const name = document.getElementById('name-input').value.trim();
+    if (name.length < 2) { setStatus('Enter a name (2+ characters).'); return; }
+    enterRealm(name);
+  });
+  document.getElementById('name-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('join-btn').click();
+  });
+</script>
+</body>
+</html>
