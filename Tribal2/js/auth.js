@@ -48,6 +48,8 @@ async function createStartingVillage(uid, username) {
   return villageId;
 }
 
+let signupInProgress = false;
+
 async function handleSignup(email, password, username) {
   const cred = await auth.createUserWithEmailAndPassword(email, password);
   await createStartingVillage(cred.user.uid, username);
@@ -86,17 +88,22 @@ document.addEventListener('DOMContentLoaded', () => {
   if (signupForm) {
     signupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      signupInProgress = true;
       try {
         const username = signupForm.username.value.trim();
         if (username.length < 3) throw new Error('Username must be at least 3 characters.');
         await handleSignup(signupForm.email.value.trim(), signupForm.password.value, username);
         window.location.href = 'game.html';
       } catch (err) { showError(err); }
+      finally { signupInProgress = false; }
     });
   }
 
   // If already logged in and sitting on the login page, jump straight to the game.
+  // Skipped while a signup is actively writing the new village, so we never
+  // navigate away mid-write (Firebase reports "logged in" the instant the
+  // account is created, well before createStartingVillage finishes).
   auth.onAuthStateChanged((user) => {
-    if (user && loginForm) window.location.href = 'game.html';
+    if (user && loginForm && !signupInProgress) window.location.href = 'game.html';
   });
 });
