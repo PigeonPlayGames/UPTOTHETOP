@@ -48,6 +48,18 @@
   #account-status { font-size:12px; min-height:16px; margin-top:4px; }
   #account-status.error { color:var(--danger); }
   #account-status.success { color:var(--accent-dark); }
+  #raid-panel { margin-top:12px; }
+  #raid-panel .box { padding:12px; background:#faf8f2; border-radius:6px; border:1px solid var(--border); }
+  #raid-panel .troop-inputs { display:flex; flex-direction:column; gap:6px; margin:10px 0; font-size:13px; }
+  #raid-panel .troop-inputs input { width:60px; padding:4px; border:1px solid var(--border); border-radius:4px; }
+  #raid-panel .actions { display:flex; gap:8px; margin-top:10px; }
+  #raid-panel .actions button { padding:8px 14px; border:none; border-radius:4px; color:#fff; font-size:13px; cursor:pointer; }
+  #raid-panel .attack-btn { background:var(--danger); }
+  #raid-panel .attack-btn:hover { background:#8a3a31; }
+  #raid-panel .support-btn { background:var(--accent); }
+  #raid-panel .support-btn:hover { background:var(--accent-dark); }
+  #raid-panel .cancel-btn { background:#bdb8ab; }
+
   .toggle-link { font-size:12px; color:var(--accent-dark); cursor:pointer; text-decoration:underline; }
 
   #log { display:flex; flex-direction:column-reverse; gap:6px; max-height:200px; overflow-y:auto; font-size:13px; }
@@ -105,7 +117,8 @@
     <div class="panel">
       <h3>Your village map</h3>
       <div id="grid"></div>
-      <p class="muted" style="text-align:center;margin:10px 0 0;">Click another lord's banner to send a raid &#9876;&#65039; — travel time depends on distance</p>
+      <p class="muted" style="text-align:center;margin:10px 0 0;">Click another lord's banner to attack or send support &#9876;&#65039;</p>
+      <div id="raid-panel"></div>
     </div>
 
     <div class="panel">
@@ -129,7 +142,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v6</div>
+  <div id="build-tag">build: realm-v7</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -269,8 +282,8 @@
         cell.classList.add('mine');
       } else {
         cell.classList.add('other');
-        cell.title = `Raid ${b.name}`;
-        cell.addEventListener('click', () => sendRaid(uid));
+        cell.title = `Send troops to ${b.name}`;
+        cell.addEventListener('click', () => selectTarget(uid));
       }
     });
     document.getElementById('count').textContent = `${count} lord${count === 1 ? '' : 's'} in the realm`;
@@ -363,12 +376,19 @@
     box.innerHTML = '';
     mine.forEach(([, m]) => {
       const incoming = m.toUid === myUid;
+      const isSupport = m.type === 'support';
       const div = document.createElement('div');
-      div.className = 'move-line' + (incoming ? ' incoming' : '');
+      div.className = 'move-line' + (incoming && !isSupport ? ' incoming' : '');
       const timeLeft = formatDuration(m.arrivesAt - now);
-      div.textContent = incoming
-        ? `\u26A0\uFE0F Incoming raid from ${m.fromName} — arrives in ${timeLeft}`
-        : `Marching to ${m.toName} — arrives in ${timeLeft}`;
+      if (incoming) {
+        div.textContent = isSupport
+          ? `\u{1F6E1}\uFE0F Support from ${m.fromName} arriving in ${timeLeft}`
+          : `\u26A0\uFE0F Incoming raid from ${m.fromName} — arrives in ${timeLeft}`;
+      } else {
+        div.textContent = isSupport
+          ? `Support marching to ${m.toName} — arrives in ${timeLeft}`
+          : `Marching to ${m.toName} — arrives in ${timeLeft}`;
+      }
       box.appendChild(div);
     });
     if (mine.length === 0) box.innerHTML = '<div class="muted">No troops on the move.</div>';
@@ -433,31 +453,71 @@
     return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
   }
 
-  async function sendRaid(targetUid) {
+  // Clicking a banner opens this selection panel instead of sending
+  // instantly — the player picks troop counts and Attack vs Support,
+  // so raiding no longer means automatically leaving home undefended.
+  async function selectTarget(targetUid) {
     const banner = await syncMyBanner();
     if (!banner) return;
-    if ((banner.troops.spearman || 0) === 0 && (banner.troops.swordsman || 0) === 0) {
-      addLogLine("You have no troops at home to send.", false);
-      return;
-    }
     const targetSnap = await db.ref(`banners/${targetUid}`).get();
     const target = targetSnap.val();
     if (!target) return;
 
+    const panel = document.getElementById('raid-panel');
+    const home = banner.troops;
+    if ((home.spearman || 0) === 0 && (home.swordsman || 0) === 0) {
+      panel.innerHTML = `<div class="box muted">You have no troops at home to send to ${target.name}.</div>`;
+      return;
+    }
+
+    panel.innerHTML = `
+      <div class="box">
+        <strong>Send troops to ${target.name}</strong>
+        <div class="troop-inputs">
+          ${UNIT_IDS.map((id) => `
+            <label>${UNITS[id].name} (have ${home[id] || 0}):
+              <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count">
+            </label>
+          `).join('')}
+        </div>
+        <div class="actions">
+          <button class="attack-btn">Attack &#9876;&#65039;</button>
+          <button class="support-btn">Send Support &#128737;&#65039;</button>
+          <button class="cancel-btn">Cancel</button>
+        </div>
+      </div>
+    `;
+    const readCounts = () => {
+      const counts = {};
+      panel.querySelectorAll('.send-count').forEach((input) => { counts[input.dataset.unit] = parseInt(input.value, 10) || 0; });
+      return counts;
+    };
+    panel.querySelector('.attack-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'attack'));
+    panel.querySelector('.support-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'support'));
+    panel.querySelector('.cancel-btn').addEventListener('click', () => { panel.innerHTML = ''; });
+  }
+
+  async function sendMovement(targetUid, target, counts, type) {
+    const total = UNIT_IDS.reduce((s, id) => s + (counts[id] || 0), 0);
+    if (total < 1) return;
+
+    const banner = myLocalBanner;
     const travelSeconds = Math.max(2, Math.round(distanceTiles(banner, target) * SECONDS_PER_TILE));
     const now = Date.now();
-    const sentTroops = { spearman: banner.troops.spearman || 0, swordsman: banner.troops.swordsman || 0 };
 
-    await db.ref(`banners/${myUid}`).update({ troops: { spearman: 0, swordsman: 0 } });
-    myLocalBanner = { ...banner, troops: { spearman: 0, swordsman: 0 } };
+    const remaining = { spearman: (banner.troops.spearman || 0) - (counts.spearman || 0), swordsman: (banner.troops.swordsman || 0) - (counts.swordsman || 0) };
+    await db.ref(`banners/${myUid}`).update({ troops: remaining });
+    myLocalBanner = { ...banner, troops: remaining };
 
     await db.ref('raidMovements').push({
       fromUid: myUid, fromName: myName, fromX: banner.x, fromY: banner.y,
       toUid: targetUid, toName: target.name, toX: target.x, toY: target.y,
-      troops: sentTroops, startedAt: now, arrivesAt: now + travelSeconds * 1000, resolved: false,
+      troops: { spearman: counts.spearman || 0, swordsman: counts.swordsman || 0 },
+      type, startedAt: now, arrivesAt: now + travelSeconds * 1000, resolved: false,
     });
 
-    addLogLine(`Raid sent to ${target.name} — arriving in ${formatDuration(travelSeconds * 1000)}.`, false);
+    document.getElementById('raid-panel').innerHTML = '';
+    addLogLine(`${type === 'attack' ? 'Raid' : 'Support'} sent to ${target.name} — arriving in ${formatDuration(travelSeconds * 1000)}.`, false);
     renderMyStats();
   }
 
@@ -471,6 +531,11 @@
 
     const claim = await db.ref(`raidMovements/${id}/resolved`).transaction((cur) => (cur === false ? true : undefined));
     if (!claim.committed) return;
+
+    if (movement.type === 'support') {
+      await resolveSupport(movement, now);
+      return;
+    }
 
     const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
     const targetRaw = targetSnap.val();
@@ -534,6 +599,30 @@
     const defenderMsg = won ? `${movement.fromName} raided you and looted ${lootTotal} resources!` : `${movement.fromName} attacked you and was fought off!`;
     await db.ref(`events/${movement.fromUid}`).push({ message: attackerMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: defenderMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
+  }
+
+  // Support troops simply join the target's home garrison — no combat.
+  // Simplification worth knowing: they merge permanently into the
+  // defender's troop count with no separate ownership tracking, so (for
+  // now) there's no way to recall them later. Good enough to make
+  // cooperative defense possible; a fuller version would track supporting
+  // stacks separately.
+  async function resolveSupport(movement, now) {
+    const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
+    const targetRaw = targetSnap.val();
+    if (!targetRaw) return;
+    const target = resolveBanner(targetRaw, now);
+    await db.ref(`banners/${movement.toUid}`).update({
+      troops: {
+        spearman: (target.troops.spearman || 0) + (movement.troops.spearman || 0),
+        swordsman: (target.troops.swordsman || 0) + (movement.troops.swordsman || 0),
+      },
+      buildings: target.buildings, build: target.build,
+      lastUpdated: now,
+    });
+    const sentCount = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
+    await db.ref(`events/${movement.fromUid}`).push({ message: `Your ${sentCount} troops reached ${movement.toName} and joined their garrison.`, timestamp: firebase.database.ServerValue.TIMESTAMP });
+    await db.ref(`events/${movement.toUid}`).push({ message: `${movement.fromName} sent ${sentCount} troops to support your village!`, timestamp: firebase.database.ServerValue.TIMESTAMP });
   }
 
   function checkMovements() {
