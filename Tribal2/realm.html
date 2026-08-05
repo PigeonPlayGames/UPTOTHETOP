@@ -149,12 +149,20 @@
     </div>
 
     <div class="panel">
+      <h3>Support</h3>
+      <p class="muted" style="margin:0 0 4px;font-size:13px;">Stationed at your village:</p>
+      <div id="support-here-list"></div>
+      <p class="muted" style="margin:14px 0 4px;font-size:13px;">Your troops supporting others:</p>
+      <div id="support-abroad-list"></div>
+    </div>
+
+    <div class="panel">
       <h3>Your event log</h3>
       <div id="log"><div class="muted">Nothing yet.</div></div>
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v9</div>
+  <div id="build-tag">build: realm-v10</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -202,6 +210,7 @@
   let myName = null;
   let latestBanners = {};
   let latestMovements = {};
+  let latestSupportStacks = {}; // { targetUid: { sourceUid: {fromName, spearman, swordsman} } }
   let myLocalBanner = null;
 
   // ---- Small helpers ---------------------------------------------------
@@ -454,10 +463,13 @@
     mine.forEach(([, m]) => {
       const incoming = m.toUid === myUid;
       const isSupport = m.type === 'support';
+      const isRecall = m.type === 'recall';
       const div = document.createElement('div');
-      div.className = 'move-line' + (incoming && !isSupport ? ' incoming' : '');
+      div.className = 'move-line' + (incoming && !isSupport && !isRecall ? ' incoming' : '');
       const timeLeft = formatDuration(m.arrivesAt - now);
-      if (incoming) {
+      if (isRecall) {
+        div.textContent = `Recalled troops from ${m.fromName} returning home — arrives in ${timeLeft}`;
+      } else if (incoming) {
         div.textContent = isSupport
           ? `\u{1F6E1}\uFE0F Support from ${m.fromName} arriving in ${timeLeft}`
           : `\u26A0\uFE0F Incoming raid from ${m.fromName} — arrives in ${timeLeft}`;
@@ -470,6 +482,41 @@
     });
     if (mine.length === 0) box.innerHTML = '<div class="muted">No troops on the move.</div>';
   }
+
+  function renderSupportPanel() {
+    const stationedBox = document.getElementById('support-here-list');
+    const abroadBox = document.getElementById('support-abroad-list');
+    if (!stationedBox || !abroadBox) return;
+
+    const stationedHere = latestSupportStacks[myUid] || {};
+    stationedBox.innerHTML = '';
+    const stationedRows = Object.values(stationedHere).filter((s) => (s.spearman || 0) + (s.swordsman || 0) > 0);
+    stationedRows.forEach((s) => {
+      const div = document.createElement('div');
+      div.className = 'muted';
+      div.textContent = `${s.fromName}: ${s.spearman || 0} Spearman, ${s.swordsman || 0} Swordsman`;
+      stationedBox.appendChild(div);
+    });
+    if (stationedRows.length === 0) stationedBox.innerHTML = '<div class="muted">No one is supporting you right now.</div>';
+
+    abroadBox.innerHTML = '';
+    const abroadRows = [];
+    Object.entries(latestSupportStacks).forEach(([targetUid, stacks]) => {
+      const mine = stacks[myUid];
+      if (mine && (mine.spearman || 0) + (mine.swordsman || 0) > 0) {
+        abroadRows.push({ targetUid, targetName: latestBanners[targetUid]?.name || 'a village', spearman: mine.spearman || 0, swordsman: mine.swordsman || 0 });
+      }
+    });
+    abroadRows.forEach((row) => {
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      div.innerHTML = `<div>${row.spearman} Spearman, ${row.swordsman} Swordsman at <strong>${row.targetName}</strong></div><button>Recall</button>`;
+      div.querySelector('button').addEventListener('click', () => recallSupport(row.targetUid, row.targetName));
+      abroadBox.appendChild(div);
+    });
+    if (abroadRows.length === 0) abroadBox.innerHTML = '<div class="muted">Your troops aren\'t supporting anyone.</div>';
+  }
+
 
   // ---- Actions ---------------------------------------------------
   async function syncMyBanner() {
@@ -624,21 +671,24 @@
     const claim = await db.ref(`raidMovements/${id}/resolved`).transaction((cur) => (cur === false ? true : undefined));
     if (!claim.committed) return;
 
-    if (movement.type === 'support') {
-      await resolveSupport(movement, now);
-      return;
-    }
+    if (movement.type === 'support') { await resolveSupport(movement, now); return; }
+    if (movement.type === 'recall') { await resolveRecall(movement, now); return; }
 
     const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
     const targetRaw = targetSnap.val();
     if (!targetRaw) return;
     const target = resolveBanner(targetRaw, now);
 
+    const supportSnap = await db.ref(`supportStacks/${movement.toUid}`).get();
+    const supportStacks = supportSnap.val() || {}; // { sourceUid: {fromName, spearman, swordsman} }
+    const supportDefense = Object.values(supportStacks).reduce((s, stack) => s + UNIT_IDS.reduce((s2, id2) => s2 + (stack[id2] || 0) * UNITS[id2].defense, 0), 0);
+
     const atk = UNIT_IDS.reduce((s, id2) => s + (movement.troops[id2] || 0) * UNITS[id2].attack, 0);
     const wallBonus = 1 + (target.buildings.wall || 0) * 0.05;
-    const def = UNIT_IDS.reduce((s, id2) => s + (target.troops[id2] || 0) * UNITS[id2].defense, 0) * wallBonus;
+    const homeDefense = UNIT_IDS.reduce((s, id2) => s + (target.troops[id2] || 0) * UNITS[id2].defense, 0);
+    const def = (homeDefense + supportDefense) * wallBonus;
 
-    let won, myLossRate, targetSurvivors = { spearman: 0, swordsman: 0 }, loot = { wood: 0, clay: 0, iron: 0 };
+    let won, myLossRate, targetSurvivors = { spearman: 0, swordsman: 0 }, loot = { wood: 0, clay: 0, iron: 0 }, supportUpdates = {};
     if (atk > def) {
       won = true;
       myLossRate = def > 0 ? Math.min(1, def / atk) : 0;
@@ -652,13 +702,22 @@
         clay: Math.min(target.resources.clay, share),
         iron: Math.min(target.resources.iron, share),
       };
+      // Village falls: any stationed support is wiped along with the garrison.
+      Object.keys(supportStacks).forEach((sourceUid) => { supportUpdates[sourceUid] = null; });
     } else {
       won = false;
       myLossRate = 1;
       const defLossRate = def > 0 ? Math.min(1, atk / def) : 0;
       targetSurvivors = { spearman: Math.round((target.troops.spearman || 0) * (1 - defLossRate)), swordsman: Math.round((target.troops.swordsman || 0) * (1 - defLossRate)) };
+      // Support takes the same proportional losses as the home garrison.
+      Object.entries(supportStacks).forEach(([sourceUid, stack]) => {
+        const remaining = { fromName: stack.fromName, spearman: Math.round((stack.spearman || 0) * (1 - defLossRate)), swordsman: Math.round((stack.swordsman || 0) * (1 - defLossRate)) };
+        supportUpdates[sourceUid] = (remaining.spearman + remaining.swordsman) > 0 ? remaining : null;
+      });
     }
     const mySurvivors = { spearman: Math.round((movement.troops.spearman || 0) * (1 - myLossRate)), swordsman: Math.round((movement.troops.swordsman || 0) * (1 - myLossRate)) };
+
+    if (Object.keys(supportUpdates).length) await db.ref(`supportStacks/${movement.toUid}`).update(supportUpdates);
 
     await db.ref(`banners/${movement.toUid}`).update({
       troops: won ? { spearman: 0, swordsman: 0 } : targetSurvivors,
@@ -694,34 +753,92 @@
       ? `Your raid on ${target.name || movement.toName} succeeded — looted ${lootTotal} resources, ${mySurvivorTotal}/${sentTotal} troops returned.`
       : `Your raid on ${movement.toName} failed — all ${sentTotal} troops were lost.`;
     const defenderMsg = won
-      ? `${movement.fromName} raided you with ${sentTotal} troops and looted ${lootTotal} resources — your garrison was wiped.`
+      ? `${movement.fromName} raided you with ${sentTotal} troops and looted ${lootTotal} resources — your garrison${Object.keys(supportStacks).length ? ' and any stationed support' : ''} were wiped.`
       : `${movement.fromName} attacked with ${sentTotal} troops and was fought off — you have ${targetSurvivorTotal} troops left.`;
     await db.ref(`events/${movement.fromUid}`).push({ message: attackerMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: defenderMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
+
+    // Let any third-party supporters know their stationed troops were affected.
+    for (const [sourceUid, stack] of Object.entries(supportStacks)) {
+      const outcome = supportUpdates[sourceUid];
+      const msg = outcome === null
+        ? `Your support troops stationed at ${target.name || movement.toName} were wiped out in a raid.`
+        : `Your support troops stationed at ${target.name || movement.toName} took losses defending against a raid.`;
+      if (won || (outcome && (outcome.spearman !== stack.spearman || outcome.swordsman !== stack.swordsman))) {
+        await db.ref(`events/${sourceUid}`).push({ message: msg, timestamp: firebase.database.ServerValue.TIMESTAMP });
+      }
+    }
   }
 
-  // Support troops simply join the target's home garrison — no combat.
-  // Simplification worth knowing: they merge permanently into the
-  // defender's troop count with no separate ownership tracking, so (for
-  // now) there's no way to recall them later. Good enough to make
-  // cooperative defense possible; a fuller version would track supporting
-  // stacks separately.
+  // Support troops now sit in their own tracked stack at the target's
+  // village (supportStacks/{targetUid}/{sourceUid}) rather than merging
+  // anonymously into the defender's own troops. That's what makes Recall
+  // possible below. Note: support sent in earlier versions of the game
+  // already merged permanently into whoever received it — that's
+  // unaffected and stays as a permanent gift, only support sent from now
+  // on is recallable.
   async function resolveSupport(movement, now) {
     const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
-    const targetRaw = targetSnap.val();
-    if (!targetRaw) return;
-    const target = resolveBanner(targetRaw, now);
+    if (!targetSnap.val()) return;
+
+    const stackRef = db.ref(`supportStacks/${movement.toUid}/${movement.fromUid}`);
+    const stackSnap = await stackRef.get();
+    const existing = stackSnap.val() || { spearman: 0, swordsman: 0 };
+    await stackRef.set({
+      fromName: movement.fromName,
+      spearman: existing.spearman + (movement.troops.spearman || 0),
+      swordsman: existing.swordsman + (movement.troops.swordsman || 0),
+    });
+
+    const sentCount = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
+    await db.ref(`events/${movement.fromUid}`).push({ message: `Your ${sentCount} troops reached ${movement.toName} and are now stationed there (recall any time).`, timestamp: firebase.database.ServerValue.TIMESTAMP });
+    await db.ref(`events/${movement.toUid}`).push({ message: `${movement.fromName} stationed ${sentCount} troops at your village to help defend it!`, timestamp: firebase.database.ServerValue.TIMESTAMP });
+  }
+
+  // Brings a supporting stack home. The troops leave the target's village
+  // immediately (so they stop counting toward that village's defense
+  // right away) and travel back as a normal timed movement.
+  async function recallSupport(targetUid, targetName) {
+    const stackRef = db.ref(`supportStacks/${targetUid}/${myUid}`);
+    const stackSnap = await stackRef.get();
+    const stack = stackSnap.val();
+    if (!stack) return;
+
+    const targetSnap = await db.ref(`banners/${targetUid}`).get();
+    const targetBanner = targetSnap.val();
+    const myBanner = await syncMyBanner();
+    if (!targetBanner || !myBanner) return;
+
+    const travelSeconds = Math.max(2, Math.round(distanceTiles(myBanner, targetBanner) * SECONDS_PER_TILE));
+    const now = Date.now();
+    await stackRef.remove();
+
+    await db.ref('raidMovements').push({
+      fromUid: targetUid, fromName: targetName, fromX: targetBanner.x, fromY: targetBanner.y,
+      toUid: myUid, toName: myName, toX: myBanner.x, toY: myBanner.y,
+      troops: { spearman: stack.spearman || 0, swordsman: stack.swordsman || 0 },
+      type: 'recall', startedAt: now, arrivesAt: now + travelSeconds * 1000, resolved: false,
+    });
+
+    const count = (stack.spearman || 0) + (stack.swordsman || 0);
+    addLogLine(`Recalling ${count} troops from ${targetName} — home in ${formatDuration(travelSeconds * 1000)}.`, false);
+  }
+
+  async function resolveRecall(movement, now) {
+    const ownerSnap = await db.ref(`banners/${movement.toUid}`).get();
+    const ownerRaw = ownerSnap.val();
+    if (!ownerRaw) return;
+    const owner = resolveBanner(ownerRaw, now);
     await db.ref(`banners/${movement.toUid}`).update({
       troops: {
-        spearman: (target.troops.spearman || 0) + (movement.troops.spearman || 0),
-        swordsman: (target.troops.swordsman || 0) + (movement.troops.swordsman || 0),
+        spearman: (owner.troops.spearman || 0) + (movement.troops.spearman || 0),
+        swordsman: (owner.troops.swordsman || 0) + (movement.troops.swordsman || 0),
       },
-      buildings: target.buildings, buildQueue: target.buildQueue, build: null,
+      buildings: owner.buildings, buildQueue: owner.buildQueue, build: null,
       lastUpdated: now,
     });
-    const sentCount = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
-    await db.ref(`events/${movement.fromUid}`).push({ message: `Your ${sentCount} troops reached ${movement.toName} and joined their garrison.`, timestamp: firebase.database.ServerValue.TIMESTAMP });
-    await db.ref(`events/${movement.toUid}`).push({ message: `${movement.fromName} sent ${sentCount} troops to support your village!`, timestamp: firebase.database.ServerValue.TIMESTAMP });
+    const count = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
+    await db.ref(`events/${movement.toUid}`).push({ message: `Your ${count} recalled troops arrived home from ${movement.fromName}.`, timestamp: firebase.database.ServerValue.TIMESTAMP });
   }
 
   function checkMovements() {
@@ -835,8 +952,9 @@
     document.getElementById('game').style.display = 'block';
     document.getElementById('who').textContent = `You are ${name}`;
 
-    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); renderLeaderboard(); });
+    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); renderLeaderboard(); renderSupportPanel(); });
     db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
+    db.ref('supportStacks').on('value', (snap) => { latestSupportStacks = snap.val() || {}; renderSupportPanel(); });
     db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
 
     renderAccountPanel();
