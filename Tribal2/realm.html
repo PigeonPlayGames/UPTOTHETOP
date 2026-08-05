@@ -60,6 +60,9 @@
   #raid-panel .support-btn:hover { background:var(--accent-dark); }
   #raid-panel .cancel-btn { background:#bdb8ab; }
 
+  #leaderboard-list .item-row.me { background:#f0e6b8; margin:0 -14px; padding:8px 14px; border-radius:4px; }
+  #leaderboard-list .rank { display:inline-block; width:26px; color:var(--muted); }
+
   .toggle-link { font-size:12px; color:var(--accent-dark); cursor:pointer; text-decoration:underline; }
 
   #log { display:flex; flex-direction:column-reverse; gap:6px; max-height:200px; overflow-y:auto; font-size:13px; }
@@ -109,6 +112,11 @@
       <div>&#128101; <span id="res-pop">0</span><span class="rate">/ <span id="cap-pop"></span> pop</span></div>
     </div>
 
+    <div class="panel">
+      <h3>Leaderboard</h3>
+      <div id="leaderboard-list"></div>
+    </div>
+
     <div class="panel" id="account-panel">
       <h3>Account</h3>
       <div id="account-content"></div>
@@ -146,7 +154,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v8</div>
+  <div id="build-tag">build: realm-v9</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -302,6 +310,34 @@
       }
     });
     document.getElementById('count').textContent = `${count} lord${count === 1 ? '' : 's'} in the realm`;
+  }
+
+  // Overall strength score, weighted so sustained investment (buildings)
+  // matters more than troops, and troops more than raw resources (which
+  // fluctuate constantly and shouldn't dominate a ranking).
+  function computeScore(resolved) {
+    const buildingScore = BUILDING_IDS.reduce((s, id) => s + (resolved.buildings[id] || 0), 0);
+    const troopScore = (resolved.troops.spearman || 0) * 1 + (resolved.troops.swordsman || 0) * 2;
+    const resourceScore = Math.floor((resolved.resources.wood + resolved.resources.clay + resolved.resources.iron) / 50);
+    return buildingScore * 20 + troopScore * 10 + resourceScore;
+  }
+
+  function renderLeaderboard() {
+    const now = Date.now();
+    const box = document.getElementById('leaderboard-list');
+    if (!box) return;
+    const rows = Object.entries(latestBanners)
+      .map(([uid, raw]) => ({ uid, name: raw.name, score: computeScore(resolveBanner(raw, now)) }))
+      .sort((a, b) => b.score - a.score);
+
+    box.innerHTML = '';
+    rows.slice(0, 10).forEach((row, i) => {
+      const div = document.createElement('div');
+      div.className = 'item-row' + (row.uid === myUid ? ' me' : '');
+      div.innerHTML = `<div><span class="rank">#${i + 1}</span><strong>${row.name}</strong>${row.uid === myUid ? ' <span class="muted">(you)</span>' : ''}</div><div class="muted">${row.score.toLocaleString()} power</div>`;
+      box.appendChild(div);
+    });
+    if (rows.length === 0) box.innerHTML = '<div class="muted">No lords yet.</div>';
   }
 
   function renderMyStats() {
@@ -651,8 +687,15 @@
     }
 
     const lootTotal = Math.round(loot.wood + loot.clay + loot.iron);
-    const attackerMsg = won ? `Your raid on ${target.name || movement.toName} succeeded — looted ${lootTotal} resources.` : `Your raid on ${movement.toName} failed — your troops were lost.`;
-    const defenderMsg = won ? `${movement.fromName} raided you and looted ${lootTotal} resources!` : `${movement.fromName} attacked you and was fought off!`;
+    const sentTotal = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
+    const mySurvivorTotal = mySurvivors.spearman + mySurvivors.swordsman;
+    const targetSurvivorTotal = targetSurvivors.spearman + targetSurvivors.swordsman;
+    const attackerMsg = won
+      ? `Your raid on ${target.name || movement.toName} succeeded — looted ${lootTotal} resources, ${mySurvivorTotal}/${sentTotal} troops returned.`
+      : `Your raid on ${movement.toName} failed — all ${sentTotal} troops were lost.`;
+    const defenderMsg = won
+      ? `${movement.fromName} raided you with ${sentTotal} troops and looted ${lootTotal} resources — your garrison was wiped.`
+      : `${movement.fromName} attacked with ${sentTotal} troops and was fought off — you have ${targetSurvivorTotal} troops left.`;
     await db.ref(`events/${movement.fromUid}`).push({ message: attackerMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: defenderMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
   }
@@ -792,15 +835,17 @@
     document.getElementById('game').style.display = 'block';
     document.getElementById('who').textContent = `You are ${name}`;
 
-    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); });
+    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); renderLeaderboard(); });
     db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
     db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
 
     renderAccountPanel();
     renderMyStats();
+    renderLeaderboard();
     setInterval(async () => {
       if (!myLocalBanner) { const s = await db.ref(`banners/${myUid}`).get(); myLocalBanner = s.val(); }
       renderMyStats();
+      renderLeaderboard();
     }, 1000);
     setInterval(syncMyBanner, 20000);
     setInterval(checkMovements, 3000);
