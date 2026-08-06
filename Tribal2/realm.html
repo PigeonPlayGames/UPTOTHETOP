@@ -173,7 +173,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v13</div>
+  <div id="build-tag">build: realm-v14</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -218,11 +218,11 @@
   // filenames). Any building without a matching file just shows no image —
   // nothing breaks, so you can add these one at a time.
   const BUILDING_IMAGES = {
-    timber_camp: 'images/timber_camp.png',
-    clay_pit: 'images/clay_pit.png',
-    iron_mine: 'images/iron_mine.png',
-    warehouse: 'images/warehouse.png',
-    wall: 'images/wall.png',
+    timber_camp: 'Artwork/Wood1.jpg',
+    clay_pit: 'Artwork/Clay1.jpg',
+    iron_mine: 'Artwork/Iron1.jpg',
+    warehouse: 'Artwork/Warehouse1.jpg',
+    wall: 'Artwork/Wall1.jpg',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
@@ -391,37 +391,54 @@
 
   function renderBuildingList(resolved, now) {
     const list = document.getElementById('building-list');
-    list.innerHTML = '';
-    BUILDING_IDS.forEach((id) => {
-      const def = BUILDINGS[id];
-      const level = resolved.buildings[id] || 0;
-      const queuedForThis = resolved.buildQueue.filter((q) => q.building === id).length;
-      const targetLevel = level + queuedForThis + 1;
-      const cost = buildingCost(id, targetLevel);
-      const time = buildingTime(id, targetLevel);
-      const queueFull = resolved.buildQueue.length >= MAX_BUILD_QUEUE;
-      const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
-
-      const row = document.createElement('div');
-      row.className = 'item-row';
-      let status = '';
-      if (queuedForThis > 0) status = `${queuedForThis} queued`;
-      if (queueFull) status += (status ? ' — ' : '') + 'Build queue full.';
-      else if (!affordable) status += (status ? ' — ' : '') + 'Not enough resources.';
-      row.innerHTML = `
-        <div>
-          <strong>${def.name}</strong> <span class="muted">(level ${level})</span>
-          <div class="muted">${def.desc}</div>
-          <div class="muted">Next: level ${targetLevel} — ${cost.wood}w / ${cost.clay}c / ${cost.iron}i &middot; ${formatDuration(time * 1000)}</div>
-          <div class="muted">${status}</div>
-        </div>
-        <img class="building-icon" src="${BUILDING_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
-        <button ${queueFull || !affordable ? 'disabled' : ''} data-building="${id}">Upgrade</button>
-      `;
-      row.querySelector('button').addEventListener('click', () => upgradeBuilding(id));
-      list.appendChild(row);
-    });
+    if (list.dataset.built !== 'true') {
+      list.innerHTML = '';
+      BUILDING_IDS.forEach((id) => {
+        const def = BUILDINGS[id];
+        const row = document.createElement('div');
+        row.className = 'item-row';
+        row.innerHTML = `
+          <div>
+            <strong>${def.name}</strong> <span class="muted" id="bld-level-${id}">(level 0)</span>
+            <div class="muted">${def.desc}</div>
+            <div class="muted" id="bld-cost-${id}"></div>
+            <div class="muted" id="bld-status-${id}"></div>
+          </div>
+          <img class="building-icon" src="${BUILDING_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
+          <button data-building="${id}" id="bld-btn-${id}">Upgrade</button>
+        `;
+        list.appendChild(row);
+        document.getElementById(`bld-btn-${id}`).addEventListener('click', () => upgradeBuilding(id));
+      });
+      list.dataset.built = 'true';
+    }
+    BUILDING_IDS.forEach((id) => updateBuildingRowStatus(id, resolved, now));
     renderQueueList('build-queue-list', resolved.buildQueue, now, (item) => `${BUILDINGS[item.building].name} \u2192 next level`);
+  }
+
+  // Updates level, cost, and status text for one building row — never
+  // touches the <img> or <button> elements themselves, so a broken image
+  // path only ever fails to load once instead of retrying (and flashing)
+  // every second.
+  function updateBuildingRowStatus(id, resolved, now) {
+    const def = BUILDINGS[id];
+    const level = resolved.buildings[id] || 0;
+    const queuedForThis = resolved.buildQueue.filter((q) => q.building === id).length;
+    const targetLevel = level + queuedForThis + 1;
+    const cost = buildingCost(id, targetLevel);
+    const time = buildingTime(id, targetLevel);
+    const queueFull = resolved.buildQueue.length >= MAX_BUILD_QUEUE;
+    const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
+
+    let status = '';
+    if (queuedForThis > 0) status = `${queuedForThis} queued`;
+    if (queueFull) status += (status ? ' — ' : '') + 'Build queue full.';
+    else if (!affordable) status += (status ? ' — ' : '') + 'Not enough resources.';
+
+    document.getElementById(`bld-level-${id}`).textContent = `(level ${level})`;
+    document.getElementById(`bld-cost-${id}`).textContent = `Next: level ${targetLevel} — ${cost.wood}w / ${cost.clay}c / ${cost.iron}i \u00b7 ${formatDuration(time * 1000)}`;
+    document.getElementById(`bld-status-${id}`).textContent = status;
+    document.getElementById(`bld-btn-${id}`).disabled = queueFull || !affordable;
   }
 
   function renderTrainList(resolved, now) {
