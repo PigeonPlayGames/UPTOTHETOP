@@ -38,6 +38,7 @@
   .item-row button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; white-space:nowrap; }
   .item-row button:hover { background:var(--accent-dark); }
   .item-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
+  .item-row .building-icon { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
 
   #movements .move-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); font-size:13px; margin-bottom:6px; }
   #movements .move-line.incoming { border-color:var(--danger); background:#fbeeec; }
@@ -162,7 +163,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v11</div>
+  <div id="build-tag">build: realm-v12</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -201,6 +202,17 @@
     iron_mine:   { name: 'Iron Mine',   desc: 'Boosts iron production.', wood: 75, clay: 65, iron: 70, baseTime: 20 },
     warehouse:   { name: 'Warehouse',   desc: 'Increases storage capacity.', wood: 60, clay: 50, iron: 40, baseTime: 20 },
     wall:        { name: 'Wall',        desc: 'Boosts defense when raided.', wood: 50, clay: 100, iron: 20, baseTime: 25 },
+  };
+  // Drop your own artwork in an "images" folder next to realm.html, named
+  // to match these paths (or edit the paths here to match your own
+  // filenames). Any building without a matching file just shows no image —
+  // nothing breaks, so you can add these one at a time.
+  const BUILDING_IMAGES = {
+    timber_camp: 'Artwork/Woodjpg',
+    clay_pit: 'Artwork/Clay1.jpg',
+    iron_mine: 'Artwork/Iron1.jpg',
+    warehouse: 'Artwork/Warehouse1.jpg',
+    wall: 'Artwork/Wall1.jpg',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
@@ -393,6 +405,7 @@
           <div class="muted">Next: level ${targetLevel} — ${cost.wood}w / ${cost.clay}c / ${cost.iron}i &middot; ${formatDuration(time * 1000)}</div>
           <div class="muted">${status}</div>
         </div>
+        <img class="building-icon" src="${BUILDING_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
         <button ${queueFull || !affordable ? 'disabled' : ''} data-building="${id}">Upgrade</button>
       `;
       row.querySelector('button').addEventListener('click', () => upgradeBuilding(id));
