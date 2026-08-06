@@ -162,7 +162,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v10</div>
+  <div id="build-tag">build: realm-v11</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -403,42 +403,61 @@
 
   function renderTrainList(resolved, now) {
     const list = document.getElementById('train-list');
-    list.innerHTML = '';
-    UNIT_IDS.forEach((id) => {
-      const def = UNITS[id];
-      const owned = resolved.troops[id] || 0;
-      const queueFull = resolved.trainQueue.length >= MAX_TRAIN_QUEUE;
-
-      const row = document.createElement('div');
-      row.className = 'item-row';
-      row.innerHTML = `
-        <div>
-          <strong>${def.name}</strong> <span class="muted">(owned: ${owned})</span>
-          <div class="muted">${def.wood}w / ${def.clay}c / ${def.iron}i each, ${def.pop} pop, ${def.trainSeconds}s &middot; atk ${def.attack} / def ${def.defense} / carry ${def.carry}</div>
-          <div class="muted" id="train-status-${id}"></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <input type="number" min="1" max="20" value="1" data-unit="${id}" class="train-qty" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;" ${queueFull ? 'disabled' : ''}>
-          <button ${queueFull ? 'disabled' : ''} data-unit="${id}">Train</button>
-        </div>
-      `;
-      const qtyInput = row.querySelector('.train-qty');
-      const btn = row.querySelector('button');
-      const statusEl = row.querySelector(`#train-status-${id}`);
-      const updateAffordability = () => {
-        const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
-        const cost = { wood: def.wood * qty, clay: def.clay * qty, iron: def.iron * qty };
-        const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
-        const popOk = popUsage(resolved.troops) + def.pop * qty <= POP_CAP;
-        btn.disabled = queueFull || !affordable || !popOk;
-        statusEl.textContent = queueFull ? 'Train queue full.' : !popOk ? 'Would exceed population cap.' : !affordable ? `Costs ${cost.wood}w / ${cost.clay}c / ${cost.iron}i total.` : '';
-      };
-      qtyInput.addEventListener('input', updateAffordability);
-      updateAffordability();
-      btn.addEventListener('click', () => trainUnit(id, Math.max(1, parseInt(qtyInput.value, 10) || 1)));
-      list.appendChild(row);
-    });
+    if (list.dataset.built !== 'true') {
+      list.innerHTML = '';
+      UNIT_IDS.forEach((id) => {
+        const def = UNITS[id];
+        const row = document.createElement('div');
+        row.className = 'item-row';
+        row.innerHTML = `
+          <div>
+            <strong>${def.name}</strong> <span class="muted" id="train-owned-${id}">(owned: 0)</span>
+            <div class="muted">${def.wood}w / ${def.clay}c / ${def.iron}i each, ${def.pop} pop, ${def.trainSeconds}s &middot; atk ${def.attack} / def ${def.defense} / carry ${def.carry}</div>
+            <div class="muted" id="train-status-${id}"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="number" min="1" max="20" value="1" data-unit="${id}" class="train-qty" id="train-qty-${id}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;">
+            <button data-unit="${id}" id="train-btn-${id}">Train</button>
+          </div>
+        `;
+        list.appendChild(row);
+        const qtyInput = document.getElementById(`train-qty-${id}`);
+        qtyInput.addEventListener('input', () => updateTrainRowStatus(id));
+        document.getElementById(`train-btn-${id}`).addEventListener('click', async () => {
+          const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+          await trainUnit(id, qty);
+          qtyInput.value = '1'; // reset only right after a deliberate action, never mid-typing
+          updateTrainRowStatus(id);
+        });
+      });
+      list.dataset.built = 'true';
+    }
+    UNIT_IDS.forEach((id) => updateTrainRowStatus(id, resolved, now));
     renderQueueList('train-queue-list', resolved.trainQueue, now, (item) => `${item.count}x ${UNITS[item.unit].name}`);
+  }
+
+  // Updates owned count, cost/affordability text, and disabled state for
+  // one training row — deliberately never touches the <input> itself, so
+  // it's safe to call every second without disturbing whatever quantity
+  // the player is currently typing.
+  function updateTrainRowStatus(id, resolvedArg, nowArg) {
+    if (!myLocalBanner && !resolvedArg) return;
+    const now = nowArg || Date.now();
+    const resolved = resolvedArg || resolveBanner(myLocalBanner, now);
+    const def = UNITS[id];
+    const owned = resolved.troops[id] || 0;
+    const queueFull = resolved.trainQueue.length >= MAX_TRAIN_QUEUE;
+    const qtyInput = document.getElementById(`train-qty-${id}`);
+    if (!qtyInput) return;
+    const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+    const cost = { wood: def.wood * qty, clay: def.clay * qty, iron: def.iron * qty };
+    const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
+    const popOk = popUsage(resolved.troops) + def.pop * qty <= POP_CAP;
+
+    document.getElementById(`train-owned-${id}`).textContent = `(owned: ${owned})`;
+    document.getElementById(`train-status-${id}`).textContent = queueFull ? 'Train queue full.' : !popOk ? 'Would exceed population cap.' : !affordable ? `Costs ${cost.wood}w / ${cost.clay}c / ${cost.iron}i total.` : '';
+    document.getElementById(`train-btn-${id}`).disabled = queueFull || !affordable || !popOk;
+    qtyInput.disabled = queueFull;
   }
 
   function renderQueueList(elementId, queue, now, describe) {
@@ -688,12 +707,29 @@
     const homeDefense = UNIT_IDS.reduce((s, id2) => s + (target.troops[id2] || 0) * UNITS[id2].defense, 0);
     const def = (homeDefense + supportDefense) * wallBonus;
 
-    let won, myLossRate, targetSurvivors = { spearman: 0, swordsman: 0 }, loot = { wood: 0, clay: 0, iron: 0 }, supportUpdates = {};
-    if (atk > def) {
-      won = true;
-      myLossRate = def > 0 ? Math.min(1, def / atk) : 0;
-      const survivors = { spearman: Math.round((movement.troops.spearman || 0) * (1 - myLossRate)), swordsman: Math.round((movement.troops.swordsman || 0) * (1 - myLossRate)) };
-      const capacity = UNIT_IDS.reduce((s, id2) => s + survivors[id2] * UNITS[id2].carry, 0);
+    // Both sides take losses proportional to the power gap, rather than
+    // the losing side being wiped outright. At equal power both sides
+    // lose ~50%; the gap only approaches a full wipe as one side becomes
+    // truly overwhelming. (winnerLossRate + loserLossRate always sum to
+    // exactly 1, so the stronger side simply loses proportionally less.)
+    const winnerPower = Math.max(atk, def);
+    const loserPower = Math.min(atk, def);
+    const totalPower = winnerPower + loserPower;
+    const winnerLossRate = totalPower > 0 ? loserPower / totalPower : 0;
+    const loserLossRate = totalPower > 0 ? winnerPower / totalPower : 0;
+
+    const won = atk > def;
+    const myLossRate = won ? winnerLossRate : loserLossRate;
+    const targetLossRate = won ? loserLossRate : winnerLossRate;
+
+    const mySurvivors = { spearman: Math.round((movement.troops.spearman || 0) * (1 - myLossRate)), swordsman: Math.round((movement.troops.swordsman || 0) * (1 - myLossRate)) };
+    const targetSurvivors = { spearman: Math.round((target.troops.spearman || 0) * (1 - targetLossRate)), swordsman: Math.round((target.troops.swordsman || 0) * (1 - targetLossRate)) };
+
+    // Loot only changes hands on an actual win, sized to what the
+    // surviving attackers can actually carry home.
+    let loot = { wood: 0, clay: 0, iron: 0 };
+    if (won) {
+      const capacity = UNIT_IDS.reduce((s, id2) => s + mySurvivors[id2] * UNITS[id2].carry, 0);
       const available = target.resources.wood + target.resources.clay + target.resources.iron;
       const totalLoot = Math.min(capacity, available);
       const share = totalLoot / 3;
@@ -702,25 +738,21 @@
         clay: Math.min(target.resources.clay, share),
         iron: Math.min(target.resources.iron, share),
       };
-      // Village falls: any stationed support is wiped along with the garrison.
-      Object.keys(supportStacks).forEach((sourceUid) => { supportUpdates[sourceUid] = null; });
-    } else {
-      won = false;
-      myLossRate = 1;
-      const defLossRate = def > 0 ? Math.min(1, atk / def) : 0;
-      targetSurvivors = { spearman: Math.round((target.troops.spearman || 0) * (1 - defLossRate)), swordsman: Math.round((target.troops.swordsman || 0) * (1 - defLossRate)) };
-      // Support takes the same proportional losses as the home garrison.
-      Object.entries(supportStacks).forEach(([sourceUid, stack]) => {
-        const remaining = { fromName: stack.fromName, spearman: Math.round((stack.spearman || 0) * (1 - defLossRate)), swordsman: Math.round((stack.swordsman || 0) * (1 - defLossRate)) };
-        supportUpdates[sourceUid] = (remaining.spearman + remaining.swordsman) > 0 ? remaining : null;
-      });
     }
-    const mySurvivors = { spearman: Math.round((movement.troops.spearman || 0) * (1 - myLossRate)), swordsman: Math.round((movement.troops.swordsman || 0) * (1 - myLossRate)) };
+
+    // Stationed support takes the same loss rate as the home garrison,
+    // regardless of which side won — a village that barely falls doesn't
+    // erase every supporter's troops, only an overwhelming defeat does.
+    const supportUpdates = {};
+    Object.entries(supportStacks).forEach(([sourceUid, stack]) => {
+      const remaining = { fromName: stack.fromName, spearman: Math.round((stack.spearman || 0) * (1 - targetLossRate)), swordsman: Math.round((stack.swordsman || 0) * (1 - targetLossRate)) };
+      supportUpdates[sourceUid] = (remaining.spearman + remaining.swordsman) > 0 ? remaining : null;
+    });
 
     if (Object.keys(supportUpdates).length) await db.ref(`supportStacks/${movement.toUid}`).update(supportUpdates);
 
     await db.ref(`banners/${movement.toUid}`).update({
-      troops: won ? { spearman: 0, swordsman: 0 } : targetSurvivors,
+      troops: targetSurvivors,
       resources: { wood: target.resources.wood - loot.wood, clay: target.resources.clay - loot.clay, iron: target.resources.iron - loot.iron },
       buildings: target.buildings, buildQueue: target.buildQueue, build: null,
       lastUpdated: now,
@@ -751,9 +783,9 @@
     const targetSurvivorTotal = targetSurvivors.spearman + targetSurvivors.swordsman;
     const attackerMsg = won
       ? `Your raid on ${target.name || movement.toName} succeeded — looted ${lootTotal} resources, ${mySurvivorTotal}/${sentTotal} troops returned.`
-      : `Your raid on ${movement.toName} failed — all ${sentTotal} troops were lost.`;
+      : `Your raid on ${movement.toName} failed — ${mySurvivorTotal}/${sentTotal} troops made it back.`;
     const defenderMsg = won
-      ? `${movement.fromName} raided you with ${sentTotal} troops and looted ${lootTotal} resources — your garrison${Object.keys(supportStacks).length ? ' and any stationed support' : ''} were wiped.`
+      ? `${movement.fromName} raided you with ${sentTotal} troops and looted ${lootTotal} resources — you have ${targetSurvivorTotal} troops left.`
       : `${movement.fromName} attacked with ${sentTotal} troops and was fought off — you have ${targetSurvivorTotal} troops left.`;
     await db.ref(`events/${movement.fromUid}`).push({ message: attackerMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: defenderMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
@@ -761,12 +793,12 @@
     // Let any third-party supporters know their stationed troops were affected.
     for (const [sourceUid, stack] of Object.entries(supportStacks)) {
       const outcome = supportUpdates[sourceUid];
+      const changed = outcome === null || outcome.spearman !== stack.spearman || outcome.swordsman !== stack.swordsman;
+      if (!changed) continue;
       const msg = outcome === null
         ? `Your support troops stationed at ${target.name || movement.toName} were wiped out in a raid.`
         : `Your support troops stationed at ${target.name || movement.toName} took losses defending against a raid.`;
-      if (won || (outcome && (outcome.spearman !== stack.spearman || outcome.swordsman !== stack.swordsman))) {
-        await db.ref(`events/${sourceUid}`).push({ message: msg, timestamp: firebase.database.ServerValue.TIMESTAMP });
-      }
+      await db.ref(`events/${sourceUid}`).push({ message: msg, timestamp: firebase.database.ServerValue.TIMESTAMP });
     }
   }
 
