@@ -40,6 +40,16 @@
   .item-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
   .item-row .building-icon { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
 
+  @media (max-width: 480px) {
+    /* On narrow screens, force the text block onto its own full line first,
+       so the icon + button consistently wrap together onto the line below
+       it — every time, not just when there happens to be room. */
+    .item-row > div:first-child { flex-basis: 100%; }
+    .item-row { row-gap: 10px; }
+    .item-row .building-icon { width:44px; height:44px; margin:0; }
+    .item-row button { flex: 1 1 auto; max-width: 200px; }
+  }
+
   #movements .move-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); font-size:13px; margin-bottom:6px; }
   #movements .move-line.incoming { border-color:var(--danger); background:#fbeeec; }
 
@@ -163,7 +173,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v12</div>
+  <div id="build-tag">build: realm-v13</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -182,7 +192,7 @@
   const auth = firebase.auth();
   const db = firebase.database();
 
-  // ---- Game constants-----------------------------------------------
+  // ---- Game constants ------------------------------------------------
   const GRID_SIZE = 8;
   const RATE_PER_SEC = { wood: 0.12, clay: 0.12, iron: 0.1 };
   const BASE_STORAGE_CAP = 500;
@@ -206,13 +216,13 @@
   // Drop your own artwork in an "images" folder next to realm.html, named
   // to match these paths (or edit the paths here to match your own
   // filenames). Any building without a matching file just shows no image —
-  // nothing breaks, so you can add these one at a time
+  // nothing breaks, so you can add these one at a time.
   const BUILDING_IMAGES = {
-    timber_camp: 'Artwork/Wood1.jpg',
-    clay_pit: 'Artwork/Clay1.jpg',
-    iron_mine: 'Artwork/Iron1.jpg',
-    warehouse: 'Artwork/Warehouse1.jpg',
-    wall: 'Artwork/Wall1.jpg',
+    timber_camp: 'images/timber_camp.png',
+    clay_pit: 'images/clay_pit.png',
+    iron_mine: 'images/iron_mine.png',
+    warehouse: 'images/warehouse.png',
+    wall: 'images/wall.png',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
