@@ -175,7 +175,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v20</div>
+  <div id="build-tag">build: realm-v21</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -207,7 +207,7 @@
     swordsman: { name: 'Swordsman', wood: 35, clay: 20, iron: 40, pop: 2, attack: 25, defense: 15, carry: 10, trainSeconds: 30 },
   };
 
-  const BUILDING_IDS = ['timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm'];
+  const BUILDING_IDS = ['timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks'];
   const BUILDINGS = {
     timber_camp: { name: 'Timber Camp', desc: 'Boosts wood production.', wood: 50, clay: 60, iron: 40, baseTime: 20 },
     clay_pit:    { name: 'Clay Pit',    desc: 'Boosts clay production.', wood: 65, clay: 50, iron: 40, baseTime: 20 },
@@ -215,6 +215,7 @@
     warehouse:   { name: 'Warehouse',   desc: 'Increases storage capacity.', wood: 60, clay: 50, iron: 40, baseTime: 20 },
     wall:        { name: 'Wall',        desc: 'Boosts defense when raided.', wood: 50, clay: 100, iron: 20, baseTime: 25 },
     farm:        { name: 'Farm',        desc: 'Increases population capacity.', wood: 45, clay: 40, iron: 30, baseTime: 20 },
+    barracks:    { name: 'Barracks',    desc: 'Speeds up troop training.', wood: 55, clay: 45, iron: 35, baseTime: 20 },
   };
   // Drop your own artwork in an "images" folder next to realm.html, named
   // to match these paths (or edit the paths here to match your own
@@ -227,6 +228,7 @@
     warehouse: 'Artwork/Warehouse1.jpg',
     wall: 'Artwork/Wall1.jpg',
     farm: 'Artwork/Farm1.jpg',
+    barracks: 'Artwork/Barracks1.jpg',
   };
   const UNIT_IMAGES = {
     spearman: 'Artwork/Spearman1.jpg',
@@ -273,6 +275,9 @@
   }
   function popCap(buildings) {
     return Math.round(BASE_POP_CAP * (1 + (buildings.farm || 0) * 0.2));
+  }
+  function trainSpeedMultiplier(buildings) {
+    return 1 + (buildings.barracks || 0) * 0.15;
   }
 
   function addLogLine(text, isNew) {
@@ -463,7 +468,8 @@
         row.innerHTML = `
           <div>
             <strong>${def.name}</strong> <span class="muted" id="train-owned-${id}">(owned: 0)</span>
-            <div class="muted">${def.wood}w / ${def.clay}c / ${def.iron}i each, ${def.pop} pop, ${def.trainSeconds}s &middot; atk ${def.attack} / def ${def.defense} / carry ${def.carry}</div>
+            <div class="muted">${def.wood}w / ${def.clay}c / ${def.iron}i each, ${def.pop} pop &middot; atk ${def.attack} / def ${def.defense} / carry ${def.carry}</div>
+            <div class="muted" id="train-time-${id}"></div>
             <div class="muted" id="train-status-${id}"></div>
           </div>
           <img class="unit-icon" src="${UNIT_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
@@ -505,8 +511,11 @@
     const cost = { wood: def.wood * qty, clay: def.clay * qty, iron: def.iron * qty };
     const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
     const popOk = popUsage(resolved.troops) + def.pop * qty <= resolved.popCap;
+    const effectiveSeconds = Math.round(def.trainSeconds / trainSpeedMultiplier(resolved.buildings));
+    const barracksLevel = resolved.buildings.barracks || 0;
 
     document.getElementById(`train-owned-${id}`).textContent = `(owned: ${owned})`;
+    document.getElementById(`train-time-${id}`).textContent = `${effectiveSeconds}s each` + (barracksLevel > 0 ? ` (Barracks lvl ${barracksLevel} boost applied)` : '');
     document.getElementById(`train-status-${id}`).textContent = queueFull ? 'Train queue full.' : !popOk ? 'Would exceed population cap.' : !affordable ? `Costs ${cost.wood}w / ${cost.clay}c / ${cost.iron}i total.` : '';
     document.getElementById(`train-btn-${id}`).disabled = queueFull || !affordable || !popOk;
     qtyInput.disabled = queueFull;
@@ -648,8 +657,9 @@
     if (popUsage(banner.troops) + def.pop * qty > popCap(banner.buildings)) return;
 
     const now = Date.now();
+    const effectiveSeconds = def.trainSeconds / trainSpeedMultiplier(banner.buildings);
     const startAfter = queue.length ? queue[queue.length - 1].finishesAt : now;
-    const newQueue = [...queue, { unit: unitId, count: qty, finishesAt: startAfter + def.trainSeconds * qty * 1000 }];
+    const newQueue = [...queue, { unit: unitId, count: qty, finishesAt: startAfter + effectiveSeconds * qty * 1000 }];
     const update = {
       resources: { wood: banner.resources.wood - cost.wood, clay: banner.resources.clay - cost.clay, iron: banner.resources.iron - cost.iron },
       trainQueue: newQueue,
@@ -1170,4 +1180,4 @@
   });
 </script>
 </body>
-</html>
+  </html>
