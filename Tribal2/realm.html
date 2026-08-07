@@ -124,7 +124,7 @@
     <header>
       <h1>&#127984; The Realm</h1>
       <div>
-        <span id="who"></span> &middot; <span id="count"></span>
+        <span id="who"></span> &middot; <span id="count"></span> &middot; <span id="online-count"></span>
       </div>
     </header>
 
@@ -222,7 +222,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v28</div>
+  <div id="build-tag">build: realm-v29</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1216,6 +1216,22 @@
     return `Welcome back! While you were away: ${parts.join('; ')}.`;
   }
 
+  // Standard Firebase presence pattern: '.info/connected' is a special
+  // built-in path that fires whenever this specific connection goes up or
+  // down. Each time we (re)connect, we write our own presence entry and
+  // register an onDisconnect() cleanup — which Firebase's servers run
+  // automatically even if the tab crashes or the network just drops,
+  // unlike a normal write that only happens if our own code runs.
+  function setupPresence() {
+    const myPresenceRef = db.ref(`presence/${myUid}`);
+    db.ref('.info/connected').on('value', (snap) => {
+      if (snap.val() === true) {
+        myPresenceRef.onDisconnect().remove();
+        myPresenceRef.set(true);
+      }
+    });
+  }
+
   async function showGame(banner, name) {
     myName = name;
     myLocalBanner = banner;
@@ -1231,6 +1247,12 @@
     db.ref('supportStacks').on('value', (snap) => { latestSupportStacks = snap.val() || {}; renderSupportPanel(); });
     db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
     db.ref('globalFeed').limitToLast(20).on('child_added', (snap) => addFeedLine(snap.val().message));
+    setupPresence();
+    db.ref('presence').on('value', (snap) => {
+      const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+      const el = document.getElementById('online-count');
+      if (el) el.textContent = `${count} online now`;
+    });
 
     renderAccountPanel();
     renderMyStats();
