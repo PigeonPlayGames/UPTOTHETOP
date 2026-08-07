@@ -171,6 +171,12 @@
       <div id="leaderboard-list"></div>
     </div>
 
+    <div class="panel">
+      <h3>Realm Activity</h3>
+      <p class="muted" style="margin-top:0;font-size:12px;">What's happening across the whole realm, not just your own village.</p>
+      <div id="global-feed"><div class="muted">Nothing's happened yet.</div></div>
+    </div>
+
     <div class="panel" id="account-panel">
       <h3>Account</h3>
       <div id="account-content"></div>
@@ -216,7 +222,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v27</div>
+  <div id="build-tag">build: realm-v28</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -342,6 +348,25 @@
     div.className = 'log-line' + (isNew ? ' new' : '');
     div.textContent = text;
     log.prepend(div);
+  }
+
+  function addFeedLine(text) {
+    const feed = document.getElementById('global-feed');
+    if (!feed) return;
+    if (feed.querySelector('.muted')) feed.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'log-line new';
+    div.textContent = text;
+    feed.prepend(div);
+    // Keep the visible list from growing forever in the DOM.
+    while (feed.children.length > 25) feed.removeChild(feed.lastChild);
+  }
+
+  // Posts a short line to the shared, realm-wide activity feed — separate
+  // from the personal events/{uid} log, which only the player themselves
+  // can read. Anyone in the realm can see this one.
+  function postToGlobalFeed(message) {
+    db.ref('globalFeed').push({ message, timestamp: firebase.database.ServerValue.TIMESTAMP }).catch(() => {});
   }
 
   // Reads either the new queue-array format or the old single-item format
@@ -923,6 +948,9 @@
       : `${movement.fromName} attacked with ${sentTotal} troops and was fought off — you have ${targetSurvivorTotal} troops left.`;
     await db.ref(`events/${movement.fromUid}`).push({ message: attackerMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: defenderMsg, timestamp: firebase.database.ServerValue.TIMESTAMP });
+    postToGlobalFeed(won
+      ? `\u2694\uFE0F ${movement.fromName} raided ${movement.toName} and looted ${lootTotal} resources!`
+      : `\u2694\uFE0F ${movement.fromName}'s raid on ${movement.toName} was fought off!`);
 
     // Let any third-party supporters know their stationed troops were affected.
     for (const [sourceUid, stack] of Object.entries(supportStacks)) {
@@ -958,6 +986,7 @@
     const sentCount = troopsTotal(movement.troops);
     await db.ref(`events/${movement.fromUid}`).push({ message: `Your ${sentCount} troops reached ${movement.toName} and are now stationed there (recall any time).`, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: `${movement.fromName} stationed ${sentCount} troops at your village to help defend it!`, timestamp: firebase.database.ServerValue.TIMESTAMP });
+    postToGlobalFeed(`\u{1F6E1}\uFE0F ${movement.fromName} sent ${sentCount} troops to support ${movement.toName}.`);
   }
 
   // Brings a supporting stack home. The troops leave the target's village
@@ -1201,6 +1230,7 @@
     db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
     db.ref('supportStacks').on('value', (snap) => { latestSupportStacks = snap.val() || {}; renderSupportPanel(); });
     db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
+    db.ref('globalFeed').limitToLast(20).on('child_added', (snap) => addFeedLine(snap.val().message));
 
     renderAccountPanel();
     renderMyStats();
