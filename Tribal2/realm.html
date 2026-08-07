@@ -25,6 +25,8 @@
 
   .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:16px; }
   .panel h3 { margin-top:0; font-size:15px; }
+  .panel summary { font-size:15px; font-weight:600; cursor:pointer; color:var(--accent-dark); }
+  .panel details ul { line-height:1.6; }
 
   #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; }
   .cell { aspect-ratio:1; background:#efeadf; border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
@@ -93,6 +95,12 @@
   <div id="join-screen">
     <h1>&#127984; The Realm</h1>
     <p class="muted">Drop your banner on the shared map. Everyone sees it live.</p>
+    <p class="muted" style="font-size:12px;text-align:left;background:#faf8f2;padding:10px;border-radius:6px;border:1px solid var(--border);">
+      <strong>How it works:</strong> your village generates wood, clay and iron on its own.
+      Spend them upgrading buildings and training troops, then click another lord's banner
+      on the map to raid them for loot or send support to defend them. Everything keeps
+      running while you're away — queue a few upgrades and come back later to see progress.
+    </p>
 
     <div style="text-align:left;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
       <strong style="font-size:13px;">Returning player?</strong>
@@ -125,6 +133,37 @@
       <div>&#129777; <span id="res-clay">0</span><span class="rate">/ <span id="cap-clay"></span> clay</span></div>
       <div>&#9881;&#65039; <span id="res-iron">0</span><span class="rate">/ <span id="cap-iron"></span> iron</span></div>
       <div>&#128101; <span id="res-pop">0</span><span class="rate">/ <span id="cap-pop"></span> pop</span></div>
+    </div>
+
+    <div class="panel">
+      <details>
+        <summary>How to Play (click to expand)</summary>
+        <div style="margin-top:12px;font-size:13px;">
+          <p class="muted"><strong>The loop:</strong> resources generate automatically &rarr; spend them on Buildings and Barracks &rarr; use the map to Attack (loot + weaken) or Support (reinforce an ally) &rarr; queue things up and come back later.</p>
+          <p><strong>Buildings</strong></p>
+          <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
+            <li>Headquarters — speeds up all other building upgrades</li>
+            <li>Timber Camp / Clay Pit / Iron Mine — boost that resource's production rate</li>
+            <li>Warehouse — raises how much of each resource you can store</li>
+            <li>Farm — raises your population cap (how many troops you can have)</li>
+            <li>Barracks — speeds up troop training</li>
+            <li>Wall — boosts your defense when raided</li>
+          </ul>
+          <p><strong>Troops</strong></p>
+          <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
+            <li>Spearman — cheap, balanced, decent at everything</li>
+            <li>Swordsman — expensive, strongest attack, best for raiding</li>
+            <li>Militia — cheap, fast, strong defense, but can't carry loot — a pure home guard</li>
+          </ul>
+          <p><strong>Raiding</strong></p>
+          <ul class="muted" style="margin:0;padding-left:20px;">
+            <li>Attacking sends troops on a real trip — travel time depends on distance</li>
+            <li>Losses are proportional on both sides — a near-even fight hurts everyone, not just the loser</li>
+            <li>Support stations troops at another village to help defend it — recall them any time</li>
+            <li>Set an alliance tag in the Account panel to signal who you're playing with</li>
+          </ul>
+        </div>
+      </details>
     </div>
 
     <div class="panel">
@@ -177,7 +216,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v26</div>
+  <div id="build-tag">build: realm-v27</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
