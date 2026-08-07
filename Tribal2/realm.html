@@ -173,7 +173,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v14</div>
+  <div id="build-tag">build: realm-v15</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1017,12 +1017,52 @@
   }
 
   // ---- Boot ---------------------------------------------------
+  // Compares the raw banner as loaded against its fully-resolved state to
+  // summarize everything that happened while the player was away: resource
+  // gains, buildings that finished, troops that completed training. Skips
+  // short gaps (quick refreshes) so it only shows up after a real absence.
+  function buildWelcomeBackMessage(banner, now) {
+    const elapsedSeconds = Math.max(0, (now - (banner.lastUpdated || now)) / 1000);
+    if (elapsedSeconds < 30) return null;
+
+    const resolved = resolveBanner(banner, now);
+    const parts = [];
+
+    const gains = {
+      wood: Math.floor(resolved.resources.wood) - Math.floor(banner.resources?.wood || 0),
+      clay: Math.floor(resolved.resources.clay) - Math.floor(banner.resources?.clay || 0),
+      iron: Math.floor(resolved.resources.iron) - Math.floor(banner.resources?.iron || 0),
+    };
+    const resourceBits = [];
+    if (gains.wood > 0) resourceBits.push(`+${gains.wood} wood`);
+    if (gains.clay > 0) resourceBits.push(`+${gains.clay} clay`);
+    if (gains.iron > 0) resourceBits.push(`+${gains.iron} iron`);
+    if (resourceBits.length) parts.push(resourceBits.join(', '));
+
+    const buildQueueBefore = toQueueArray(banner.build, banner.buildQueue);
+    buildQueueBefore.filter((item) => item.finishesAt <= now)
+      .forEach((item) => parts.push(`${BUILDINGS[item.building].name} finished upgrading`));
+
+    const trainQueueBefore = toQueueArray(banner.train, banner.trainQueue);
+    const troopsByUnit = {};
+    trainQueueBefore.filter((item) => item.finishesAt <= now)
+      .forEach((item) => { troopsByUnit[item.unit] = (troopsByUnit[item.unit] || 0) + item.count; });
+    Object.entries(troopsByUnit).forEach(([unit, count]) =>
+      parts.push(`trained ${count} ${UNITS[unit].name}${count > 1 ? 's' : ''}`));
+
+    if (parts.length === 0) return null;
+    return `Welcome back! While you were away: ${parts.join('; ')}.`;
+  }
+
   async function showGame(banner, name) {
     myName = name;
     myLocalBanner = banner;
     document.getElementById('join-screen').style.display = 'none';
     document.getElementById('game').style.display = 'block';
     document.getElementById('who').textContent = `You are ${name}`;
+
+    const welcomeMsg = buildWelcomeBackMessage(banner, Date.now());
+    if (welcomeMsg) addLogLine(welcomeMsg, true);
 
     db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); renderLeaderboard(); renderSupportPanel(); });
     db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
