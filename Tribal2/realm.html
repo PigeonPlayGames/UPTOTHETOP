@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -175,7 +176,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v22</div>
+  <div id="build-tag">build: realm-v23</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -201,10 +202,11 @@
   const BASE_POP_CAP = 30;
   const SECONDS_PER_TILE = 3;
 
-  const UNIT_IDS = ['spearman', 'swordsman'];
+  const UNIT_IDS = ['spearman', 'swordsman', 'militia'];
   const UNITS = {
     spearman:  { name: 'Spearman',  wood: 20, clay: 10, iron: 5,  pop: 1, attack: 10, defense: 8,  carry: 15, trainSeconds: 15 },
     swordsman: { name: 'Swordsman', wood: 35, clay: 20, iron: 40, pop: 2, attack: 25, defense: 15, carry: 10, trainSeconds: 30 },
+    militia:   { name: 'Militia',   wood: 10, clay: 15, iron: 5,  pop: 1, attack: 2,  defense: 12, carry: 0,  trainSeconds: 12 },
   };
 
   const BUILDING_IDS = ['headquarters', 'timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks'];
@@ -235,6 +237,7 @@
   const UNIT_IMAGES = {
     spearman: 'Artwork/Spearman1.jpg',
     swordsman: 'Artwork/Swordsman1.jpg',
+    militia: 'Artwork/Militia1.jpg',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
@@ -244,13 +247,20 @@
   let myName = null;
   let latestBanners = {};
   let latestMovements = {};
-  let latestSupportStacks = {}; // { targetUid: { sourceUid: {fromName, spearman, swordsman} } }
+  let latestSupportStacks = {}; // { targetUid: { sourceUid: {fromName, ...one count per unit type} } }
   let myLocalBanner = null;
 
   // ---- Small helpers ---------------------------------------------------
   function setStatus(msg) { document.getElementById('join-status').textContent = msg; }
   function fmt(n) { return Math.floor(n).toLocaleString(); }
   function popUsage(troops) { return UNIT_IDS.reduce((sum, id) => sum + (troops[id] || 0) * UNITS[id].pop, 0); }
+  function emptyTroops() { const t = {}; UNIT_IDS.forEach((id) => { t[id] = 0; }); return t; }
+  function troopsTotal(troops) { return UNIT_IDS.reduce((s, id) => s + (troops?.[id] || 0), 0); }
+  function troopsDescribe(troops) { return UNIT_IDS.map((id) => `${troops?.[id] || 0} ${UNITS[id].name}`).join(', '); }
+  function addTroops(a, b) { const out = {}; UNIT_IDS.forEach((id) => { out[id] = (a?.[id] || 0) + (b?.[id] || 0); }); return out; }
+  function subtractTroops(a, b) { const out = {}; UNIT_IDS.forEach((id) => { out[id] = (a?.[id] || 0) - (b?.[id] || 0); }); return out; }
+  function scaleTroops(troops, rate) { const out = {}; UNIT_IDS.forEach((id) => { out[id] = Math.round((troops?.[id] || 0) * rate); }); return out; }
+  function troopsEqual(a, b) { return UNIT_IDS.every((id) => (a?.[id] || 0) === (b?.[id] || 0)); }
   function formatDuration(ms) {
     if (ms <= 0) return '0s';
     const s = Math.ceil(ms / 1000);
@@ -324,7 +334,7 @@
       iron: Math.min(cap, (banner.resources?.iron || 0) + productionRate('iron', buildings) * elapsed),
     };
 
-    const troops = { spearman: banner.troops?.spearman || 0, swordsman: banner.troops?.swordsman || 0 };
+    const troops = {}; UNIT_IDS.forEach((id) => { troops[id] = banner.troops?.[id] || 0; });
     const trainQueue = toQueueArray(banner.train, banner.trainQueue);
     while (trainQueue.length && trainQueue[0].finishesAt <= now) {
       const item = trainQueue.shift();
@@ -369,7 +379,7 @@
   // fluctuate constantly and shouldn't dominate a ranking).
   function computeScore(resolved) {
     const buildingScore = BUILDING_IDS.reduce((s, id) => s + (resolved.buildings[id] || 0), 0);
-    const troopScore = (resolved.troops.spearman || 0) * 1 + (resolved.troops.swordsman || 0) * 2;
+    const troopScore = popUsage(resolved.troops);
     const resourceScore = Math.floor((resolved.resources.wood + resolved.resources.clay + resolved.resources.iron) / 50);
     return buildingScore * 20 + troopScore * 10 + resourceScore;
   }
@@ -577,11 +587,11 @@
 
     const stationedHere = latestSupportStacks[myUid] || {};
     stationedBox.innerHTML = '';
-    const stationedRows = Object.values(stationedHere).filter((s) => (s.spearman || 0) + (s.swordsman || 0) > 0);
+    const stationedRows = Object.values(stationedHere).filter((s) => troopsTotal(s) > 0);
     stationedRows.forEach((s) => {
       const div = document.createElement('div');
       div.className = 'muted';
-      div.textContent = `${s.fromName}: ${s.spearman || 0} Spearman, ${s.swordsman || 0} Swordsman`;
+      div.textContent = `${s.fromName}: ${troopsDescribe(s)}`;
       stationedBox.appendChild(div);
     });
     if (stationedRows.length === 0) stationedBox.innerHTML = '<div class="muted">No one is supporting you right now.</div>';
@@ -590,14 +600,14 @@
     const abroadRows = [];
     Object.entries(latestSupportStacks).forEach(([targetUid, stacks]) => {
       const mine = stacks[myUid];
-      if (mine && (mine.spearman || 0) + (mine.swordsman || 0) > 0) {
-        abroadRows.push({ targetUid, targetName: latestBanners[targetUid]?.name || 'a village', spearman: mine.spearman || 0, swordsman: mine.swordsman || 0 });
+      if (mine && troopsTotal(mine) > 0) {
+        abroadRows.push({ targetUid, targetName: latestBanners[targetUid]?.name || 'a village', troops: mine });
       }
     });
     abroadRows.forEach((row) => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      div.innerHTML = `<div>${row.spearman} Spearman, ${row.swordsman} Swordsman at <strong>${row.targetName}</strong></div><button>Recall</button>`;
+      div.innerHTML = `<div>${troopsDescribe(row.troops)} at <strong>${row.targetName}</strong></div><button>Recall</button>`;
       div.querySelector('button').addEventListener('click', () => recallSupport(row.targetUid, row.targetName));
       abroadBox.appendChild(div);
     });
@@ -692,7 +702,7 @@
 
     const panel = document.getElementById('raid-panel');
     const home = banner.troops;
-    if ((home.spearman || 0) === 0 && (home.swordsman || 0) === 0) {
+    if (troopsTotal(home) === 0) {
       panel.innerHTML = `<div class="box muted">You have no troops at home to send to ${target.name}.</div>`;
       return;
     }
@@ -744,14 +754,14 @@
     const travelSeconds = Math.max(2, Math.round(distanceTiles(banner, target) * SECONDS_PER_TILE));
     const now = Date.now();
 
-    const remaining = { spearman: (banner.troops.spearman || 0) - (counts.spearman || 0), swordsman: (banner.troops.swordsman || 0) - (counts.swordsman || 0) };
+    const remaining = subtractTroops(banner.troops, counts);
     await db.ref(`banners/${myUid}`).update({ troops: remaining });
     myLocalBanner = { ...banner, troops: remaining };
 
     await db.ref('raidMovements').push({
       fromUid: myUid, fromName: myName, fromX: banner.x, fromY: banner.y,
       toUid: targetUid, toName: target.name, toX: target.x, toY: target.y,
-      troops: { spearman: counts.spearman || 0, swordsman: counts.swordsman || 0 },
+      troops: { ...emptyTroops(), ...counts },
       type, startedAt: now, arrivesAt: now + travelSeconds * 1000, resolved: false,
     });
 
@@ -780,7 +790,7 @@
     const target = resolveBanner(targetRaw, now);
 
     const supportSnap = await db.ref(`supportStacks/${movement.toUid}`).get();
-    const supportStacks = supportSnap.val() || {}; // { sourceUid: {fromName, spearman, swordsman} }
+    const supportStacks = supportSnap.val() || {}; // { sourceUid: {fromName, ...one count per unit type} }
     const supportDefense = Object.values(supportStacks).reduce((s, stack) => s + UNIT_IDS.reduce((s2, id2) => s2 + (stack[id2] || 0) * UNITS[id2].defense, 0), 0);
 
     const atk = UNIT_IDS.reduce((s, id2) => s + (movement.troops[id2] || 0) * UNITS[id2].attack, 0);
@@ -803,8 +813,8 @@
     const myLossRate = won ? winnerLossRate : loserLossRate;
     const targetLossRate = won ? loserLossRate : winnerLossRate;
 
-    const mySurvivors = { spearman: Math.round((movement.troops.spearman || 0) * (1 - myLossRate)), swordsman: Math.round((movement.troops.swordsman || 0) * (1 - myLossRate)) };
-    const targetSurvivors = { spearman: Math.round((target.troops.spearman || 0) * (1 - targetLossRate)), swordsman: Math.round((target.troops.swordsman || 0) * (1 - targetLossRate)) };
+    const mySurvivors = scaleTroops(movement.troops, 1 - myLossRate);
+    const targetSurvivors = scaleTroops(target.troops, 1 - targetLossRate);
 
     // Loot only changes hands on an actual win, sized to what the
     // surviving attackers can actually carry home.
@@ -826,8 +836,8 @@
     // erase every supporter's troops, only an overwhelming defeat does.
     const supportUpdates = {};
     Object.entries(supportStacks).forEach(([sourceUid, stack]) => {
-      const remaining = { fromName: stack.fromName, spearman: Math.round((stack.spearman || 0) * (1 - targetLossRate)), swordsman: Math.round((stack.swordsman || 0) * (1 - targetLossRate)) };
-      supportUpdates[sourceUid] = (remaining.spearman + remaining.swordsman) > 0 ? remaining : null;
+      const remaining = { fromName: stack.fromName, ...scaleTroops(stack, 1 - targetLossRate) };
+      supportUpdates[sourceUid] = troopsTotal(remaining) > 0 ? remaining : null;
     });
 
     if (Object.keys(supportUpdates).length) await db.ref(`supportStacks/${movement.toUid}`).update(supportUpdates);
@@ -846,7 +856,7 @@
     if (attackerRaw) {
       const attacker = resolveBanner(attackerRaw, now);
       await db.ref(`banners/${movement.fromUid}`).update({
-        troops: { spearman: (attacker.troops.spearman || 0) + mySurvivors.spearman, swordsman: (attacker.troops.swordsman || 0) + mySurvivors.swordsman },
+        troops: addTroops(attacker.troops, mySurvivors),
         resources: {
           wood: Math.min(attacker.cap, attacker.resources.wood + loot.wood),
           clay: Math.min(attacker.cap, attacker.resources.clay + loot.clay),
@@ -859,9 +869,9 @@
     }
 
     const lootTotal = Math.round(loot.wood + loot.clay + loot.iron);
-    const sentTotal = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
-    const mySurvivorTotal = mySurvivors.spearman + mySurvivors.swordsman;
-    const targetSurvivorTotal = targetSurvivors.spearman + targetSurvivors.swordsman;
+    const sentTotal = troopsTotal(movement.troops);
+    const mySurvivorTotal = troopsTotal(mySurvivors);
+    const targetSurvivorTotal = troopsTotal(targetSurvivors);
     const attackerMsg = won
       ? `Your raid on ${target.name || movement.toName} succeeded — looted ${lootTotal} resources, ${mySurvivorTotal}/${sentTotal} troops returned.`
       : `Your raid on ${movement.toName} failed — ${mySurvivorTotal}/${sentTotal} troops made it back.`;
@@ -874,7 +884,7 @@
     // Let any third-party supporters know their stationed troops were affected.
     for (const [sourceUid, stack] of Object.entries(supportStacks)) {
       const outcome = supportUpdates[sourceUid];
-      const changed = outcome === null || outcome.spearman !== stack.spearman || outcome.swordsman !== stack.swordsman;
+      const changed = outcome === null || !troopsEqual(outcome, stack);
       if (!changed) continue;
       const msg = outcome === null
         ? `Your support troops stationed at ${target.name || movement.toName} were wiped out in a raid.`
@@ -896,14 +906,13 @@
 
     const stackRef = db.ref(`supportStacks/${movement.toUid}/${movement.fromUid}`);
     const stackSnap = await stackRef.get();
-    const existing = stackSnap.val() || { spearman: 0, swordsman: 0 };
+    const existing = stackSnap.val() || emptyTroops();
     await stackRef.set({
       fromName: movement.fromName,
-      spearman: existing.spearman + (movement.troops.spearman || 0),
-      swordsman: existing.swordsman + (movement.troops.swordsman || 0),
+      ...addTroops(existing, movement.troops),
     });
 
-    const sentCount = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
+    const sentCount = troopsTotal(movement.troops);
     await db.ref(`events/${movement.fromUid}`).push({ message: `Your ${sentCount} troops reached ${movement.toName} and are now stationed there (recall any time).`, timestamp: firebase.database.ServerValue.TIMESTAMP });
     await db.ref(`events/${movement.toUid}`).push({ message: `${movement.fromName} stationed ${sentCount} troops at your village to help defend it!`, timestamp: firebase.database.ServerValue.TIMESTAMP });
   }
@@ -929,11 +938,11 @@
     await db.ref('raidMovements').push({
       fromUid: targetUid, fromName: targetName, fromX: targetBanner.x, fromY: targetBanner.y,
       toUid: myUid, toName: myName, toX: myBanner.x, toY: myBanner.y,
-      troops: { spearman: stack.spearman || 0, swordsman: stack.swordsman || 0 },
+      troops: { ...emptyTroops(), ...stack },
       type: 'recall', startedAt: now, arrivesAt: now + travelSeconds * 1000, resolved: false,
     });
 
-    const count = (stack.spearman || 0) + (stack.swordsman || 0);
+    const count = troopsTotal(stack);
     addLogLine(`Recalling ${count} troops from ${targetName} — home in ${formatDuration(travelSeconds * 1000)}.`, false);
   }
 
@@ -943,14 +952,11 @@
     if (!ownerRaw) return;
     const owner = resolveBanner(ownerRaw, now);
     await db.ref(`banners/${movement.toUid}`).update({
-      troops: {
-        spearman: (owner.troops.spearman || 0) + (movement.troops.spearman || 0),
-        swordsman: (owner.troops.swordsman || 0) + (movement.troops.swordsman || 0),
-      },
+      troops: addTroops(owner.troops, movement.troops),
       buildings: owner.buildings, buildQueue: owner.buildQueue, build: null,
       lastUpdated: now,
     });
-    const count = (movement.troops.spearman || 0) + (movement.troops.swordsman || 0);
+    const count = troopsTotal(movement.troops);
     await db.ref(`events/${movement.toUid}`).push({ message: `Your ${count} recalled troops arrived home from ${movement.fromName}.`, timestamp: firebase.database.ServerValue.TIMESTAMP });
   }
 
@@ -1149,7 +1155,7 @@
       const startingBanner = {
         name, x: spot.x, y: spot.y,
         resources: { wood: 100, clay: 100, iron: 100 },
-        troops: { spearman: 0, swordsman: 0 },
+        troops: emptyTroops(),
         buildings: defaultBuildings(),
         buildQueue: [],
         trainQueue: [],
