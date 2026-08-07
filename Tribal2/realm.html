@@ -177,7 +177,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v24</div>
+  <div id="build-tag">build: realm-v25</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -363,7 +363,7 @@
       const cell = cells[`${b.x}_${b.y}`];
       if (!cell) return;
       count++;
-      cell.innerHTML = `&#127984;<span class="label">${b.name}</span>`;
+      cell.innerHTML = `&#127984;<span class="label">${b.tag ? `[${b.tag}] ` : ''}${b.name}</span>`;
       if (uid === myUid) {
         cell.classList.add('mine');
       } else {
@@ -390,14 +390,14 @@
     const box = document.getElementById('leaderboard-list');
     if (!box) return;
     const rows = Object.entries(latestBanners)
-      .map(([uid, raw]) => ({ uid, name: raw.name, score: computeScore(resolveBanner(raw, now)) }))
+      .map(([uid, raw]) => ({ uid, name: raw.name, tag: raw.tag, score: computeScore(resolveBanner(raw, now)) }))
       .sort((a, b) => b.score - a.score);
 
     box.innerHTML = '';
     rows.slice(0, 10).forEach((row, i) => {
       const div = document.createElement('div');
       div.className = 'item-row' + (row.uid === myUid ? ' me' : '');
-      div.innerHTML = `<div><span class="rank">#${i + 1}</span><strong>${row.name}</strong>${row.uid === myUid ? ' <span class="muted">(you)</span>' : ''}</div><div class="muted">${row.score.toLocaleString()} power</div>`;
+      div.innerHTML = `<div><span class="rank">#${i + 1}</span>${row.tag ? `<span class="muted">[${row.tag}]</span> ` : ''}<strong>${row.name}</strong>${row.uid === myUid ? ' <span class="muted">(you)</span>' : ''}</div><div class="muted">${row.score.toLocaleString()} power</div>`;
       box.appendChild(div);
     });
     if (rows.length === 0) box.innerHTML = '<div class="muted">No lords yet.</div>';
@@ -1003,14 +1003,14 @@
 
   function renderAccountPanel() {
     const box = document.getElementById('account-content');
+    let html = '';
     if (isLinked()) {
-      box.innerHTML = `
+      html = `
         <p class="muted">Signed in as <strong>${auth.currentUser.email}</strong> — this village follows you to any device.</p>
         <button id="logout-btn">Log Out</button>
       `;
-      document.getElementById('logout-btn').addEventListener('click', () => auth.signOut().then(() => location.reload()));
     } else {
-      box.innerHTML = `
+      html = `
         <p class="muted">Playing as a guest on this device — clearing browser data would lose this village.</p>
         <input id="link-email" type="email" placeholder="Email">
         <input id="link-password" type="password" placeholder="Password (6+ characters)">
@@ -1025,6 +1025,21 @@
           <p class="muted" style="font-size:11px;">Note: this leaves the current guest village exactly as it is, just no longer open in this browser tab — it isn't deleted, but without a saved account of its own you won't be able to get back into it later.</p>
         </div>
       `;
+    }
+    html += `
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <label style="font-size:13px;">Alliance tag (optional, shown next to your name):
+          <input id="tag-input" type="text" maxlength="6" placeholder="e.g. ABC" value="${myLocalBanner?.tag || ''}" style="width:80px;margin-left:6px;padding:4px;border:1px solid var(--border);border-radius:4px;">
+        </label>
+        <button id="tag-save-btn" style="margin-left:6px;">Save Tag</button>
+        <div id="tag-status" style="font-size:12px;color:var(--muted);min-height:16px;"></div>
+      </div>
+    `;
+    box.innerHTML = html;
+
+    if (isLinked()) {
+      document.getElementById('logout-btn').addEventListener('click', () => auth.signOut().then(() => location.reload()));
+    } else {
       document.getElementById('link-btn').addEventListener('click', doLinkAccount);
       document.getElementById('show-switch-login').addEventListener('click', () => {
         document.getElementById('switch-login-form').style.display = 'block';
@@ -1035,6 +1050,21 @@
         const password = document.getElementById('switch-password').value;
         loginWithEmail(email, password, document.getElementById('switch-login-status'));
       });
+    }
+    document.getElementById('tag-save-btn').addEventListener('click', saveTag);
+  }
+
+  async function saveTag() {
+    const tagInput = document.getElementById('tag-input');
+    const statusBox = document.getElementById('tag-status');
+    const tag = tagInput.value.trim().toUpperCase().slice(0, 6);
+    statusBox.textContent = 'Saving...';
+    try {
+      await db.ref(`banners/${myUid}/tag`).set(tag || null);
+      if (myLocalBanner) myLocalBanner.tag = tag;
+      statusBox.textContent = tag ? `Tag set to [${tag}].` : 'Tag cleared.';
+    } catch (err) {
+      statusBox.textContent = 'Error: ' + (err.message || String(err));
     }
   }
 
