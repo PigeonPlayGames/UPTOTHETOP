@@ -173,7 +173,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v15</div>
+  <div id="build-tag">build: realm-v16</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -668,9 +668,21 @@
       return;
     }
 
+    const now = Date.now();
+    const targetResolved = resolveBanner(target, now);
+    const targetTroopBits = UNIT_IDS
+      .map((id) => `${targetResolved.troops[id] || 0} ${UNITS[id].name}${(targetResolved.troops[id] || 0) === 1 ? '' : 's'}`)
+      .join(', ');
+    const approxLoot = Math.round(targetResolved.resources.wood + targetResolved.resources.clay + targetResolved.resources.iron);
+    const wallLevel = targetResolved.buildings.wall || 0;
+
     panel.innerHTML = `
       <div class="box">
         <strong>Send troops to ${target.name}</strong>
+        <div class="muted" style="margin:8px 0;">
+          Last known: ${targetTroopBits} &middot; Wall level ${wallLevel} &middot; ~${approxLoot} resources on hand
+          <br><span style="font-size:11px;">(may have changed since last sync — treat as an estimate)</span>
+        </div>
         <div class="troop-inputs">
           ${UNIT_IDS.map((id) => `
             <label>${UNITS[id].name} (have ${home[id] || 0}):
