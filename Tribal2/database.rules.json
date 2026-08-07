@@ -30,6 +30,39 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null"
       }
+    },
+    "banners": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null"
+      }
+    },
+    "events": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+    "raidMovements": {
+      ".read": "auth != null",
+      ".indexOn": ["resolved"],
+      "$movementId": {
+        ".write": "auth != null"
+      }
+    },
+    "supportStacks": {
+      ".read": "auth != null",
+      "$targetUid": {
+        "$sourceUid": {
+          ".write": "auth != null"
+        }
+      }
+    },
+    "globalFeed": {
+      ".read": "auth != null",
+      "$entryId": {
+        ".write": "auth != null"
+      }
     }
   }
 }
