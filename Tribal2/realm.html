@@ -39,6 +39,7 @@
   .item-row button:hover { background:var(--accent-dark); }
   .item-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
   .item-row .building-icon { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
+  .item-row .unit-icon { width:56px; height:56px; object-fit:cover; object-position:50% 15%; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
 
   @media (max-width: 480px) {
     /* On narrow screens, force the text block onto its own full line first,
@@ -47,6 +48,7 @@
     .item-row > div:first-child { flex-basis: 100%; }
     .item-row { row-gap: 10px; }
     .item-row .building-icon { width:44px; height:44px; margin:0; }
+    .item-row .unit-icon { width:44px; height:44px; margin:0; }
     .item-row button { flex: 1 1 auto; max-width: 200px; }
   }
 
@@ -173,7 +175,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v18</div>
+  <div id="build-tag">build: realm-v19</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -464,7 +466,7 @@
             <div class="muted">${def.wood}w / ${def.clay}c / ${def.iron}i each, ${def.pop} pop, ${def.trainSeconds}s &middot; atk ${def.attack} / def ${def.defense} / carry ${def.carry}</div>
             <div class="muted" id="train-status-${id}"></div>
           </div>
-          <img class="building-icon" src="${UNIT_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
+          <img class="unit-icon" src="${UNIT_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
           <div style="display:flex;align-items:center;gap:6px;">
             <input type="number" min="1" max="20" value="1" data-unit="${id}" class="train-qty" id="train-qty-${id}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;">
             <button data-unit="${id}" id="train-btn-${id}">Train</button>
