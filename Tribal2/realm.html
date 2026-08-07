@@ -173,7 +173,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v16</div>
+  <div id="build-tag">build: realm-v17</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -196,7 +196,7 @@
   const GRID_SIZE = 8;
   const RATE_PER_SEC = { wood: 0.12, clay: 0.12, iron: 0.1 };
   const BASE_STORAGE_CAP = 500;
-  const POP_CAP = 30;
+  const BASE_POP_CAP = 30;
   const SECONDS_PER_TILE = 3;
 
   const UNIT_IDS = ['spearman', 'swordsman'];
@@ -205,13 +205,14 @@
     swordsman: { name: 'Swordsman', wood: 35, clay: 20, iron: 40, pop: 2, attack: 25, defense: 15, carry: 10, trainSeconds: 30 },
   };
 
-  const BUILDING_IDS = ['timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall'];
+  const BUILDING_IDS = ['timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm'];
   const BUILDINGS = {
     timber_camp: { name: 'Timber Camp', desc: 'Boosts wood production.', wood: 50, clay: 60, iron: 40, baseTime: 20 },
     clay_pit:    { name: 'Clay Pit',    desc: 'Boosts clay production.', wood: 65, clay: 50, iron: 40, baseTime: 20 },
     iron_mine:   { name: 'Iron Mine',   desc: 'Boosts iron production.', wood: 75, clay: 65, iron: 70, baseTime: 20 },
     warehouse:   { name: 'Warehouse',   desc: 'Increases storage capacity.', wood: 60, clay: 50, iron: 40, baseTime: 20 },
     wall:        { name: 'Wall',        desc: 'Boosts defense when raided.', wood: 50, clay: 100, iron: 20, baseTime: 25 },
+    farm:        { name: 'Farm',        desc: 'Increases population capacity.', wood: 45, clay: 40, iron: 30, baseTime: 20 },
   };
   // Drop your own artwork in an "images" folder next to realm.html, named
   // to match these paths (or edit the paths here to match your own
@@ -223,6 +224,7 @@
     iron_mine: 'Artwork/Iron1.jpg',
     warehouse: 'Artwork/Warehouse1.jpg',
     wall: 'Artwork/Wall1.jpg',
+    farm: 'Artwork/Farm1.jpg',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
@@ -262,6 +264,9 @@
   }
   function storageCap(buildings) {
     return Math.round(BASE_STORAGE_CAP * (1 + (buildings.warehouse || 0) * 0.25));
+  }
+  function popCap(buildings) {
+    return Math.round(BASE_POP_CAP * (1 + (buildings.farm || 0) * 0.2));
   }
 
   function addLogLine(text, isNew) {
@@ -310,7 +315,7 @@
       troops[item.unit] = (troops[item.unit] || 0) + item.count;
     }
 
-    return { resources, troops, buildings, cap, buildQueue, trainQueue };
+    return { resources, troops, buildings, cap, popCap: popCap(buildings), buildQueue, trainQueue };
   }
 
   // ---- Rendering ---------------------------------------------------
@@ -383,7 +388,7 @@
     document.getElementById('cap-clay').textContent = resolved.cap;
     document.getElementById('cap-iron').textContent = resolved.cap;
     document.getElementById('res-pop').textContent = popUsage(resolved.troops);
-    document.getElementById('cap-pop').textContent = POP_CAP;
+    document.getElementById('cap-pop').textContent = resolved.popCap;
 
     renderBuildingList(resolved, now);
     renderTrainList(resolved, now);
@@ -492,7 +497,7 @@
     const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
     const cost = { wood: def.wood * qty, clay: def.clay * qty, iron: def.iron * qty };
     const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
-    const popOk = popUsage(resolved.troops) + def.pop * qty <= POP_CAP;
+    const popOk = popUsage(resolved.troops) + def.pop * qty <= resolved.popCap;
 
     document.getElementById(`train-owned-${id}`).textContent = `(owned: ${owned})`;
     document.getElementById(`train-status-${id}`).textContent = queueFull ? 'Train queue full.' : !popOk ? 'Would exceed population cap.' : !affordable ? `Costs ${cost.wood}w / ${cost.clay}c / ${cost.iron}i total.` : '';
@@ -633,7 +638,7 @@
     const def = UNITS[unitId];
     const cost = { wood: def.wood * qty, clay: def.clay * qty, iron: def.iron * qty };
     if (banner.resources.wood < cost.wood || banner.resources.clay < cost.clay || banner.resources.iron < cost.iron) return;
-    if (popUsage(banner.troops) + def.pop * qty > POP_CAP) return;
+    if (popUsage(banner.troops) + def.pop * qty > popCap(banner.buildings)) return;
 
     const now = Date.now();
     const startAfter = queue.length ? queue[queue.length - 1].finishesAt : now;
