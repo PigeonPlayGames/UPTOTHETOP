@@ -39,7 +39,7 @@
   .item-row button:hover { background:var(--accent-dark); }
   .item-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
   .item-row .building-icon { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
-  .item-row .unit-icon { width:56px; height:56px; object-fit:cover; object-position:50% 15%; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
+  .item-row .unit-icon { width:56px; height:76px; object-fit:cover; object-position:50% 10%; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
 
   @media (max-width: 480px) {
     /* On narrow screens, force the text block onto its own full line first,
@@ -48,7 +48,7 @@
     .item-row > div:first-child { flex-basis: 100%; }
     .item-row { row-gap: 10px; }
     .item-row .building-icon { width:44px; height:44px; margin:0; }
-    .item-row .unit-icon { width:44px; height:44px; margin:0; }
+    .item-row .unit-icon { width:44px; height:60px; margin:0; }
     .item-row button { flex: 1 1 auto; max-width: 200px; }
   }
 
@@ -175,7 +175,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v19</div>
+  <div id="build-tag">build: realm-v20</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -941,7 +941,20 @@
     const now = Date.now();
     Object.entries(latestMovements).forEach(([id, m]) => resolveMovementIfDue(id, m, now));
     renderMovements();
+    updateTitleAlert();
   }
+
+  // Flashes the browser tab title when an actual attack (not support, not
+  // a recall) is incoming and the player isn't currently looking at the
+  // tab — otherwise you'd only find out you're under attack by chance.
+  const ORIGINAL_TITLE = document.title;
+  function updateTitleAlert() {
+    const now = Date.now();
+    const hasIncomingAttack = Object.values(latestMovements).some((m) =>
+      !m.resolved && m.toUid === myUid && m.arrivesAt > now && m.type !== 'support' && m.type !== 'recall');
+    document.title = (hasIncomingAttack && document.hidden) ? `\u26A0\uFE0F Incoming Raid! \u2014 ${ORIGINAL_TITLE}` : ORIGINAL_TITLE;
+  }
+  document.addEventListener('visibilitychange', updateTitleAlert);
 
   function randomFreeSpot(banners) {
     const taken = new Set(Object.values(banners || {}).map((b) => `${b.x}_${b.y}`));
