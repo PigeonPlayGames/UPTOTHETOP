@@ -177,7 +177,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v25</div>
+  <div id="build-tag">build: realm-v26</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -715,10 +715,13 @@
       .join(', ');
     const approxLoot = Math.round(targetResolved.resources.wood + targetResolved.resources.clay + targetResolved.resources.iron);
     const wallLevel = targetResolved.buildings.wall || 0;
+    const targetLabel = target.tag ? `[${target.tag}] ${target.name}` : target.name;
+    const sameTag = banner.tag && target.tag && banner.tag === target.tag;
 
     panel.innerHTML = `
       <div class="box">
-        <strong>Send troops to ${target.name}</strong>
+        <strong>Send troops to ${targetLabel}</strong>
+        ${sameTag ? `<div class="muted" style="color:var(--danger);font-weight:600;margin:6px 0;">\u26A0\uFE0F Same alliance tag as you [${banner.tag}] — this looks like an ally.</div>` : ''}
         <div class="muted" style="margin:8px 0;">
           Last known: ${targetTroopBits} &middot; Wall level ${wallLevel} &middot; ~${approxLoot} resources on hand
           <br><span style="font-size:11px;">(may have changed since last sync — treat as an estimate)</span>
