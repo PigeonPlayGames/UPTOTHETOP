@@ -173,7 +173,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v17</div>
+  <div id="build-tag">build: realm-v18</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -225,6 +225,10 @@
     warehouse: 'Artwork/Warehouse1.jpg',
     wall: 'Artwork/Wall1.jpg',
     farm: 'Artwork/Farm1.jpg',
+  };
+  const UNIT_IMAGES = {
+    spearman: 'Artwork/Spearman1.jpg',
+    swordsman: 'Artwork/Swordsman1.jpg',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
@@ -460,6 +464,7 @@
             <div class="muted">${def.wood}w / ${def.clay}c / ${def.iron}i each, ${def.pop} pop, ${def.trainSeconds}s &middot; atk ${def.attack} / def ${def.defense} / carry ${def.carry}</div>
             <div class="muted" id="train-status-${id}"></div>
           </div>
+          <img class="building-icon" src="${UNIT_IMAGES[id]}" alt="${def.name}" onerror="this.style.display='none'">
           <div style="display:flex;align-items:center;gap:6px;">
             <input type="number" min="1" max="20" value="1" data-unit="${id}" class="train-qty" id="train-qty-${id}" style="width:50px;padding:6px;border:1px solid var(--border);border-radius:4px;">
             <button data-unit="${id}" id="train-btn-${id}">Train</button>
