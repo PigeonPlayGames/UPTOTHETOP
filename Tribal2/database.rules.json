@@ -63,6 +63,12 @@
       "$entryId": {
         ".write": "auth != null"
       }
+    },
+    "presence": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }
