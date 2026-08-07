@@ -175,7 +175,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v21</div>
+  <div id="build-tag">build: realm-v22</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -207,8 +207,9 @@
     swordsman: { name: 'Swordsman', wood: 35, clay: 20, iron: 40, pop: 2, attack: 25, defense: 15, carry: 10, trainSeconds: 30 },
   };
 
-  const BUILDING_IDS = ['timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks'];
+  const BUILDING_IDS = ['headquarters', 'timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks'];
   const BUILDINGS = {
+    headquarters: { name: 'Headquarters', desc: 'Speeds up all construction.', wood: 70, clay: 60, iron: 50, baseTime: 25 },
     timber_camp: { name: 'Timber Camp', desc: 'Boosts wood production.', wood: 50, clay: 60, iron: 40, baseTime: 20 },
     clay_pit:    { name: 'Clay Pit',    desc: 'Boosts clay production.', wood: 65, clay: 50, iron: 40, baseTime: 20 },
     iron_mine:   { name: 'Iron Mine',   desc: 'Boosts iron production.', wood: 75, clay: 65, iron: 70, baseTime: 20 },
@@ -222,6 +223,7 @@
   // filenames). Any building without a matching file just shows no image —
   // nothing breaks, so you can add these one at a time.
   const BUILDING_IMAGES = {
+    headquarters: 'Artwork/HQ1.jpg',
     timber_camp: 'Artwork/Wood1.jpg',
     clay_pit: 'Artwork/Clay1.jpg',
     iron_mine: 'Artwork/Iron1.jpg',
@@ -278,6 +280,9 @@
   }
   function trainSpeedMultiplier(buildings) {
     return 1 + (buildings.barracks || 0) * 0.15;
+  }
+  function buildSpeedMultiplier(buildings) {
+    return 1 + (buildings.headquarters || 0) * 0.15;
   }
 
   function addLogLine(text, isNew) {
@@ -442,7 +447,7 @@
     const queuedForThis = resolved.buildQueue.filter((q) => q.building === id).length;
     const targetLevel = level + queuedForThis + 1;
     const cost = buildingCost(id, targetLevel);
-    const time = buildingTime(id, targetLevel);
+    const time = Math.round(buildingTime(id, targetLevel) / buildSpeedMultiplier(resolved.buildings));
     const queueFull = resolved.buildQueue.length >= MAX_BUILD_QUEUE;
     const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
 
@@ -451,8 +456,10 @@
     if (queueFull) status += (status ? ' — ' : '') + 'Build queue full.';
     else if (!affordable) status += (status ? ' — ' : '') + 'Not enough resources.';
 
+    const hqLevel = resolved.buildings.headquarters || 0;
+
     document.getElementById(`bld-level-${id}`).textContent = `(level ${level})`;
-    document.getElementById(`bld-cost-${id}`).textContent = `Next: level ${targetLevel} — ${cost.wood}w / ${cost.clay}c / ${cost.iron}i \u00b7 ${formatDuration(time * 1000)}`;
+    document.getElementById(`bld-cost-${id}`).textContent = `Next: level ${targetLevel} — ${cost.wood}w / ${cost.clay}c / ${cost.iron}i \u00b7 ${formatDuration(time * 1000)}` + (hqLevel > 0 ? ` (HQ lvl ${hqLevel} boost applied)` : '');
     document.getElementById(`bld-status-${id}`).textContent = status;
     document.getElementById(`bld-btn-${id}`).disabled = queueFull || !affordable;
   }
@@ -633,7 +640,7 @@
     if (banner.resources.wood < cost.wood || banner.resources.clay < cost.clay || banner.resources.iron < cost.iron) return;
 
     const now = Date.now();
-    const time = buildingTime(buildingId, targetLevel);
+    const time = buildingTime(buildingId, targetLevel) / buildSpeedMultiplier(banner.buildings);
     const startAfter = queue.length ? queue[queue.length - 1].finishesAt : now;
     const newQueue = [...queue, { building: buildingId, finishesAt: startAfter + time * 1000 }];
     const update = {
@@ -1180,4 +1187,4 @@
   });
 </script>
 </body>
-  </html>
+</html>
