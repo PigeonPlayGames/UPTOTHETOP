@@ -224,7 +224,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v31</div>
+  <div id="build-tag">build: realm-v32</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -474,9 +474,13 @@
     const now = Date.now();
     const resolved = resolveBanner(myLocalBanner, now);
 
-    document.getElementById('res-wood').textContent = fmt(resolved.resources.wood);
-    document.getElementById('res-clay').textContent = fmt(resolved.resources.clay);
-    document.getElementById('res-iron').textContent = fmt(resolved.resources.iron);
+    ['wood', 'clay', 'iron'].forEach((res) => {
+      const el = document.getElementById(`res-${res}`);
+      el.textContent = fmt(resolved.resources[res]);
+      const atCap = resolved.resources[res] >= resolved.cap * 0.95;
+      el.style.color = atCap ? 'var(--danger)' : '';
+      el.title = atCap ? 'Nearly full — production is being wasted. Spend some or upgrade Warehouse.' : '';
+    });
     document.getElementById('cap-wood').textContent = resolved.cap;
     document.getElementById('cap-clay').textContent = resolved.cap;
     document.getElementById('cap-iron').textContent = resolved.cap;
@@ -676,6 +680,15 @@
         abroadRows.push({ targetUid, targetName: latestBanners[targetUid]?.name || 'a village', troops: mine });
       }
     });
+    if (abroadRows.length > 1) {
+      const recallAllBtn = document.createElement('button');
+      recallAllBtn.textContent = `Recall All (${abroadRows.length} villages)`;
+      recallAllBtn.style.marginBottom = '10px';
+      recallAllBtn.addEventListener('click', () => {
+        abroadRows.forEach((row) => recallSupport(row.targetUid, row.targetName));
+      });
+      abroadBox.appendChild(recallAllBtn);
+    }
     abroadRows.forEach((row) => {
       const div = document.createElement('div');
       div.className = 'item-row';
@@ -1399,5 +1412,6 @@
 </script>
 </body>
 </html>
+
 
 
