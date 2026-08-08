@@ -38,6 +38,12 @@
   .map-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
   .map-controls button { padding:6px 10px; border:1px solid var(--border); background:var(--panel); border-radius:4px; cursor:pointer; font-size:13px; }
   .map-controls button:hover { background:#efeadf; }
+  #mini-map { display:grid; grid-template-columns:repeat(20, 1fr); gap:1px; max-width:280px; margin:0 auto; background:var(--border); padding:1px; border-radius:4px; }
+  #mini-map .mini-cell { aspect-ratio:1; background:#efeadf; }
+  #mini-map .mini-cell.mine { background:var(--accent); cursor:pointer; }
+  #mini-map .mini-cell.ally { background:#5a8fb0; cursor:pointer; }
+  #mini-map .mini-cell.other { background:#b08a5a; cursor:pointer; }
+  #mini-map .mini-cell.viewport { box-shadow:inset 0 0 0 1px var(--accent-dark); }
 
   .item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); }
   .item-row:last-child { border-bottom:none; }
@@ -201,6 +207,10 @@
       <div id="grid"></div>
       <p class="muted" style="text-align:center;margin:10px 0 0;">Click another lord's banner to attack or send support &#9876;&#65039;</p>
       <div id="raid-panel"></div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <p class="muted" style="margin:0 0 6px;font-size:12px;">World overview — click a dot to jump there</p>
+        <div id="mini-map"></div>
+      </div>
     </div>
 
     <div class="panel">
@@ -236,7 +246,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v33</div>
+  <div id="build-tag">build: realm-v34</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -479,6 +489,44 @@
     document.getElementById('count').textContent = `${total} lord${total === 1 ? '' : 's'} in the realm`;
     const coordsEl = document.getElementById('map-coords');
     if (coordsEl) coordsEl.textContent = `Viewing (${startX},${startY}) to (${startX + VIEWPORT_SIZE - 1},${startY + VIEWPORT_SIZE - 1}) of a ${GRID_SIZE}\u00d7${GRID_SIZE} world`;
+
+    renderMiniMap(startX, startY);
+  }
+
+  // A compact whole-world view so panning around a 20x20 map doesn't mean
+  // exploring blind — every village shows as a colored dot, and the box
+  // outline shows exactly which part of the world the main map above is
+  // currently showing. Clicking a dot jumps the main map straight there.
+  function renderMiniMap(viewStartX, viewStartY) {
+    const mini = document.getElementById('mini-map');
+    if (!mini) return;
+    mini.innerHTML = '';
+    const cells = {};
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'mini-cell';
+        mini.appendChild(cell);
+        cells[`${x}_${y}`] = cell;
+      }
+    }
+    Object.entries(latestBanners).forEach(([uid, b]) => {
+      const cell = cells[`${b.x}_${b.y}`];
+      if (!cell) return;
+      if (uid === myUid) {
+        cell.classList.add('mine');
+      } else {
+        const isAlly = myLocalBanner?.tag && b.tag && myLocalBanner.tag === b.tag;
+        cell.classList.add(isAlly ? 'ally' : 'other');
+      }
+      cell.title = b.name;
+      cell.addEventListener('click', () => { mapCenter = { x: b.x, y: b.y }; renderGrid(); });
+    });
+    for (let dy = 0; dy < VIEWPORT_SIZE; dy++) {
+      for (let dx = 0; dx < VIEWPORT_SIZE; dx++) {
+        cells[`${viewStartX + dx}_${viewStartY + dy}`]?.classList.add('viewport');
+      }
+    }
   }
 
   const panAndRender = (dx, dy) => { mapCenter.x += dx; mapCenter.y += dy; renderGrid(); };
@@ -1461,8 +1509,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-
