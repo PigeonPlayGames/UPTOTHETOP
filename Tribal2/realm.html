@@ -222,7 +222,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v29</div>
+  <div id="build-tag">build: realm-v30</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -626,11 +626,16 @@
       const incoming = m.toUid === myUid;
       const isSupport = m.type === 'support';
       const isRecall = m.type === 'recall';
+      const isGift = m.type === 'gift';
       const div = document.createElement('div');
-      div.className = 'move-line' + (incoming && !isSupport && !isRecall ? ' incoming' : '');
+      div.className = 'move-line' + (incoming && !isSupport && !isRecall && !isGift ? ' incoming' : '');
       const timeLeft = formatDuration(m.arrivesAt - now);
       if (isRecall) {
         div.textContent = `Recalled troops from ${m.fromName} returning home — arrives in ${timeLeft}`;
+      } else if (isGift) {
+        div.textContent = incoming
+          ? `\u{1F381} Resources from ${m.fromName} arriving in ${timeLeft}`
+          : `Resources on the way to ${m.toName} — arrives in ${timeLeft}`;
       } else if (incoming) {
         div.textContent = isSupport
           ? `\u{1F6E1}\uFE0F Support from ${m.fromName} arriving in ${timeLeft}`
@@ -767,10 +772,7 @@
 
     const panel = document.getElementById('raid-panel');
     const home = banner.troops;
-    if (troopsTotal(home) === 0) {
-      panel.innerHTML = `<div class="box muted">You have no troops at home to send to ${target.name}.</div>`;
-      return;
-    }
+    const hasTroops = troopsTotal(home) > 0;
 
     const now = Date.now();
     const targetResolved = resolveBanner(target, now);
@@ -784,22 +786,35 @@
 
     panel.innerHTML = `
       <div class="box">
-        <strong>Send troops to ${targetLabel}</strong>
+        <strong>Send to ${targetLabel}</strong>
         ${sameTag ? `<div class="muted" style="color:var(--danger);font-weight:600;margin:6px 0;">\u26A0\uFE0F Same alliance tag as you [${banner.tag}] — this looks like an ally.</div>` : ''}
         <div class="muted" style="margin:8px 0;">
           Last known: ${targetTroopBits} &middot; Wall level ${wallLevel} &middot; ~${approxLoot} resources on hand
           <br><span style="font-size:11px;">(may have changed since last sync — treat as an estimate)</span>
         </div>
+        ${hasTroops ? `
+          <div class="troop-inputs">
+            ${UNIT_IDS.map((id) => `
+              <label>${UNITS[id].name} (have ${home[id] || 0}):
+                <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count">
+              </label>
+            `).join('')}
+          </div>
+          <div class="actions">
+            <button class="attack-btn">Attack &#9876;&#65039;</button>
+            <button class="support-btn">Send Support &#128737;&#65039;</button>
+          </div>
+        ` : '<div class="muted">No troops at home to attack or support with.</div>'}
+        <div class="muted" style="margin:14px 0 6px;font-weight:600;">Send resources instead</div>
         <div class="troop-inputs">
-          ${UNIT_IDS.map((id) => `
-            <label>${UNITS[id].name} (have ${home[id] || 0}):
-              <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count">
-            </label>
-          `).join('')}
+          <label>Wood (have ${Math.floor(banner.resources.wood)}): <input type="number" min="0" max="${Math.floor(banner.resources.wood)}" value="0" data-res="wood" class="send-res"></label>
+          <label>Clay (have ${Math.floor(banner.resources.clay)}): <input type="number" min="0" max="${Math.floor(banner.resources.clay)}" value="0" data-res="clay" class="send-res"></label>
+          <label>Iron (have ${Math.floor(banner.resources.iron)}): <input type="number" min="0" max="${Math.floor(banner.resources.iron)}" value="0" data-res="iron" class="send-res"></label>
         </div>
         <div class="actions">
-          <button class="attack-btn">Attack &#9876;&#65039;</button>
-          <button class="support-btn">Send Support &#128737;&#65039;</button>
+          <button class="gift-btn">Send Resources &#127873;</button>
+        </div>
+        <div class="actions" style="margin-top:0;">
           <button class="cancel-btn">Cancel</button>
         </div>
       </div>
@@ -809,9 +824,43 @@
       panel.querySelectorAll('.send-count').forEach((input) => { counts[input.dataset.unit] = parseInt(input.value, 10) || 0; });
       return counts;
     };
-    panel.querySelector('.attack-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'attack'));
-    panel.querySelector('.support-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'support'));
+    const readResAmounts = () => {
+      const amounts = { wood: 0, clay: 0, iron: 0 };
+      panel.querySelectorAll('.send-res').forEach((input) => { amounts[input.dataset.res] = Math.max(0, parseInt(input.value, 10) || 0); });
+      return amounts;
+    };
+    if (hasTroops) {
+      panel.querySelector('.attack-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'attack'));
+      panel.querySelector('.support-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'support'));
+    }
+    panel.querySelector('.gift-btn').addEventListener('click', () => sendResourceGift(targetUid, target, readResAmounts()));
     panel.querySelector('.cancel-btn').addEventListener('click', () => { panel.innerHTML = ''; });
+  }
+
+  async function sendResourceGift(targetUid, target, amounts) {
+    const total = amounts.wood + amounts.clay + amounts.iron;
+    if (total <= 0) return;
+
+    const banner = myLocalBanner;
+    const travelSeconds = Math.max(2, Math.round(distanceTiles(banner, target) * SECONDS_PER_TILE));
+    const now = Date.now();
+    const remaining = {
+      wood: Math.max(0, banner.resources.wood - amounts.wood),
+      clay: Math.max(0, banner.resources.clay - amounts.clay),
+      iron: Math.max(0, banner.resources.iron - amounts.iron),
+    };
+    await db.ref(`banners/${myUid}`).update({ resources: remaining });
+    myLocalBanner = { ...banner, resources: remaining };
+
+    await db.ref('raidMovements').push({
+      fromUid: myUid, fromName: myName, fromX: banner.x, fromY: banner.y,
+      toUid: targetUid, toName: target.name, toX: target.x, toY: target.y,
+      resources: amounts, type: 'gift', startedAt: now, arrivesAt: now + travelSeconds * 1000, resolved: false,
+    });
+
+    document.getElementById('raid-panel').innerHTML = '';
+    addLogLine(`Sent ${Math.round(total)} resources to ${target.name} — arriving in ${formatDuration(travelSeconds * 1000)}.`, false);
+    renderMyStats();
   }
 
   async function sendMovement(targetUid, target, counts, type) {
@@ -851,6 +900,7 @@
 
     if (movement.type === 'support') { await resolveSupport(movement, now); return; }
     if (movement.type === 'recall') { await resolveRecall(movement, now); return; }
+    if (movement.type === 'gift') { await resolveGift(movement, now); return; }
 
     const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
     const targetRaw = targetSnap.val();
@@ -964,6 +1014,31 @@
     }
   }
 
+  // Delivers a resource gift that's finished traveling. Resources were
+  // already deducted from the sender the moment it was sent (same as
+  // troops), so this just needs to credit the target — capped at their
+  // current storage, same as any other resource gain.
+  async function resolveGift(movement, now) {
+    const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
+    const targetRaw = targetSnap.val();
+    if (!targetRaw) return;
+    const target = resolveBanner(targetRaw, now);
+    const gifted = movement.resources || { wood: 0, clay: 0, iron: 0 };
+    await db.ref(`banners/${movement.toUid}`).update({
+      resources: {
+        wood: Math.min(target.cap, target.resources.wood + (gifted.wood || 0)),
+        clay: Math.min(target.cap, target.resources.clay + (gifted.clay || 0)),
+        iron: Math.min(target.cap, target.resources.iron + (gifted.iron || 0)),
+      },
+      buildings: target.buildings, buildQueue: target.buildQueue, build: null,
+      troops: target.troops, trainQueue: target.trainQueue, train: null,
+      lastUpdated: now,
+    });
+    const total = Math.round((gifted.wood || 0) + (gifted.clay || 0) + (gifted.iron || 0));
+    await db.ref(`events/${movement.toUid}`).push({ message: `${movement.fromName} sent you ${total} resources!`, timestamp: firebase.database.ServerValue.TIMESTAMP });
+    postToGlobalFeed(`\u{1F381} ${movement.fromName} sent resources to ${movement.toName}.`);
+  }
+
   // Support troops now sit in their own tracked stack at the target's
   // village (supportStacks/{targetUid}/{sourceUid}) rather than merging
   // anonymously into the defender's own troops. That's what makes Recall
@@ -1046,7 +1121,7 @@
   function updateTitleAlert() {
     const now = Date.now();
     const hasIncomingAttack = Object.values(latestMovements).some((m) =>
-      !m.resolved && m.toUid === myUid && m.arrivesAt > now && m.type !== 'support' && m.type !== 'recall');
+      !m.resolved && m.toUid === myUid && m.arrivesAt > now && m.type !== 'support' && m.type !== 'recall' && m.type !== 'gift');
     document.title = (hasIncomingAttack && document.hidden) ? `\u26A0\uFE0F Incoming Raid! \u2014 ${ORIGINAL_TITLE}` : ORIGINAL_TITLE;
   }
   document.addEventListener('visibilitychange', updateTitleAlert);
@@ -1319,3 +1394,4 @@
 </script>
 </body>
 </html>
+
