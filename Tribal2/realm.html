@@ -76,6 +76,8 @@
   #raid-panel .support-btn { background:var(--accent); }
   #raid-panel .support-btn:hover { background:var(--accent-dark); }
   #raid-panel .cancel-btn { background:#bdb8ab; }
+  #raid-panel .gift-btn { background:#b8860b; }
+  #raid-panel .gift-btn:hover { background:#966e09; }
 
   #leaderboard-list .item-row.me { background:#f0e6b8; margin:0 -14px; padding:8px 14px; border-radius:4px; }
   #leaderboard-list .rank { display:inline-block; width:26px; color:var(--muted); }
@@ -222,7 +224,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v30</div>
+  <div id="build-tag">build: realm-v31</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -796,7 +798,7 @@
           <div class="troop-inputs">
             ${UNIT_IDS.map((id) => `
               <label>${UNITS[id].name} (have ${home[id] || 0}):
-                <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count">
+                <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count" onfocus="this.select()">
               </label>
             `).join('')}
           </div>
@@ -805,16 +807,18 @@
             <button class="support-btn">Send Support &#128737;&#65039;</button>
           </div>
         ` : '<div class="muted">No troops at home to attack or support with.</div>'}
-        <div class="muted" style="margin:14px 0 6px;font-weight:600;">Send resources instead</div>
-        <div class="troop-inputs">
-          <label>Wood (have ${Math.floor(banner.resources.wood)}): <input type="number" min="0" max="${Math.floor(banner.resources.wood)}" value="0" data-res="wood" class="send-res"></label>
-          <label>Clay (have ${Math.floor(banner.resources.clay)}): <input type="number" min="0" max="${Math.floor(banner.resources.clay)}" value="0" data-res="clay" class="send-res"></label>
-          <label>Iron (have ${Math.floor(banner.resources.iron)}): <input type="number" min="0" max="${Math.floor(banner.resources.iron)}" value="0" data-res="iron" class="send-res"></label>
-        </div>
-        <div class="actions">
-          <button class="gift-btn">Send Resources &#127873;</button>
-        </div>
-        <div class="actions" style="margin-top:0;">
+        ${sameTag ? `
+          <div class="muted" style="margin:14px 0 6px;font-weight:600;">Send resources to your ally</div>
+          <div class="troop-inputs">
+            <label>Wood (have ${Math.floor(banner.resources.wood)}): <input type="number" min="0" max="${Math.floor(banner.resources.wood)}" value="0" data-res="wood" class="send-res" onfocus="this.select()"></label>
+            <label>Clay (have ${Math.floor(banner.resources.clay)}): <input type="number" min="0" max="${Math.floor(banner.resources.clay)}" value="0" data-res="clay" class="send-res" onfocus="this.select()"></label>
+            <label>Iron (have ${Math.floor(banner.resources.iron)}): <input type="number" min="0" max="${Math.floor(banner.resources.iron)}" value="0" data-res="iron" class="send-res" onfocus="this.select()"></label>
+          </div>
+          <div class="actions">
+            <button class="gift-btn">Send Resources &#127873;</button>
+          </div>
+        ` : '<p class="muted" style="font-size:11px;margin:10px 0 0;">Resource gifting is only available between villages sharing the same alliance tag.</p>'}
+        <div class="actions" style="margin-top:10px;">
           <button class="cancel-btn">Cancel</button>
         </div>
       </div>
@@ -833,7 +837,8 @@
       panel.querySelector('.attack-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'attack'));
       panel.querySelector('.support-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'support'));
     }
-    panel.querySelector('.gift-btn').addEventListener('click', () => sendResourceGift(targetUid, target, readResAmounts()));
+    const giftBtn = panel.querySelector('.gift-btn');
+    if (giftBtn) giftBtn.addEventListener('click', () => sendResourceGift(targetUid, target, readResAmounts()));
     panel.querySelector('.cancel-btn').addEventListener('click', () => { panel.innerHTML = ''; });
   }
 
@@ -1394,4 +1399,5 @@
 </script>
 </body>
 </html>
+
 
