@@ -31,9 +31,13 @@
   #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; }
   .cell { aspect-ratio:1; background:#efeadf; border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
   .cell.mine { background:#cfe0c6; }
+  .cell.ally { background:#d6e6f0; }
   .cell.other { cursor:pointer; }
   .cell.other:hover { outline:2px solid var(--accent); }
   .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .map-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .map-controls button { padding:6px 10px; border:1px solid var(--border); background:var(--panel); border-radius:4px; cursor:pointer; font-size:13px; }
+  .map-controls button:hover { background:#efeadf; }
 
   .item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); }
   .item-row:last-child { border-bottom:none; }
@@ -186,6 +190,14 @@
 
     <div class="panel">
       <h3>Your village map</h3>
+      <div class="map-controls">
+        <button id="map-up">&uarr;</button>
+        <button id="map-down">&darr;</button>
+        <button id="map-left">&larr;</button>
+        <button id="map-right">&rarr;</button>
+        <button id="map-recenter">Recenter on my village</button>
+        <span class="muted" id="map-coords"></span>
+      </div>
       <div id="grid"></div>
       <p class="muted" style="text-align:center;margin:10px 0 0;">Click another lord's banner to attack or send support &#9876;&#65039;</p>
       <div id="raid-panel"></div>
@@ -224,7 +236,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v32</div>
+  <div id="build-tag">build: realm-v33</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -244,7 +256,9 @@
   const db = firebase.database();
 
   // ---- Game constants ------------------------------------------------
-  const GRID_SIZE = 8;
+  const GRID_SIZE = 20;      // the full world is 20x20 — plenty of room to grow into
+  const VIEWPORT_SIZE = 8;   // how many tiles are actually shown on screen at once
+  const PAN_STEP = 4;        // how far each arrow click moves the view
   const RATE_PER_SEC = { wood: 0.12, clay: 0.12, iron: 0.1 };
   const BASE_STORAGE_CAP = 500;
   const BASE_POP_CAP = 30;
@@ -297,6 +311,8 @@
   let latestMovements = {};
   let latestSupportStacks = {}; // { targetUid: { sourceUid: {fromName, ...one count per unit type} } }
   let myLocalBanner = null;
+  let mapCenter = { x: Math.floor(GRID_SIZE / 2), y: Math.floor(GRID_SIZE / 2) };
+  let mapAutoCentered = false; // once true, we stop auto-recentering so we don't fight the player's own panning
 
   // ---- Small helpers ---------------------------------------------------
   function setStatus(msg) { document.getElementById('join-status').textContent = msg; }
@@ -412,34 +428,67 @@
   }
 
   // ---- Rendering ---------------------------------------------------
+  function clampMapCenter() {
+    const half = Math.floor(VIEWPORT_SIZE / 2);
+    mapCenter.x = Math.max(half, Math.min(GRID_SIZE - 1 - half, mapCenter.x));
+    mapCenter.y = Math.max(half, Math.min(GRID_SIZE - 1 - half, mapCenter.y));
+  }
+
   function renderGrid() {
+    // Center on the player's own village the first time we have one, then
+    // leave it alone — otherwise every data update would yank the view
+    // back and fight any panning the player's done.
+    if (!mapAutoCentered && myLocalBanner) {
+      mapCenter = { x: myLocalBanner.x, y: myLocalBanner.y };
+      mapAutoCentered = true;
+    }
+    clampMapCenter();
+
     const grid = document.getElementById('grid');
     const cells = {};
     grid.innerHTML = '';
-    for (let y = 0; y < GRID_SIZE; y++) {
-      for (let x = 0; x < GRID_SIZE; x++) {
+    const half = Math.floor(VIEWPORT_SIZE / 2);
+    const startX = mapCenter.x - half;
+    const startY = mapCenter.y - half;
+    for (let dy = 0; dy < VIEWPORT_SIZE; dy++) {
+      for (let dx = 0; dx < VIEWPORT_SIZE; dx++) {
+        const x = startX + dx;
+        const y = startY + dy;
         const cell = document.createElement('div');
         cell.className = 'cell';
         grid.appendChild(cell);
         cells[`${x}_${y}`] = cell;
       }
     }
-    let count = 0;
     Object.entries(latestBanners).forEach(([uid, b]) => {
       const cell = cells[`${b.x}_${b.y}`];
-      if (!cell) return;
-      count++;
+      if (!cell) return; // outside the current viewport — still counted below, just not drawn
       cell.innerHTML = `&#127984;<span class="label">${b.tag ? `[${b.tag}] ` : ''}${b.name}</span>`;
       if (uid === myUid) {
         cell.classList.add('mine');
+        cell.title = b.name;
       } else {
-        cell.classList.add('other');
-        cell.title = `Send troops to ${b.name}`;
+        const isAlly = myLocalBanner?.tag && b.tag && myLocalBanner.tag === b.tag;
+        cell.classList.add(isAlly ? 'ally' : 'other');
+        cell.title = `Send troops to ${b.name}${isAlly ? ' (ally)' : ''}`;
         cell.addEventListener('click', () => selectTarget(uid));
       }
     });
-    document.getElementById('count').textContent = `${count} lord${count === 1 ? '' : 's'} in the realm`;
+
+    const total = Object.keys(latestBanners).length;
+    document.getElementById('count').textContent = `${total} lord${total === 1 ? '' : 's'} in the realm`;
+    const coordsEl = document.getElementById('map-coords');
+    if (coordsEl) coordsEl.textContent = `Viewing (${startX},${startY}) to (${startX + VIEWPORT_SIZE - 1},${startY + VIEWPORT_SIZE - 1}) of a ${GRID_SIZE}\u00d7${GRID_SIZE} world`;
   }
+
+  const panAndRender = (dx, dy) => { mapCenter.x += dx; mapCenter.y += dy; renderGrid(); };
+  document.getElementById('map-up')?.addEventListener('click', () => panAndRender(0, -PAN_STEP));
+  document.getElementById('map-down')?.addEventListener('click', () => panAndRender(0, PAN_STEP));
+  document.getElementById('map-left')?.addEventListener('click', () => panAndRender(-PAN_STEP, 0));
+  document.getElementById('map-right')?.addEventListener('click', () => panAndRender(PAN_STEP, 0));
+  document.getElementById('map-recenter')?.addEventListener('click', () => {
+    if (myLocalBanner) { mapCenter = { x: myLocalBanner.x, y: myLocalBanner.y }; renderGrid(); }
+  });
 
   // Overall strength score, weighted so sustained investment (buildings)
   // matters more than troops, and troops more than raw resources (which
@@ -1412,6 +1461,7 @@
 </script>
 </body>
 </html>
+
 
 
 
