@@ -142,6 +142,7 @@
       <h1>&#127984; The Realm</h1>
       <div>
         <span id="who"></span> &middot; <span id="count"></span> &middot; <span id="online-count"></span>
+        &middot; <label style="font-weight:normal;font-size:13px;cursor:pointer;"><input type="checkbox" id="mute-toggle" style="vertical-align:middle;"> Mute raid alert sound</label>
       </div>
     </header>
 
@@ -262,7 +263,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v36</div>
+  <div id="build-tag">build: realm-v37</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -336,6 +337,8 @@
   let latestBanners = {};
   let latestMovements = {};
   const alertedMovementIds = new Set();
+  let raidSoundMuted = false;
+  try { raidSoundMuted = localStorage.getItem('realmRaidSoundMuted') === 'true'; } catch (err) { /* localStorage unavailable — just default to unmuted */ }
   let latestSupportStacks = {}; // { targetUid: { sourceUid: {fromName, ...one count per unit type} } }
   let myLocalBanner = null;
   let mapCenter = { x: Math.floor(GRID_SIZE / 2), y: Math.floor(GRID_SIZE / 2) };
@@ -579,6 +582,15 @@
   document.getElementById('map-recenter')?.addEventListener('click', () => {
     if (myLocalBanner) { mapCenter = { x: myLocalBanner.x, y: myLocalBanner.y }; renderGrid(); }
   });
+
+  const muteToggle = document.getElementById('mute-toggle');
+  if (muteToggle) {
+    muteToggle.checked = raidSoundMuted;
+    muteToggle.addEventListener('change', () => {
+      raidSoundMuted = muteToggle.checked;
+      try { localStorage.setItem('realmRaidSoundMuted', raidSoundMuted); } catch (err) { /* preference just won't persist across reloads here */ }
+    });
+  }
 
   // Overall strength score, weighted so sustained investment (buildings)
   // matters more than troops, and troops more than raw resources (which
@@ -1348,6 +1360,7 @@
   }
 
   function playRaidAlertSound() {
+    if (raidSoundMuted) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       if (ctx.state === 'suspended') ctx.resume();
@@ -1647,3 +1660,4 @@
 </script>
 </body>
 </html>
+
