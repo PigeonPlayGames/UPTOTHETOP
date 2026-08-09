@@ -231,6 +231,12 @@
     </div>
 
     <div class="panel">
+      <h3>Watchlist</h3>
+      <p class="muted" style="margin-top:0;font-size:12px;">Villages you've pinned, regardless of distance. Pin one from its raid panel.</p>
+      <div id="watchlist"></div>
+    </div>
+
+    <div class="panel">
       <h3>Buildings</h3>
       <div id="building-list"></div>
       <h3 style="margin-top:14px;font-size:13px;">Build Queue</h3>
@@ -269,7 +275,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v38</div>
+  <div id="build-tag">build: realm-v39</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -665,6 +671,7 @@
     if (rows.length === 0) box.innerHTML = '<div class="muted">No lords yet.</div>';
 
     renderNearbyVillages();
+    renderWatchlist();
   }
 
   function renderNearbyVillages() {
@@ -692,6 +699,31 @@
       box.appendChild(div);
     });
     if (rows.length === 0) box.innerHTML = '<div class="muted">No other villages in the realm yet.</div>';
+  }
+
+  function renderWatchlist() {
+    const box = document.getElementById('watchlist');
+    if (!box) return;
+    const pinned = latestBanners[myUid]?.watchlist || {};
+    const rows = Object.keys(pinned)
+      .filter((uid) => pinned[uid] && latestBanners[uid])
+      .map((uid) => ({ uid, name: latestBanners[uid].name, tag: latestBanners[uid].tag, distance: myLocalBanner ? distanceTiles(myLocalBanner, latestBanners[uid]) : null }));
+
+    box.innerHTML = '';
+    rows.forEach((row) => {
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      div.innerHTML = `<div style="cursor:pointer;">${row.tag ? `<span class="muted">[${row.tag}]</span> ` : ''}<strong>${row.name}</strong></div><div class="muted">${row.distance !== null ? row.distance.toFixed(1) + ' tiles' : ''} <button class="unpin-btn" style="font-size:11px;padding:2px 6px;margin-left:6px;">Unpin</button></div>`;
+      div.querySelector('div').addEventListener('click', () => {
+        mapCenter = { x: latestBanners[row.uid].x, y: latestBanners[row.uid].y };
+        renderGrid();
+        selectTarget(row.uid);
+        document.getElementById('grid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      div.querySelector('.unpin-btn').addEventListener('click', (e) => { e.stopPropagation(); togglePin(row.uid); });
+      box.appendChild(div);
+    });
+    if (rows.length === 0) box.innerHTML = '<div class="muted">Nothing pinned yet — pin a village from its raid panel.</div>';
   }
 
   function renderMyStats() {
@@ -1023,10 +1055,14 @@
     const wallLevel = targetResolved.buildings.wall || 0;
     const targetLabel = target.tag ? `[${target.tag}] ${target.name}` : target.name;
     const sameTag = banner.tag && target.tag && banner.tag === target.tag;
+    const isPinned = !!(banner.watchlist && banner.watchlist[targetUid]);
 
     panel.innerHTML = `
       <div class="box">
-        <strong>Send to ${targetLabel}</strong>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <strong>Send to ${targetLabel}</strong>
+          <button class="pin-btn" style="font-size:12px;padding:4px 8px;">${isPinned ? '\u{1F4CC} Pinned (click to unpin)' : '\u{1F4CC} Pin to watchlist'}</button>
+        </div>
         ${sameTag ? `<div class="muted" style="color:var(--danger);font-weight:600;margin:6px 0;">\u26A0\uFE0F Same alliance tag as you [${banner.tag}] — this looks like an ally.</div>` : ''}
         <div class="muted" style="margin:8px 0;">
           Last known: ${targetTroopBits} &middot; Wall level ${wallLevel} &middot; ~${approxLoot} resources on hand
@@ -1077,7 +1113,13 @@
     }
     const giftBtn = panel.querySelector('.gift-btn');
     if (giftBtn) giftBtn.addEventListener('click', () => sendResourceGift(targetUid, target, readResAmounts()));
+    panel.querySelector('.pin-btn').addEventListener('click', async () => { await togglePin(targetUid); selectTarget(targetUid); });
     panel.querySelector('.cancel-btn').addEventListener('click', () => { panel.innerHTML = ''; });
+  }
+
+  async function togglePin(targetUid) {
+    const isPinned = !!(latestBanners[myUid]?.watchlist && latestBanners[myUid].watchlist[targetUid]);
+    await db.ref(`banners/${myUid}/watchlist/${targetUid}`).set(isPinned ? null : true);
   }
 
   async function sendResourceGift(targetUid, target, amounts) {
@@ -1695,4 +1737,5 @@
 </script>
 </body>
 </html>
+
 
