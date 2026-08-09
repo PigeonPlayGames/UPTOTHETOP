@@ -225,6 +225,12 @@
     </div>
 
     <div class="panel">
+      <h3>Nearby Villages</h3>
+      <p class="muted" style="margin-top:0;font-size:12px;">Your closest neighbors — click one to jump there and raid or support.</p>
+      <div id="nearby-list"></div>
+    </div>
+
+    <div class="panel">
       <h3>Buildings</h3>
       <div id="building-list"></div>
       <h3 style="margin-top:14px;font-size:13px;">Build Queue</h3>
@@ -263,7 +269,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v37</div>
+  <div id="build-tag">build: realm-v38</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -657,6 +663,35 @@
       box.appendChild(div);
     });
     if (rows.length === 0) box.innerHTML = '<div class="muted">No lords yet.</div>';
+
+    renderNearbyVillages();
+  }
+
+  function renderNearbyVillages() {
+    const box = document.getElementById('nearby-list');
+    if (!box || !myLocalBanner) return;
+    const rows = Object.entries(latestBanners)
+      .filter(([uid]) => uid !== myUid)
+      .map(([uid, raw]) => ({ uid, name: raw.name, tag: raw.tag, distance: distanceTiles(myLocalBanner, raw) }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 6);
+
+    box.innerHTML = '';
+    rows.forEach((row) => {
+      const isAlly = myLocalBanner?.tag && row.tag && myLocalBanner.tag === row.tag;
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      div.style.cursor = 'pointer';
+      div.innerHTML = `<div>${row.tag ? `<span class="muted">[${row.tag}]</span> ` : ''}<strong>${row.name}</strong>${isAlly ? ' <span class="muted">(ally)</span>' : ''}</div><div class="muted">${row.distance.toFixed(1)} tiles away</div>`;
+      div.addEventListener('click', () => {
+        mapCenter = { x: latestBanners[row.uid].x, y: latestBanners[row.uid].y };
+        renderGrid();
+        selectTarget(row.uid);
+        document.getElementById('grid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      box.appendChild(div);
+    });
+    if (rows.length === 0) box.innerHTML = '<div class="muted">No other villages in the realm yet.</div>';
   }
 
   function renderMyStats() {
