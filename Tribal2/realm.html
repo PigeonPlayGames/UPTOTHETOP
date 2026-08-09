@@ -262,7 +262,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v35</div>
+  <div id="build-tag">build: realm-v36</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -335,6 +335,7 @@
   let myName = null;
   let latestBanners = {};
   let latestMovements = {};
+  const alertedMovementIds = new Set();
   let latestSupportStacks = {}; // { targetUid: { sourceUid: {fromName, ...one count per unit type} } }
   let myLocalBanner = null;
   let mapCenter = { x: Math.floor(GRID_SIZE / 2), y: Math.floor(GRID_SIZE / 2) };
@@ -1328,6 +1329,41 @@
     Object.entries(latestMovements).forEach(([id, m]) => resolveMovementIfDue(id, m, now));
     renderMovements();
     updateTitleAlert();
+    alertNewIncomingAttacks();
+  }
+
+  // Plays a short two-tone alert the first time a new incoming attack is
+  // spotted (not support, not a gift, not one we've already alerted for
+  // this session) — otherwise the 3-second poll would re-trigger it the
+  // whole time the raid is still traveling.
+  function alertNewIncomingAttacks() {
+    const now = Date.now();
+    Object.entries(latestMovements).forEach(([id, m]) => {
+      const isRealAttack = m.type !== 'support' && m.type !== 'recall' && m.type !== 'gift';
+      if (!m.resolved && m.toUid === myUid && m.arrivesAt > now && isRealAttack && !alertedMovementIds.has(id)) {
+        alertedMovementIds.add(id);
+        playRaidAlertSound();
+      }
+    });
+  }
+
+  function playRaidAlertSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') ctx.resume();
+      [[880, 0], [1046, 0.15]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.35);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.35);
+      });
+    } catch (err) { /* Web Audio unavailable or blocked — fail silently, the tab-title flash still works */ }
   }
 
   // Flashes the browser tab title when an actual attack (not support, not
@@ -1611,4 +1647,3 @@
 </script>
 </body>
 </html>
-
