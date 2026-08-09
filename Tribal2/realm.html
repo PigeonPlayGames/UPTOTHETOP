@@ -157,12 +157,12 @@
       <details>
         <summary>How to Play (click to expand)</summary>
         <div style="margin-top:12px;font-size:13px;">
-          <p class="muted"><strong>The loop:</strong> resources generate automatically &rarr; spend them on Buildings and Barracks &rarr; use the map to Attack (loot + weaken) or Support (reinforce an ally) &rarr; queue things up and come back later.</p>
+          <p class="muted"><strong>The loop:</strong> resources generate automatically &rarr; spend them on Buildings and Barracks &rarr; use the map to Attack, Support, or gift resources to allies &rarr; queue things up and come back later.</p>
           <p><strong>Buildings</strong></p>
           <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
             <li>Headquarters — speeds up all other building upgrades</li>
             <li>Timber Camp / Clay Pit / Iron Mine — boost that resource's production rate</li>
-            <li>Warehouse — raises how much of each resource you can store</li>
+            <li>Warehouse — raises how much of each resource you can store (numbers turn red when you're nearly full and wasting production)</li>
             <li>Farm — raises your population cap (how many troops you can have)</li>
             <li>Barracks — speeds up troop training</li>
             <li>Wall — boosts your defense when raided</li>
@@ -173,12 +173,26 @@
             <li>Swordsman — expensive, strongest attack, best for raiding</li>
             <li>Militia — cheap, fast, strong defense, but can't carry loot — a pure home guard</li>
           </ul>
-          <p><strong>Raiding</strong></p>
-          <ul class="muted" style="margin:0;padding-left:20px;">
+          <p><strong>Raiding &amp; Support</strong></p>
+          <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
             <li>Attacking sends troops on a real trip — travel time depends on distance</li>
             <li>Losses are proportional on both sides — a near-even fight hurts everyone, not just the loser</li>
-            <li>Support stations troops at another village to help defend it — recall them any time</li>
-            <li>Set an alliance tag in the Account panel to signal who you're playing with</li>
+            <li>Support stations troops at another village to help defend it — recall any time, or Recall All if you're supporting several</li>
+            <li>Set an alliance tag in the Account panel — same-tag villages show up blue on the map and get a friendly-fire warning before you attack them</li>
+            <li>Same-tag villages can also send each other resources directly from the raid panel</li>
+            <li>Every raid produces a full Battle Report — click one to expand the breakdown of troops, losses, and loot</li>
+          </ul>
+          <p><strong>The world</strong></p>
+          <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
+            <li>The realm is a 20&times;20 world — your map shows an 8&times;8 window into it, use the arrows or Recenter to look around</li>
+            <li>The World Overview mini-map below it shows every village at a glance — click a dot to jump there</li>
+            <li>Nearby Villages lists your closest neighbors; Watchlist lets you pin anyone regardless of distance — both jump straight to their raid panel</li>
+          </ul>
+          <p><strong>Staying informed</strong></p>
+          <ul class="muted" style="margin:0;padding-left:20px;">
+            <li>Realm Activity shows raids and support happening across the whole world, not just your own</li>
+            <li>The header shows how many lords are online right now</li>
+            <li>An incoming attack (not support, not a gift) flashes the browser tab and plays a sound once — mute it in the header if you'd rather not hear it</li>
           </ul>
         </div>
       </details>
@@ -275,7 +289,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v39</div>
+  <div id="build-tag">build: realm-v40</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1737,5 +1751,3 @@
 </script>
 </body>
 </html>
-
-
