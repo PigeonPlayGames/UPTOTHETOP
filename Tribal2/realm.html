@@ -289,7 +289,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v40</div>
+  <div id="build-tag">build: realm-v42</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -317,14 +317,18 @@
   const BASE_POP_CAP = 30;
   const SECONDS_PER_TILE = 3;
 
-  const UNIT_IDS = ['spearman', 'swordsman', 'militia'];
+  const UNIT_IDS = ['spearman', 'swordsman', 'militia', 'scout'];
   const UNITS = {
     spearman:  { name: 'Spearman',  wood: 20, clay: 10, iron: 5,  pop: 1, attack: 10, defense: 8,  carry: 15, trainSeconds: 15 },
     swordsman: { name: 'Swordsman', wood: 35, clay: 20, iron: 40, pop: 2, attack: 25, defense: 15, carry: 10, trainSeconds: 30 },
     militia:   { name: 'Militia',   wood: 10, clay: 15, iron: 5,  pop: 1, attack: 2,  defense: 12, carry: 0,  trainSeconds: 12 },
+    // Purely a reconnaissance unit — zero attack, zero defense, by design.
+    // Scouts never fight, so they're excluded from combat power on both
+    // sides wherever attack/defense get summed, and don't carry loot.
+    scout:     { name: 'Scout',     wood: 25, clay: 15, iron: 20, pop: 1, attack: 0,  defense: 0,  carry: 0,  trainSeconds: 10 },
   };
 
-  const BUILDING_IDS = ['headquarters', 'timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks'];
+  const BUILDING_IDS = ['headquarters', 'timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks', 'stable'];
   const BUILDINGS = {
     headquarters: { name: 'Headquarters', desc: 'Speeds up all construction.', wood: 70, clay: 60, iron: 50, baseTime: 25 },
     timber_camp: { name: 'Timber Camp', desc: 'Boosts wood production.', wood: 50, clay: 60, iron: 40, baseTime: 20 },
@@ -333,8 +337,14 @@
     warehouse:   { name: 'Warehouse',   desc: 'Increases storage capacity.', wood: 60, clay: 50, iron: 40, baseTime: 20 },
     wall:        { name: 'Wall',        desc: 'Boosts defense when raided.', wood: 50, clay: 100, iron: 20, baseTime: 25 },
     farm:        { name: 'Farm',        desc: 'Increases population capacity.', wood: 45, clay: 40, iron: 30, baseTime: 20 },
-    barracks:    { name: 'Barracks',    desc: 'Speeds up troop training.', wood: 55, clay: 45, iron: 35, baseTime: 20 },
+    barracks:    { name: 'Barracks',    desc: 'Speeds up training of Spearmen, Swordsmen, and Militia.', wood: 55, clay: 45, iron: 35, baseTime: 20 },
+    stable:      { name: 'Stable',      desc: 'Speeds up Scout training.', wood: 60, clay: 50, iron: 45, baseTime: 20 },
   };
+  // Which building's level speeds up which unit's training — Barracks
+  // covers the combat troops, Stable covers Scouts. Add future units
+  // (Light/Heavy Cavalry) to this map too, pointing at whichever building
+  // should speed them up.
+  const UNIT_SPEED_BUILDING = { spearman: 'barracks', swordsman: 'barracks', militia: 'barracks', scout: 'stable' };
   // Drop your own artwork in an "images" folder next to realm.html, named
   // to match these paths (or edit the paths here to match your own
   // filenames). Any building without a matching file just shows no image —
@@ -348,11 +358,13 @@
     wall: 'Artwork/Wall1.jpg',
     farm: 'Artwork/Farm1.jpg',
     barracks: 'Artwork/Barracks1.jpg',
+    stable: 'Artwork/Stable1.jpg',
   };
   const UNIT_IMAGES = {
     spearman: 'Artwork/Spearman1.jpg',
     swordsman: 'Artwork/Swordsman1.jpg',
     militia: 'Artwork/Militia1.jpg',
+    scout: 'Artwork/Scout1.jpg',
   };
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
@@ -408,8 +420,9 @@
   function popCap(buildings) {
     return Math.round(BASE_POP_CAP * (1 + (buildings.farm || 0) * 0.2));
   }
-  function trainSpeedMultiplier(buildings) {
-    return 1 + (buildings.barracks || 0) * 0.15;
+  function trainSpeedMultiplier(buildings, unitId) {
+    const speedBuilding = UNIT_SPEED_BUILDING[unitId] || 'barracks';
+    return 1 + (buildings[speedBuilding] || 0) * 0.15;
   }
   function buildSpeedMultiplier(buildings) {
     return 1 + (buildings.headquarters || 0) * 0.15;
@@ -870,11 +883,12 @@
     const cost = { wood: def.wood * qty, clay: def.clay * qty, iron: def.iron * qty };
     const affordable = resolved.resources.wood >= cost.wood && resolved.resources.clay >= cost.clay && resolved.resources.iron >= cost.iron;
     const popOk = popUsage(resolved.troops) + def.pop * qty <= resolved.popCap;
-    const effectiveSeconds = Math.round(def.trainSeconds / trainSpeedMultiplier(resolved.buildings));
-    const barracksLevel = resolved.buildings.barracks || 0;
+    const effectiveSeconds = Math.round(def.trainSeconds / trainSpeedMultiplier(resolved.buildings, id));
+    const speedBuildingId = UNIT_SPEED_BUILDING[id] || 'barracks';
+    const speedBuildingLevel = resolved.buildings[speedBuildingId] || 0;
 
     document.getElementById(`train-owned-${id}`).textContent = `(owned: ${owned})`;
-    document.getElementById(`train-time-${id}`).textContent = `${effectiveSeconds}s each` + (barracksLevel > 0 ? ` (Barracks lvl ${barracksLevel} boost applied)` : '');
+    document.getElementById(`train-time-${id}`).textContent = `${effectiveSeconds}s each` + (speedBuildingLevel > 0 ? ` (${BUILDINGS[speedBuildingId].name} lvl ${speedBuildingLevel} boost applied)` : '');
     document.getElementById(`train-status-${id}`).textContent = queueFull ? 'Train queue full.' : !popOk ? 'Would exceed population cap.' : !affordable ? `Costs ${cost.wood}w / ${cost.clay}c / ${cost.iron}i total.` : '';
     document.getElementById(`train-btn-${id}`).disabled = queueFull || !affordable || !popOk;
     qtyInput.disabled = queueFull;
@@ -897,13 +911,17 @@
   function renderMovements() {
     const now = Date.now();
     const box = document.getElementById('movements');
-    const mine = Object.entries(latestMovements).filter(([, m]) => !m.resolved && (m.fromUid === myUid || m.toUid === myUid));
+    // Scout missions only ever show up for the sender — a target seeing
+    // "incoming scouts" in their own list would defeat the point of
+    // scouting being a quiet, unannounced action.
+    const mine = Object.entries(latestMovements).filter(([, m]) => !m.resolved && (m.fromUid === myUid || (m.toUid === myUid && m.type !== 'scout')));
     box.innerHTML = '';
     mine.forEach(([, m]) => {
       const incoming = m.toUid === myUid;
       const isSupport = m.type === 'support';
       const isRecall = m.type === 'recall';
       const isGift = m.type === 'gift';
+      const isScout = m.type === 'scout';
       const div = document.createElement('div');
       div.className = 'move-line' + (incoming && !isSupport && !isRecall && !isGift ? ' incoming' : '');
       const timeLeft = formatDuration(m.arrivesAt - now);
@@ -913,6 +931,8 @@
         div.textContent = incoming
           ? `\u{1F381} Resources from ${m.fromName} arriving in ${timeLeft}`
           : `Resources on the way to ${m.toName} — arrives in ${timeLeft}`;
+      } else if (isScout) {
+        div.textContent = `\u{1F50D} Scouting ${m.toName} — report in ${timeLeft}`;
       } else if (incoming) {
         div.textContent = isSupport
           ? `\u{1F6E1}\uFE0F Support from ${m.fromName} arriving in ${timeLeft}`
@@ -978,6 +998,7 @@
     if (!banner) return null;
     const now = Date.now();
     const resolved = resolveBanner(banner, now);
+
     const updated = {
       ...banner,
       resources: resolved.resources, troops: resolved.troops,
@@ -1030,7 +1051,7 @@
     if (popUsage(banner.troops) + def.pop * qty > popCap(banner.buildings)) return;
 
     const now = Date.now();
-    const effectiveSeconds = def.trainSeconds / trainSpeedMultiplier(banner.buildings);
+    const effectiveSeconds = def.trainSeconds / trainSpeedMultiplier(banner.buildings, unitId);
     const startAfter = queue.length ? queue[queue.length - 1].finishesAt : now;
     const newQueue = [...queue, { unit: unitId, count: qty, finishesAt: startAfter + effectiveSeconds * qty * 1000 }];
     const update = {
@@ -1058,7 +1079,9 @@
 
     const panel = document.getElementById('raid-panel');
     const home = banner.troops;
-    const hasTroops = troopsTotal(home) > 0;
+    const combatUnitIds = UNIT_IDS.filter((id) => id !== 'scout');
+    const hasCombatTroops = combatUnitIds.some((id) => (home[id] || 0) > 0);
+    const hasScouts = (home.scout || 0) > 0;
 
     const now = Date.now();
     const targetResolved = resolveBanner(target, now);
@@ -1082,9 +1105,9 @@
           Last known: ${targetTroopBits} &middot; Wall level ${wallLevel} &middot; ~${approxLoot} resources on hand
           <br><span style="font-size:11px;">(may have changed since last sync — treat as an estimate)</span>
         </div>
-        ${hasTroops ? `
+        ${hasCombatTroops ? `
           <div class="troop-inputs">
-            ${UNIT_IDS.map((id) => `
+            ${combatUnitIds.map((id) => `
               <label>${UNITS[id].name} (have ${home[id] || 0}):
                 <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count" onfocus="this.select()">
               </label>
@@ -1094,7 +1117,17 @@
             <button class="attack-btn">Attack &#9876;&#65039;</button>
             <button class="support-btn">Send Support &#128737;&#65039;</button>
           </div>
-        ` : '<div class="muted">No troops at home to attack or support with.</div>'}
+        ` : '<div class="muted">No combat troops at home to attack or support with.</div>'}
+        ${hasScouts ? `
+          <div class="muted" style="margin:14px 0 6px;font-weight:600;">Send scouts</div>
+          <p class="muted" style="font-size:11px;margin:0 0 6px;">If you send more scouts than they currently have stationed at home, their resources and building levels get revealed in your event log. Scouts never fight and always return home safely, win or lose.</p>
+          <div class="troop-inputs">
+            <label>Scout (have ${home.scout || 0}): <input type="number" min="0" max="${home.scout || 0}" value="0" id="scout-count-input" onfocus="this.select()"></label>
+          </div>
+          <div class="actions">
+            <button class="scout-btn">Send Scouts &#128269;</button>
+          </div>
+        ` : '<p class="muted" style="font-size:11px;margin:10px 0 0;">Train scouts at your Stable to send scouting missions.</p>'}
         ${sameTag ? `
           <div class="muted" style="margin:14px 0 6px;font-weight:600;">Send resources to your ally</div>
           <div class="troop-inputs">
@@ -1121,12 +1154,20 @@
       panel.querySelectorAll('.send-res').forEach((input) => { amounts[input.dataset.res] = Math.max(0, parseInt(input.value, 10) || 0); });
       return amounts;
     };
-    if (hasTroops) {
+    if (hasCombatTroops) {
       panel.querySelector('.attack-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'attack'));
       panel.querySelector('.support-btn').addEventListener('click', () => sendMovement(targetUid, target, readCounts(), 'support'));
     }
     const giftBtn = panel.querySelector('.gift-btn');
     if (giftBtn) giftBtn.addEventListener('click', () => sendResourceGift(targetUid, target, readResAmounts()));
+    const scoutBtn = panel.querySelector('.scout-btn');
+    if (scoutBtn) {
+      scoutBtn.addEventListener('click', () => {
+        const scoutInput = document.getElementById('scout-count-input');
+        const count = Math.max(0, parseInt(scoutInput.value, 10) || 0);
+        sendMovement(targetUid, target, { scout: count }, 'scout');
+      });
+    }
     panel.querySelector('.pin-btn').addEventListener('click', async () => { await togglePin(targetUid); selectTarget(targetUid); });
     panel.querySelector('.cancel-btn').addEventListener('click', () => { panel.innerHTML = ''; });
   }
@@ -1182,7 +1223,8 @@
     });
 
     document.getElementById('raid-panel').innerHTML = '';
-    addLogLine(`${type === 'attack' ? 'Raid' : 'Support'} sent to ${target.name} — arriving in ${formatDuration(travelSeconds * 1000)}.`, false);
+    const actionLabel = type === 'attack' ? 'Raid' : type === 'scout' ? 'Scout mission' : 'Support';
+    addLogLine(`${actionLabel} sent to ${target.name} — arriving in ${formatDuration(travelSeconds * 1000)}.`, false);
     renderMyStats();
   }
 
@@ -1200,6 +1242,7 @@
     if (movement.type === 'support') { await resolveSupport(movement, now); return; }
     if (movement.type === 'recall') { await resolveRecall(movement, now); return; }
     if (movement.type === 'gift') { await resolveGift(movement, now); return; }
+    if (movement.type === 'scout') { await resolveScout(movement, now); return; }
 
     const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
     const targetRaw = targetSnap.val();
@@ -1359,6 +1402,49 @@
     postToGlobalFeed(`\u{1F381} ${movement.fromName} sent resources to ${movement.toName}.`);
   }
 
+  // Scouts carry no combat stats at all, so a scout mission is never a
+  // fight — it's a straight count comparison, checked against the
+  // defender's CURRENT scout count at the moment the mission arrives (not
+  // whatever it was when the scouts were sent). Win or lose, the scouts
+  // simply come home — there's no loss condition here, only success or
+  // failure to gather intel. Reveal goes to the attacker's own private
+  // event log only; nothing is posted anywhere public, and the defender
+  // is never told they were scouted.
+  async function resolveScout(movement, now) {
+    const targetSnap = await db.ref(`banners/${movement.toUid}`).get();
+    const targetRaw = targetSnap.val();
+    if (!targetRaw) return;
+    const target = resolveBanner(targetRaw, now);
+    const sentScouts = movement.troops.scout || 0;
+    const defendingScouts = target.troops.scout || 0;
+    const success = sentScouts > defendingScouts;
+
+    if (success) {
+      const buildingLines = BUILDING_IDS.map((id) => `${BUILDINGS[id].name} ${target.buildings[id] || 0}`).join(', ');
+      const resLine = `${Math.round(target.resources.wood)}w / ${Math.round(target.resources.clay)}c / ${Math.round(target.resources.iron)}i`;
+      await db.ref(`events/${movement.fromUid}`).push({
+        message: `\u{1F50D} Scout report on ${movement.toName} — SUCCESS (sent ${sentScouts} vs their ${defendingScouts} scouts). Resources: ${resLine}. Buildings: ${buildingLines}.`,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+      });
+    } else {
+      await db.ref(`events/${movement.fromUid}`).push({
+        message: `\u{1F50D} Scout mission to ${movement.toName} failed — they had ${defendingScouts} scouts of their own (you sent ${sentScouts}). Your scouts made it home safely.`,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+      });
+    }
+
+    const ownerSnap = await db.ref(`banners/${movement.fromUid}`).get();
+    const ownerRaw = ownerSnap.val();
+    if (!ownerRaw) return;
+    const owner = resolveBanner(ownerRaw, now);
+    await db.ref(`banners/${movement.fromUid}`).update({
+      troops: addTroops(owner.troops, movement.troops),
+      buildings: owner.buildings, buildQueue: owner.buildQueue, build: null,
+      trainQueue: owner.trainQueue, train: null,
+      lastUpdated: now,
+    });
+  }
+
   // Support troops now sit in their own tracked stack at the target's
   // village (supportStacks/{targetUid}/{sourceUid}) rather than merging
   // anonymously into the defender's own troops. That's what makes Recall
@@ -1442,7 +1528,7 @@
   function alertNewIncomingAttacks() {
     const now = Date.now();
     Object.entries(latestMovements).forEach(([id, m]) => {
-      const isRealAttack = m.type !== 'support' && m.type !== 'recall' && m.type !== 'gift';
+      const isRealAttack = m.type !== 'support' && m.type !== 'recall' && m.type !== 'gift' && m.type !== 'scout';
       if (!m.resolved && m.toUid === myUid && m.arrivesAt > now && isRealAttack && !alertedMovementIds.has(id)) {
         alertedMovementIds.add(id);
         playRaidAlertSound();
@@ -1477,7 +1563,7 @@
   function updateTitleAlert() {
     const now = Date.now();
     const hasIncomingAttack = Object.values(latestMovements).some((m) =>
-      !m.resolved && m.toUid === myUid && m.arrivesAt > now && m.type !== 'support' && m.type !== 'recall' && m.type !== 'gift');
+      !m.resolved && m.toUid === myUid && m.arrivesAt > now && m.type !== 'support' && m.type !== 'recall' && m.type !== 'gift' && m.type !== 'scout');
     document.title = (hasIncomingAttack && document.hidden) ? `\u26A0\uFE0F Incoming Raid! \u2014 ${ORIGINAL_TITLE}` : ORIGINAL_TITLE;
   }
   document.addEventListener('visibilitychange', updateTitleAlert);
