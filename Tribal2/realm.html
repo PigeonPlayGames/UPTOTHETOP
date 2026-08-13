@@ -157,14 +157,15 @@
       <details>
         <summary>How to Play (click to expand)</summary>
         <div style="margin-top:12px;font-size:13px;">
-          <p class="muted"><strong>The loop:</strong> resources generate automatically &rarr; spend them on Buildings and Barracks &rarr; use the map to Attack, Support, or gift resources to allies &rarr; queue things up and come back later.</p>
+          <p class="muted"><strong>The loop:</strong> resources generate automatically &rarr; spend them on Buildings, Barracks, and Stable &rarr; use the map to Attack, Support, Scout, or gift resources to allies &rarr; queue things up and come back later.</p>
           <p><strong>Buildings</strong></p>
           <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
             <li>Headquarters — speeds up all other building upgrades</li>
             <li>Timber Camp / Clay Pit / Iron Mine — boost that resource's production rate</li>
             <li>Warehouse — raises how much of each resource you can store (numbers turn red when you're nearly full and wasting production)</li>
             <li>Farm — raises your population cap (how many troops you can have)</li>
-            <li>Barracks — speeds up troop training</li>
+            <li>Barracks — speeds up training of Spearmen, Swordsmen, and Militia</li>
+            <li>Stable — speeds up Scout training</li>
             <li>Wall — boosts your defense when raided</li>
           </ul>
           <p><strong>Troops</strong></p>
@@ -172,6 +173,7 @@
             <li>Spearman — cheap, balanced, decent at everything</li>
             <li>Swordsman — expensive, strongest attack, best for raiding</li>
             <li>Militia — cheap, fast, strong defense, but can't carry loot — a pure home guard</li>
+            <li>Scout — no attack, no defense, no carry. Purely for reconnaissance — see "Scouting" below</li>
           </ul>
           <p><strong>Raiding &amp; Support</strong></p>
           <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
@@ -181,6 +183,12 @@
             <li>Set an alliance tag in the Account panel — same-tag villages show up blue on the map and get a friendly-fire warning before you attack them</li>
             <li>Same-tag villages can also send each other resources directly from the raid panel</li>
             <li>Every raid produces a full Battle Report — click one to expand the breakdown of troops, losses, and loot</li>
+          </ul>
+          <p><strong>Scouting</strong></p>
+          <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
+            <li>Send scouts to a village from its raid panel — if you send more than they currently have stationed at home, their exact resources and every building's level get revealed to you</li>
+            <li>The reveal goes to your own event log only — it's never shown anywhere public, and the target is never told they were scouted</li>
+            <li>Scouts never fight and always return home safely, whether the mission succeeds or fails</li>
           </ul>
           <p><strong>The world</strong></p>
           <ul class="muted" style="margin:0 0 10px;padding-left:20px;">
@@ -289,7 +297,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v42</div>
+  <div id="build-tag">build: realm-v44</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -327,6 +335,12 @@
     // sides wherever attack/defense get summed, and don't carry loot.
     scout:     { name: 'Scout',     wood: 25, clay: 15, iron: 20, pop: 1, attack: 0,  defense: 0,  carry: 0,  trainSeconds: 10 },
   };
+  // Derived, not hardcoded — a unit counts as a combat unit if it has any
+  // attack or defense at all. This is what keeps Scout out of the
+  // leaderboard's troop-power score and out of the Attack/Support troop
+  // list, without needing a name-based exclusion that could go stale if
+  // another non-combat unit (or a new combat one, like Cavalry) shows up.
+  const COMBAT_UNIT_IDS = UNIT_IDS.filter((id) => UNITS[id].attack > 0 || UNITS[id].defense > 0);
 
   const BUILDING_IDS = ['headquarters', 'timber_camp', 'clay_pit', 'iron_mine', 'warehouse', 'wall', 'farm', 'barracks', 'stable'];
   const BUILDINGS = {
@@ -636,7 +650,10 @@
   // fluctuate constantly and shouldn't dominate a ranking).
   function computeScore(resolved) {
     const buildingScore = BUILDING_IDS.reduce((s, id) => s + (resolved.buildings[id] || 0), 0);
-    const troopScore = popUsage(resolved.troops);
+    // Only combat troops count toward power — otherwise a wall of cheap,
+    // harmless Scouts would inflate this exactly like a wall of Spearmen,
+    // despite contributing nothing to actual strength.
+    const troopScore = COMBAT_UNIT_IDS.reduce((s, id) => s + (resolved.troops[id] || 0) * UNITS[id].pop, 0);
     const resourceScore = Math.floor((resolved.resources.wood + resolved.resources.clay + resolved.resources.iron) / 50);
     return buildingScore * 20 + troopScore * 10 + resourceScore;
   }
@@ -648,8 +665,8 @@
     { icon: '\u{1F3D7}\uFE0F', name: 'Village Builder', desc: 'Any building at level 3+', check: (r) => Object.values(r.buildings).some((lvl) => lvl >= 3) },
     { icon: '\u{1F3F0}', name: 'Master Builder', desc: 'Any building at level 8+', check: (r) => Object.values(r.buildings).some((lvl) => lvl >= 8) },
     { icon: '\u{1F3E1}', name: 'Homesteader', desc: 'Every building started', check: (r) => BUILDING_IDS.every((id) => (r.buildings[id] || 0) >= 1) },
-    { icon: '\u2694\uFE0F', name: 'Growing Army', desc: '10+ troops trained', check: (r) => troopsTotal(r.troops) >= 10 },
-    { icon: '\u{1F6E1}\uFE0F', name: 'War Host', desc: '30+ troops trained', check: (r) => troopsTotal(r.troops) >= 30 },
+    { icon: '\u2694\uFE0F', name: 'Growing Army', desc: '10+ combat troops trained', check: (r) => COMBAT_UNIT_IDS.reduce((s, id) => s + (r.troops[id] || 0), 0) >= 10 },
+    { icon: '\u{1F6E1}\uFE0F', name: 'War Host', desc: '30+ combat troops trained', check: (r) => COMBAT_UNIT_IDS.reduce((s, id) => s + (r.troops[id] || 0), 0) >= 30 },
     { icon: '\u{1F4E6}', name: 'Stockpiler', desc: 'Storage capacity reached 1000+', check: (r) => r.cap >= 1000 },
     { icon: '\u{1F91D}', name: 'Allied', desc: 'Set an alliance tag', check: (r, banner) => !!banner.tag },
     { icon: '\u{1F3C6}', name: 'On the Board', desc: 'Reached top 3 on the leaderboard', check: (r, banner, rank) => rank !== null && rank <= 3 },
@@ -1079,8 +1096,7 @@
 
     const panel = document.getElementById('raid-panel');
     const home = banner.troops;
-    const combatUnitIds = UNIT_IDS.filter((id) => id !== 'scout');
-    const hasCombatTroops = combatUnitIds.some((id) => (home[id] || 0) > 0);
+    const hasCombatTroops = COMBAT_UNIT_IDS.some((id) => (home[id] || 0) > 0);
     const hasScouts = (home.scout || 0) > 0;
 
     const now = Date.now();
@@ -1107,7 +1123,7 @@
         </div>
         ${hasCombatTroops ? `
           <div class="troop-inputs">
-            ${combatUnitIds.map((id) => `
+            ${COMBAT_UNIT_IDS.map((id) => `
               <label>${UNITS[id].name} (have ${home[id] || 0}):
                 <input type="number" min="0" max="${home[id] || 0}" value="0" data-unit="${id}" class="send-count" onfocus="this.select()">
               </label>
