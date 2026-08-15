@@ -51,7 +51,8 @@
   #grid {
     display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; padding:1px; border-radius:4px;
     background-color:var(--bg-deep);
-    background-image:url('Artwork/Grass2.png'); background-repeat:repeat;
+    background-image:url('Artwork/Grass1.jpg'); background-repeat:repeat;
+    transition:background-position 0.35s ease;
   }
   .cell {
     aspect-ratio:1; background:transparent; border-radius:2px;
@@ -330,7 +331,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v50</div>
+  <div id="build-tag">build: realm-v51</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -629,6 +630,18 @@
         cells[`${x}_${y}`] = cell;
       }
     }
+
+    // Shift the grass texture in lockstep with how far we've panned, so
+    // moving across the world actually scrolls the landscape rather than
+    // leaving the same static backdrop behind different villages. The
+    // per-tile step is measured from the grid's own rendered width rather
+    // than assumed, since cell size varies with viewport/screen width.
+    const gridRect = grid.getBoundingClientRect();
+    if (gridRect.width > 0) {
+      const cellStep = gridRect.width / VIEWPORT_SIZE;
+      grid.style.backgroundPosition = `${-startX * cellStep}px ${-startY * cellStep}px`;
+    }
+
     Object.entries(latestBanners).forEach(([uid, b]) => {
       const cell = cells[`${b.x}_${b.y}`];
       if (!cell) return; // outside the current viewport — still counted below, just not drawn
