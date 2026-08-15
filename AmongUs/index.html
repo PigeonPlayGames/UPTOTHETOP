@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Vessel 9 — Crew Deception</title>
+<!--
+  ============================================================================
+  VESSEL 9 — an Among Us style social-deduction game
+  Single file: HTML + CSS + JS + Firebase Realtime Database
+  ============================================================================
+
+  SETUP (5 minutes)
+  -----------------
+  1. Firebase console -> your project -> Build -> Authentication -> Sign-in
+     method -> enable "Anonymous".
+  2. Build -> Realtime Database -> Create database (any region).
+  3. Paste your web-app config into the FB object at the top of the script
+     below. The databaseURL is the one that ENDS IN .firebasedatabase.app or
+     .firebaseio.com — not the firestore one.
+  4. Realtime Database -> Rules, paste this and Publish:
+
+     {
+       "rules": {
+         "rooms": {
+           "$room": {
+             ".read": "auth != null",
+             ".write": "auth != null",
+             ".indexOn": ["joinedAt"]
+           }
+         }
+       }
+     }
+
+  5. Upload this file anywhere that serves over https (GitHub Pages works),
+     open it in two tabs or two devices, create a room in one and join with
+     the code in the other.
+
+  DATA SHAPE
+  ----------
+  rooms/{CODE}/meta      { host, state, sabotage, winner, reason, startedAt }
+  rooms/{CODE}/players/{uid}  { name,color,x,y,f,alive,role,taskList,tasks,usedEmergency }
+  rooms/{CODE}/bodies/{uid}   { x,y,color,name }
+  rooms/{CODE}/meeting        { type, by, endsAt, votes/{uid}: targetUid|"skip" }
+  rooms/{CODE}/chat/{pushId}  { uid,name,text,ts,dead,sys,color }
+-->
+<style>
+  :root{
+    --void:#070b14;
+    --hull:#131a2b;
+    --plate:#1a2338;
+    --line:#2b3a57;
+    --signal:#4de3ff;
+    --amber:#ffb545;
+    --hazard:#ff4d5e;
+    --bone:#e8edf7;
+    --dim:#7b8aa8;
+    --stencil:"Arial Narrow","Helvetica Neue",Arial,system-ui,sans-serif;
+    --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --cut:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--void);color:var(--bone);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+  button{font-family:var(--stencil);cursor:pointer;color:inherit}
+  input{font-family:var(--body)}
+
+  /* ---- hull plate: the signature chrome. cut corners, no rounded cards ---- */
+  .plate{
+    background:linear-gradient(180deg,var(--plate),var(--hull));
+    border:1px solid var(--line);
+    clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut));
+    position:relative;
+  }
+  .plate::before{
+    content:attr(data-code);
+    position:absolute;top:8px;right:12px;
+    font-family:var(--mono);font-size:9px;letter-spacing:.22em;color:var(--dim);opacity:.65;
+    pointer-events:none;
+  }
+  .stencil{font-family:var(--stencil);text-transform:uppercase;letter-spacing:.22em;font-weight:700}
+
+  /* ---- join screen ---- */
+  #join{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;
+    background:radial-gradient(ellipse at 50% 0%,#16203a 0%,var(--void) 62%)}
+  #joinCard{width:min(440px,100%);padding:26px 24px 24px}
+  .brand{font-family:var(--stencil);text-transform:uppercase;font-weight:700;font-size:clamp(34px,9vw,52px);
+    letter-spacing:.06em;line-height:.94;margin:0}
+  .brand span{color:var(--signal)}
+  .kicker{font-family:var(--mono);font-size:10px;letter-spacing:.3em;color:var(--dim);margin:0 0 14px}
+  .hz{height:9px;margin:16px 0 18px;
+    background:repeating-linear-gradient(115deg,var(--amber) 0 12px,#0d1322 12px 24px);opacity:.85}
+  label{display:block;font-family:var(--stencil);text-transform:uppercase;letter-spacing:.18em;font-size:11px;color:var(--dim);margin:14px 0 6px}
+  .field{width:100%;padding:12px 13px;background:#0c1220;border:1px solid var(--line);color:var(--bone);font-size:16px;outline:none}
+  .field:focus{border-color:var(--signal);box-shadow:0 0 0 2px rgba(77,227,255,.15)}
+  #code{font-family:var(--mono);text-transform:uppercase;letter-spacing:.4em;font-size:22px;text-align:center}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  .btn{padding:13px 16px;background:#0e1626;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.16em;font-size:12px;font-weight:700;transition:.15s}
+  .btn:hover{border-color:var(--signal);color:var(--signal)}
+  .btn.primary{background:var(--signal);color:#04121a;border-color:var(--signal)}
+  .btn.primary:hover{filter:brightness(1.12);color:#04121a}
+  .btn.danger{background:#2a0e14;border-color:#5e2029;color:#ff8b96}
+  .btn.danger:hover{background:var(--hazard);color:#170406;border-color:var(--hazard)}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .note{font-size:12px;color:var(--dim);line-height:1.55;margin-top:14px}
+  #joinErr{color:var(--hazard);font-size:13px;min-height:18px;margin-top:10px}
+
+  /* ---- game ---- */
+  #game{position:fixed;inset:0;display:none}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+  #top{position:absolute;top:0;left:0;right:0;display:flex;gap:8px;align-items:stretch;padding:8px;pointer-events:none}
+  #top>*{pointer-events:auto}
+  #bar{flex:1;padding:9px 12px 10px}
+  .barlab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--dim)}
+  #prog{height:7px;background:#0a1120;border:1px solid var(--line);margin-top:6px}
+  #progFill{height:100%;width:0%;background:var(--signal);transition:width .3s}
+  #roomTag{padding:9px 14px;font-family:var(--mono);font-size:13px;letter-spacing:.3em;color:var(--signal);display:flex;align-items:center}
+  #leaveBtn{padding:0 12px;font-size:11px;letter-spacing:.14em}
+
+  #roleTag{position:absolute;top:56px;left:8px;padding:6px 12px;font-size:11px}
+  #alert{position:absolute;top:56px;left:50%;transform:translateX(-50%);padding:8px 16px;font-size:12px;
+    background:#2a0e14;border:1px solid var(--hazard);color:#ff97a1;display:none;letter-spacing:.16em}
+
+  #tasks{position:absolute;top:92px;left:8px;width:210px;padding:12px 12px 10px;font-size:12px;display:none}
+  #tasks h4{margin:0 0 8px;font-size:10px;letter-spacing:.24em;color:var(--dim)}
+  .task{display:flex;gap:7px;padding:3px 0;color:#c3cee2;line-height:1.35}
+  .task b{color:var(--dim);font-weight:600;font-family:var(--mono);font-size:10px;letter-spacing:.06em}
+  .task.done{color:#55637d;text-decoration:line-through}
+
+  #chat{position:absolute;left:8px;bottom:8px;width:min(340px,64vw);display:flex;flex-direction:column;
+    background:linear-gradient(180deg,rgba(19,26,43,.5),rgba(10,15,26,.86));border:1px solid var(--line);
+    clip-path:polygon(var(--cut) 0,100% 0,100% 100%,0 100%,0 var(--cut))}
+  #log{height:150px;overflow-y:auto;padding:9px 11px;font-size:13px;line-height:1.45;scrollbar-width:thin}
+  #log div{margin-bottom:3px;word-wrap:break-word}
+  #log .sys{color:var(--amber);font-family:var(--mono);font-size:11px;letter-spacing:.05em}
+  #log .ghost{opacity:.75;font-style:italic}
+  #log b{font-weight:700}
+  #chatRow{display:flex;border-top:1px solid var(--line)}
+  #msg{flex:1;padding:10px 11px;background:transparent;border:0;color:var(--bone);outline:none;font-size:15px}
+  #sendBtn{padding:0 15px;background:transparent;border:0;border-left:1px solid var(--line);color:var(--signal);font-size:11px;letter-spacing:.14em}
+
+  #acts{position:absolute;right:10px;bottom:14px;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+  .act{width:78px;height:78px;border-radius:50%;border:2px solid var(--line);background:#111a2b;
+    font-size:11px;letter-spacing:.1em;line-height:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    text-transform:uppercase;font-weight:700;position:relative;overflow:hidden}
+  .act small{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.05em}
+  .act:disabled{opacity:.35}
+  .act.use{border-color:var(--signal);color:var(--signal)}
+  .act.rep{border-color:var(--amber);color:var(--amber)}
+  .act.kill{border-color:var(--hazard);color:#ff8b96}
+  .act.sab{border-color:#a86bff;color:#c9a4ff}
+  #cdMask{position:absolute;inset:0;background:rgba(6,10,18,.78);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:19px;color:var(--bone)}
+
+  #stick{position:absolute;left:16px;bottom:176px;width:132px;height:132px;border-radius:50%;
+    border:1px solid var(--line);background:rgba(12,18,32,.5);display:none;touch-action:none}
+  #knob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;
+    background:rgba(77,227,255,.18);border:2px solid var(--signal)}
+
+  /* ---- overlays ---- */
+  .ov{position:fixed;inset:0;background:rgba(4,7,14,.9);display:none;align-items:center;justify-content:center;padding:16px;z-index:20;overflow:auto}
+  .ov.on{display:flex}
+  .panel{width:min(560px,100%);padding:22px}
+  .panel h2{font-family:var(--stencil);text-transform:uppercase;letter-spacing:.16em;margin:0 0 4px;font-size:24px}
+  .panel .sub{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--dim);margin-bottom:16px}
+
+  .crewgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+  .crewRow{display:flex;align-items:center;gap:9px;padding:8px 10px;background:#0d1424;border:1px solid var(--line);font-size:14px}
+  .crewRow.dead{opacity:.42}
+  .crewRow.me{border-color:var(--signal)}
+  .dot{width:16px;height:16px;border-radius:5px;flex:none;border:1px solid rgba(0,0,0,.5)}
+  .crewRow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .voteBtn{padding:5px 9px;font-size:10px;letter-spacing:.1em;background:#12203a;border:1px solid var(--line)}
+  .voteBtn:hover{border-color:var(--signal);color:var(--signal)}
+  .tally{font-family:var(--mono);font-size:11px;color:var(--amber);min-width:22px;text-align:right}
+  #voteTimer{font-family:var(--mono);font-size:28px;color:var(--amber);letter-spacing:.08em}
+
+  /* ---- task minigames ---- */
+  #mini{width:340px;padding:20px}
+  #miniBody{position:relative;height:280px;margin-top:12px}
+  #holdBtn{position:absolute;inset:0;background:#0d1424;border:2px solid var(--signal);color:var(--signal);
+    font-size:14px;letter-spacing:.18em;display:flex;align-items:center;justify-content:center}
+  #holdFill{position:absolute;left:0;bottom:0;width:0%;height:100%;background:rgba(77,227,255,.18);pointer-events:none;transition:width .08s linear}
+  .wire{position:absolute;width:64px;height:44px;border:2px solid rgba(255,255,255,.25)}
+  .wire.sel{outline:2px solid var(--bone);outline-offset:2px}
+  .wire.done{opacity:.35}
+  .key{position:absolute;width:66px;height:56px;background:#0d1424;border:1px solid var(--line);
+    font-family:var(--mono);font-size:20px;color:var(--bone)}
+  .key.hit{background:var(--signal);color:#04121a;border-color:var(--signal)}
+  #track{position:absolute;left:0;right:0;top:120px;height:14px;background:#0d1424;border:1px solid var(--line)}
+  #target{position:absolute;top:100px;width:4px;height:54px;background:var(--amber)}
+  #handle{position:absolute;top:106px;width:34px;height:42px;background:#1b2b46;border:2px solid var(--signal);touch-action:none}
+  #miniHint{font-size:12px;color:var(--dim);margin-top:12px;text-align:center;min-height:16px}
+  @media (max-width:640px){
+    #tasks{display:none!important}
+    #chat{width:58vw}
+    #log{height:104px}
+    .act{width:64px;height:64px;font-size:10px}
+    .crewgrid{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ===================== JOIN ===================== -->
+<div id="join">
+  <div id="joinCard" class="plate" data-code="AIRLOCK-01">
+    <p class="kicker">DEEP SPACE VESSEL 9 · CREW MANIFEST</p>
+    <h1 class="brand">Crew<span>mates</span><br>&amp; Liars</h1>
+    <div class="hz"></div>
+
+    <label for="name">Crew name</label>
+    <input id="name" class="field" maxlength="12" placeholder="Enter your name" autocomplete="off">
+
+    <label for="code">Room code</label>
+    <input id="code" class="field" maxlength="4" placeholder="ABCD" autocomplete="off">
+
+    <div class="row" style="margin-top:18px">
+      <button id="joinBtn" class="btn primary">Join room</button>
+      <button id="hostBtn" class="btn">Create room</button>
+    </div>
+    <div id="joinErr"></div>
+    <p class="note">
+      Move with <b>WASD</b> or the arrow keys. Crewmates finish tasks around the ship.
+      Impostors kill quietly and lie about it. Anyone can call a meeting and vote someone
+      out of the airlock.<br><br>
+      Works best with 4&ndash;10 people. Share the room code to bring them in.
+    </p>
+  </div>
+</div>
+
+<!-- ===================== GAME ===================== -->
+<div id="game">
+  <canvas id="cv"></canvas>
+
+  <div id="top">
+    <div id="bar" class="plate" data-code="TSK">
+      <div class="barlab"><span id="barTitle">TASK COMPLETION</span><span id="barPct">0%</span></div>
+      <div id="prog"><div id="progFill"></div></div>
+    </div>
+    <div id="roomTag" class="plate" data-code=""><span id="roomCode">----</span></div>
+    <button id="leaveBtn" class="btn">Leave</button>
+  </div>
+
+  <div id="roleTag" class="plate stencil" data-code="">CREWMATE</div>
+  <div id="alert" class="stencil">LIGHTS SABOTAGED — FIX IN ELECTRICAL</div>
+
+  <div id="tasks" class="plate" data-code="MAN-04"><h4>YOUR TASKS</h4><div id="taskList"></div></div>
+
+  <div id="chat">
+    <div id="log"></div>
+    <div id="chatRow">
+      <input id="msg" maxlength="140" placeholder="Say something…" autocomplete="off">
+      <button id="sendBtn" class="stencil">Send</button>
+    </div>
+  </div>
+
+  <div id="stick"><div id="knob"></div></div>
+
+  <div id="acts">
+    <button id="sabBtn" class="act sab">Sabotage<small>lights</small></button>
+    <button id="killBtn" class="act kill">Kill<small>Q</small><span id="cdMask" style="display:none"></span></button>
+    <button id="repBtn" class="act rep">Report<small>R</small></button>
+    <button id="useBtn" class="act use">Use<small>E</small></button>
+  </div>
+</div>
+
+<!-- ===================== LOBBY ===================== -->
+<div id="lobbyOv" class="ov">
+  <div class="panel plate" data-code="AIRLOCK-02">
+    <h2>Waiting to launch</h2>
+    <div class="sub">ROOM <span id="lobbyCode" style="color:var(--signal)"></span> · SHARE THIS CODE</div>
+    <div id="crewLobby"></div>
+    <div class="hz"></div>
+    <div class="row">
+      <button id="startBtn" class="btn primary">Start game</button>
+      <button id="closeLobby" class="btn">Walk around</button>
+    </div>
+    <p class="note" id="lobbyNote">You are the host. Start when everyone is aboard.</p>
+  </div>
+</div>
+
+<!-- ===================== MEETING ===================== -->
+<div id="meetOv" class="ov">
+  <div class="panel plate" data-code="MEET-07">
+    <h2 id="meetTitle">Emergency meeting</h2>
+    <div class="sub"><span id="meetSub">DISCUSS · THEN VOTE</span> · <span id="voteTimer">45</span>s</div>
+    <div id="crew" class="crewgrid"></div>
+    <button id="skipBtn" class="btn" style="width:100%">Skip vote</button>
+    <p class="note" id="voteNote">Talk it out in chat, then vote. Ties skip.</p>
+  </div>
+</div>
+
+<!-- ===================== TASK MINIGAME ===================== -->
+<div id="taskOv" class="ov">
+  <div id="mini" class="panel plate" data-code="SYS">
+    <h2 id="miniTitle" style="font-size:19px">Task</h2>
+    <div class="sub" id="miniSub">SHIP SYSTEMS</div>
+    <div id="miniBody"></div>
+    <div id="miniHint"></div>
+    <button id="miniClose" class="btn" style="width:100%;margin-top:12px">Close</button>
+  </div>
+</div>
+
+<!-- ===================== END ===================== -->
+<div id="endOv" class="ov">
+  <div class="panel plate" data-code="RESULT">
+    <h2 id="endTitle">Crewmates win</h2>
+    <div class="sub" id="endSub"></div>
+    <div id="endCrew"></div>
+    <div class="hz"></div>
+    <button id="againBtn" class="btn primary" style="width:100%">Back to lobby</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+/* ============================================================================
+   1. CONFIG  — paste your own Firebase web config here
+   ========================================================================== */
+const FB = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  appId: "YOUR_APP_ID"
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+/* Guard the SDK exactly like a flaky CDN load deserves: if firebase never
+   arrived, say so on the page instead of dying silently. */
+let db, auth;
+try {
+  if (typeof firebase === "undefined") throw new Error("Firebase SDK did not load");
+  firebase.initializeApp(FB);
+  db = firebase.database();
+  auth = firebase.auth();
+} catch (e) {
+  document.body.innerHTML =
+    '<div style="padding:40px;font:16px system-ui;color:#e8edf7;max-width:560px">' +
+    '<h2 style="color:#ff4d5e">Couldn\'t connect to Firebase</h2>' +
+    '<p>' + e.message + '</p><p style="color:#7b8aa8">Check that your config is filled in near the ' +
+    'top of the script, that Anonymous sign-in is enabled, and that no extension is blocking ' +
+    'www.gstatic.com.</p></div>';
+  throw e;
+}
+
+/* ============================================================================
+   2. CONSTANTS
+   ========================================================================== */
+const PLAYER_R = 18, SPEED = 215, NET_MS = 70;
+const KILL_RANGE = 96, KILL_CD = 25, SAB_CD = 30;
+const USE_RANGE = 78, REPORT_RANGE = 120;
+const VOTE_SECONDS = 45, TASKS_PER_PLAYER = 6;
+const VISION = 330, VISION_IMP = 460, VISION_DARK = 130;
+
+const COLORS = [
+  ["Red", "#ff4d5e"], ["Blue", "#3d7bff"], ["Green", "#2fd07a"], ["Pink", "#ff7fd0"],
+  ["Orange", "#ff9c3d"], ["Yellow", "#ffe14d"], ["Cyan", "#4de3ff"], ["Lime", "#b6ff45"],
+  ["Purple", "#a86bff"], ["White", "#e8edf7"]
+];
+
+const ROOMS = [
+  { n: "Cafeteria",      x: 1000, y: 120,  w: 520, h: 420 },
+  { n: "Weapons",        x: 1700, y: 150,  w: 360, h: 280 },
+  { n: "Navigation",     x: 2180, y: 500,  w: 300, h: 240 },
+  { n: "Admin",          x: 1600, y: 620,  w: 300, h: 220 },
+  { n: "Shields",        x: 1750, y: 900,  w: 340, h: 280 },
+  { n: "Communications", x: 1350, y: 1150, w: 320, h: 220 },
+  { n: "Storage",        x: 1000, y: 900,  w: 420, h: 400 },
+  { n: "Electrical",     x: 600,  y: 900,  w: 320, h: 260 },
+  { n: "Lower Engine",   x: 180,  y: 950,  w: 360, h: 280 },
+  { n: "Reactor",        x: 60,   y: 620,  w: 240, h: 300 },
+  { n: "Upper Engine",   x: 180,  y: 300,  w: 360, h: 280 },
+  { n: "Security",       x: 600,  y: 560,  w: 260, h: 220 },
+  { n: "MedBay",         x: 680,  y: 200,  w: 280, h: 260 }
+];
+
+/* Corridors overlap the rooms they join by 60px so the walkable union stays
+   connected once every rect is shrunk by the player radius. */
+const HALLS = [
+  { x: 1460, y: 250,  w: 300, h: 80  },  // cafeteria - weapons
+  { x: 900,  y: 320,  w: 220, h: 80  },  // cafeteria - medbay
+  { x: 480,  y: 340,  w: 260, h: 80  },  // medbay - upper engine
+  { x: 180,  y: 520,  w: 80,  h: 160 },  // upper engine - reactor
+  { x: 180,  y: 860,  w: 80,  h: 150 },  // reactor - lower engine
+  { x: 480,  y: 1020, w: 180, h: 80  },  // lower engine - electrical
+  { x: 860,  y: 1000, w: 200, h: 80  },  // electrical - storage
+  { x: 1150, y: 480,  w: 90,  h: 480 },  // storage - cafeteria
+  { x: 800,  y: 600,  w: 410, h: 80  },  // security - main spine
+  { x: 1360, y: 1200, w: 120, h: 80  },  // storage - communications
+  { x: 1360, y: 1000, w: 450, h: 80  },  // storage - shields
+  { x: 1780, y: 780,  w: 80,  h: 180 },  // admin - shields
+  { x: 1840, y: 660,  w: 400, h: 80  },  // admin - navigation
+  { x: 1400, y: 460,  w: 280, h: 80  },  // cafeteria - admin (leg 1)
+  { x: 1620, y: 460,  w: 80,  h: 220 },  // cafeteria - admin (leg 2)
+  { x: 2000, y: 280,  w: 300, h: 80  },  // weapons - navigation (leg 1)
+  { x: 2220, y: 300,  w: 80,  h: 260 }   // weapons - navigation (leg 2)
+];
+
+const TASKS = [
+  { id: "t1",  r: "MedBay",         n: "Submit Scan",           x: 820,  y: 300,  t: "hold" },
+  { id: "t2",  r: "Electrical",     n: "Fix Wiring",            x: 680,  y: 1030, t: "wires" },
+  { id: "t3",  r: "Electrical",     n: "Calibrate Distributor", x: 860,  y: 960,  t: "slider" },
+  { id: "t4",  r: "Upper Engine",   n: "Align Engine Output",   x: 300,  y: 400,  t: "slider" },
+  { id: "t5",  r: "Lower Engine",   n: "Align Engine Output",   x: 300,  y: 1080, t: "slider" },
+  { id: "t6",  r: "Reactor",        n: "Unlock Manifolds",      x: 160,  y: 720,  t: "keypad" },
+  { id: "t7",  r: "Navigation",     n: "Chart Course",          x: 2320, y: 600,  t: "slider" },
+  { id: "t8",  r: "Weapons",        n: "Clear Asteroids",       x: 1880, y: 230,  t: "keypad" },
+  { id: "t9",  r: "Shields",        n: "Prime Shields",         x: 1900, y: 1000, t: "wires" },
+  { id: "t10", r: "Admin",          n: "Swipe Card",            x: 1680, y: 760,  t: "hold" },
+  { id: "t11", r: "Communications", n: "Download Data",         x: 1450, y: 1300, t: "hold" },
+  { id: "t12", r: "Storage",        n: "Fuel Engines",          x: 1080, y: 1220, t: "hold" },
+  { id: "t13", r: "Cafeteria",      n: "Empty Garbage",         x: 1080, y: 200,  t: "hold" },
+  { id: "t14", r: "Security",       n: "Fix Wiring",            x: 800,  y: 720,  t: "wires" }
+];
+const TASK_BY_ID = Object.fromEntries(TASKS.map(t => [t.id, t]));
+
+const SPAWN = { x: 1260, y: 400 };
+const EMERGENCY = { x: 1260, y: 300 };
+const LIGHT_PANEL = { x: 760, y: 1110 };
+
+/* ============================================================================
+   3. STATE
+   ========================================================================== */
+const S = {
+  uid: null, name: "", room: null,
+  players: {}, bodies: {}, meta: {}, meeting: null,
+  local: { x: SPAWN.x, y: SPAWN.y, f: 1 },
+  cam: { x: SPAWN.x, y: SPAWN.y },
+  smooth: {},                     // uid -> interpolated draw position
+  input: { x: 0, y: 0 },
+  keys: {},
+  killAt: 0, sabAt: 0,
+  lastNet: 0,
+  refs: [], pRef: null,
+  nearest: null,                  // { kind, ...target } computed each frame
+  busy: false                     // a minigame is open
+};
+
+const me = () => S.players[S.uid] || null;
+const amDead = () => { const p = me(); return !!p && p.alive === false; };
+const amImp = () => { const p = me(); return !!p && p.role === "imp"; };
+const roomRef = p => db.ref("rooms/" + S.room + (p ? "/" + p : ""));
+/* Host = lowest uid present. Survives the original host leaving. */
+const isHost = () => {
+  const ids = Object.keys(S.players).sort();
+  return ids.length > 0 && ids[0] === S.uid;
+};
+
+/* ============================================================================
+   4. GEOMETRY
+   ========================================================================== */
+const ALL_RECTS = () => ROOMS.concat(HALLS);
+function canStand(x, y) {
+  const r = PLAYER_R;
+  for (const q of ALL_RECTS()) {
+    if (x > q.x + r && x < q.x + q.w - r && y > q.y + r && y < q.y + q.h - r) return true;
+  }
+  return false;
+}
+function roomAt(x, y) {
+  for (const q of ROOMS) if (x > q.x && x < q.x + q.w && y > q.y && y < q.y + q.h) return q.n;
+  return "Hallway";
+}
+const dist = (a, b, c, d) => Math.hypot(a - c, b - d);
+
+/* ============================================================================
+   5. JOIN / LEAVE
+   ========================================================================== */
+const randCode = () => Array.from({ length: 4 }, () =>
+  "ABCDEFGHJKLMNPQRSTUVWXYZ"[Math.floor(Math.random() * 24)]).join("");
+
+auth.signInAnonymously().catch(e => { $("#joinErr").textContent = e.message; });
+auth.onAuthStateChanged(u => { if (u) S.uid = u.uid; });
+
+$("#hostBtn").onclick = () => enter(randCode(), true);
+$("#joinBtn").onclick = () => enter($("#code").value.trim().toUpperCase(), false);
+$("#code").addEventListener("keydown", e => { if (e.key === "Enter") $("#joinBtn").click(); });
+$("#name").addEventListener("keydown", e => { if (e.key === "Enter") $("#code").focus(); });
+
+async function enter(code, creating) {
+  const err = $("#joinErr");
+  const name = ($("#name").value.trim() || "Crew").slice(0, 12);
+  if (!S.uid) { err.textContent = "Still signing in — try again in a second."; return; }
+  if (!/^[A-Z]{4}$/.test(code)) { err.textContent = "Room codes are 4 letters."; return; }
+  err.textContent = "";
+  $("#joinBtn").disabled = $("#hostBtn").disabled = true;
+
+  try {
+    const snap = await db.ref("rooms/" + code + "/meta").get();
+    if (!snap.exists() && !creating) throw new Error("No room called " + code + ". Check the code or create one.");
+    if (snap.exists() && creating) throw new Error("That code is taken — try Create again.");
+
+    S.room = code; S.name = name;
+    if (creating) {
+      await roomRef("meta").set({ host: S.uid, state: "lobby", sabotage: null, createdAt: Date.now() });
+    } else if (snap.val().state !== "lobby") {
+      // Join mid-game as a ghost so you can still watch and chat with the dead.
+      err.textContent = "";
+    }
+
+    const pl = (await roomRef("players").get()).val() || {};
+    const taken = Object.values(pl).map(p => p.color);
+    const color = (COLORS.find(c => !taken.includes(c[1])) || COLORS[0])[1];
+    const live = (await roomRef("meta").get()).val() || {};
+    const joiningLate = live.state && live.state !== "lobby";
+
+    S.local = { x: SPAWN.x + (Math.random() * 90 - 45), y: SPAWN.y + (Math.random() * 60 - 30), f: 1 };
+    S.pRef = roomRef("players/" + S.uid);
+    await S.pRef.set({
+      name, color, x: S.local.x, y: S.local.y, f: 1,
+      alive: !joiningLate, role: "crew", taskList: [], tasks: {},
+      usedEmergency: false, joinedAt: Date.now()
+    });
+    S.pRef.onDisconnect().remove();
+
+    listen();
+    say(name + " boarded the ship", true);
+    $("#join").style.display = "none";
+    $("#game").style.display = "block";
+    $("#roomCode").textContent = code;
+    $("#lobbyCode").textContent = code;
+    resize();
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    $("#joinBtn").disabled = $("#hostBtn").disabled = false;
+  }
+}
+
+function listen() {
+  const add = (path, cb, evt) => {
+    const r = roomRef(path);
+    const h = r.on(evt || "value", cb);
+    S.refs.push([r, evt || "value", h]);
+  };
+  add("players", s => { S.players = s.val() || {}; onPlayers(); });
+  add("meta",    s => { S.meta = s.val() || {}; onMeta(); });
+  add("bodies",  s => { S.bodies = s.val() || {}; });
+  add("meeting", s => { S.meeting = s.val() || null; renderMeeting(); });
+
+  const cr = roomRef("chat").limitToLast(60);
+  const ch = cr.on("value", s => renderChat(s.val() || {}));
+  S.refs.push([cr, "value", ch]);
+}
+
+function leave() {
+  S.refs.forEach(([r, e, h]) => r.off(e, h));
+  S.refs = [];
+  if (S.pRef) { S.pRef.onDisconnect().cancel(); S.pRef.remove(); }
+  S.pRef = null; S.room = null; S.players = {}; S.smooth = {};
+  $$(".ov").forEach(o => o.classList.remove("on"));
+  $("#game").style.display = "none";
+  $("#join").style.display = "flex";
+}
+$("#leaveBtn").onclick = leave;
+/* Tapping the room code brings the lobby panel back after "Walk around". */
+$("#roomTag").onclick = () => {
+  if ((S.meta.state || "lobby") === "lobby") $("#lobbyOv").classList.add("on");
+};
+$("#roomTag").style.cursor = "pointer";
+window.addEventListener("beforeunload", () => { if (S.pRef) S.pRef.remove(); });
+
+/* ============================================================================
+   6. CHAT
+   ========================================================================== */
+function say(text, sys) {
+  const p = me();
+  roomRef("chat").push({
+    uid: sys ? "sys" : S.uid,
+    name: sys ? "" : S.name,
+    color: p ? p.color : "#e8edf7",
+    text: String(text).slice(0, 140),
+    dead: sys ? false : amDead(),
+    sys: !!sys,
+    ts: Date.now()
+  });
+}
+function sendMsg() {
+  const v = $("#msg").value.trim();
+  if (!v) return;
+  $("#msg").value = "";
+  say(v, false);
+}
+$("#sendBtn").onclick = sendMsg;
+$("#msg").addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Enter") sendMsg();
+  if (e.key === "Escape") $("#msg").blur();
+});
+
+function renderChat(obj) {
+  const log = $("#log");
+  const near = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  const msgs = Object.values(obj).sort((a, b) => a.ts - b.ts);
+  log.innerHTML = "";
+  for (const m of msgs) {
+    if (m.dead && !amDead()) continue;             // ghost chat is ghosts-only
+    const d = document.createElement("div");
+    if (m.sys) { d.className = "sys"; d.textContent = "» " + m.text; }
+    else {
+      d.className = m.dead ? "ghost" : "";
+      const b = document.createElement("b");
+      b.style.color = m.color || "#e8edf7";
+      b.textContent = (m.dead ? "👻 " : "") + m.name + ": ";
+      d.appendChild(b);
+      d.appendChild(document.createTextNode(m.text));
+    }
+    log.appendChild(d);
+  }
+  if (near) log.scrollTop = log.scrollHeight;
+}
+
+/* ============================================================================
+   7. ROOM STATE REACTIONS
+   ========================================================================== */
+let lastState = null, lobbyDismissed = false;
+function onMeta() {
+  const st = S.meta.state || "lobby";
+  if (st !== lastState) {
+    if (st === "lobby") {
+      lobbyDismissed = false;
+      $("#lobbyOv").classList.add("on");
+      $("#endOv").classList.remove("on");
+    }
+    if (st === "playing") {
+      closeMini();
+      $("#lobbyOv").classList.remove("on");
+      $("#meetOv").classList.remove("on");
+      $("#endOv").classList.remove("on");
+      if (lastState !== "meeting") S.killAt = Date.now() + 12000;
+      // the host wrote everyone's spawn/return position — adopt it locally
+      setTimeout(() => {
+        const q = me();
+        if (!q) return;
+        S.local.x = q.x; S.local.y = q.y;
+        S.cam.x = q.x; S.cam.y = q.y;
+        pushMe(true);
+      }, 260);
+    }
+    if (st === "meeting") {
+      closeMini();
+      const i = Object.keys(S.players).sort().indexOf(S.uid);
+      S.local.x = EMERGENCY.x + Math.cos(i * 0.9) * 150;
+      S.local.y = EMERGENCY.y + 40 + Math.sin(i * 0.9) * 90;
+      pushMe(true);
+      $("#meetOv").classList.add("on");
+    }
+    if (st === "ended") showEnd();
+    lastState = st;
+  }
+  const sab = S.meta.sabotage === "lights";
+  $("#alert").style.display = sab && st === "playing" ? "block" : "none";
+  refreshHud();
+}
+
+let rosterSig = "";
+function onPlayers() {
+  const p = me();
+  if (!p) return;
+  refreshHud();
+  /* Positions stream in ~14x a second. Rebuilding the crew lists that often
+     would thrash the DOM and cancel taps on the vote buttons, so only redraw
+     them when something other than x/y changed. */
+  const sig = Object.keys(S.players).sort().map(id => {
+    const q = S.players[id];
+    return id + q.name + q.color + q.role + (q.alive === false ? "d" : "a");
+  }).join("|");
+  if (sig !== rosterSig) { rosterSig = sig; renderLobby(); renderMeeting(); }
+  if (isHost() && S.meta.state === "playing") { hostCheckWin(); }
+  if (isHost() && S.meta.state === "meeting") { hostCheckVotes(); }
+}
+
+function refreshHud() {
+  const p = me();
+  if (!p) return;
+  const imp = p.role === "imp";
+  const tag = $("#roleTag");
+  tag.textContent = (p.alive === false ? "GHOST · " : "") + (imp ? "IMPOSTOR" : "CREWMATE");
+  tag.style.color = imp ? "var(--hazard)" : "var(--signal)";
+  tag.style.borderColor = imp ? "#5e2029" : "var(--line)";
+
+  const pr = progress();
+  $("#progFill").style.width = (pr * 100).toFixed(1) + "%";
+  $("#barPct").textContent = Math.round(pr * 100) + "%";
+  $("#barTitle").textContent = S.meta.state === "lobby" ? "WAITING FOR LAUNCH" : "TASK COMPLETION";
+
+  $("#sabBtn").style.display = imp ? "flex" : "none";
+  $("#killBtn").style.display = imp ? "flex" : "none";
+  renderTaskList();
+}
+
+function progress() {
+  let done = 0, total = 0;
+  for (const p of Object.values(S.players)) {
+    if (p.role !== "crew") continue;
+    const list = p.taskList || [];
+    total += list.length;
+    const t = p.tasks || {};
+    for (const id of list) if (t[id]) done++;
+  }
+  return total ? done / total : 0;
+}
+
+let taskSig = "";
+function renderTaskList() {
+  const p = me();
+  const box = $("#tasks");
+  const list = (p && p.taskList) || [];
+  box.style.display = list.length && S.meta.state !== "lobby" ? "block" : "none";
+  const done = (p && p.tasks) || {};
+  const sig = list.join(",") + "#" + Object.keys(done).sort().join(",");
+  if (sig === taskSig) return;
+  taskSig = sig;
+  $("#taskList").innerHTML = list.map(id => {
+    const t = TASK_BY_ID[id];
+    if (!t) return "";
+    return '<div class="task' + (done[id] ? " done" : "") + '"><b>' + t.r.slice(0, 3).toUpperCase() +
+           "</b><span>" + t.n + "</span></div>";
+  }).join("");
+}
+
+/* ============================================================================
+   8. LOBBY
+   ========================================================================== */
+function renderLobby() {
+  const ids = Object.keys(S.players).sort();
+  $("#crewLobby").innerHTML = '<div class="crewgrid">' + ids.map(id => {
+    const p = S.players[id];
+    return '<div class="crewRow' + (id === S.uid ? " me" : "") + '"><span class="dot" style="background:' +
+      p.color + '"></span><span class="nm">' + esc(p.name) + "</span>" +
+      (id === ids[0] ? '<span class="tally">HOST</span>' : "") + "</div>";
+  }).join("") + "</div>";
+  const host = isHost();
+  $("#startBtn").style.display = host ? "block" : "none";
+  $("#lobbyNote").textContent = host
+    ? "You're the host. Start when everyone's aboard — 4 or more makes a proper game."
+    : "Waiting for the host to start. You can walk around in the meantime.";
+}
+$("#closeLobby").onclick = () => { $("#lobbyOv").classList.remove("on"); lobbyDismissed = true; };
+$("#startBtn").onclick = startGame;
+
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+async function startGame() {
+  const ids = shuffle(Object.keys(S.players));
+  const impCount = ids.length >= 7 ? 2 : (ids.length >= 2 ? 1 : 0);
+  const up = {};
+  ids.forEach((id, i) => {
+    const role = i < impCount ? "imp" : "crew";
+    const list = shuffle(TASKS.slice()).slice(0, TASKS_PER_PLAYER).map(t => t.id);
+    up["players/" + id + "/role"] = role;
+    up["players/" + id + "/alive"] = true;
+    up["players/" + id + "/tasks"] = {};
+    up["players/" + id + "/taskList"] = list;
+    up["players/" + id + "/usedEmergency"] = false;
+    up["players/" + id + "/x"] = EMERGENCY.x + Math.cos(i * 1.1) * 140;
+    up["players/" + id + "/y"] = EMERGENCY.y + 60 + Math.sin(i * 1.1) * 80;
+  });
+  up["bodies"] = null;
+  up["meeting"] = null;
+  up["meta/sabotage"] = null;
+  up["meta/winner"] = null;
+  up["meta/state"] = "playing";
+  up["meta/startedAt"] = Date.now();
+  await roomRef().update(up);
+  say(impCount === 1 ? "The shift begins. One of you is not who they say."
+                     : "The shift begins. Two of you are not who they say.", true);
+}
+
+/* ============================================================================
+   9. MOVEMENT + NETWORK TICK
+   ========================================================================== */
+function pushMe(force) {
+  const now = Date.now();
+  if (!force && now - S.lastNet < NET_MS) return;
+  S.lastNet = now;
+  if (S.pRef) S.pRef.update({ x: Math.round(S.local.x), y: Math.round(S.local.y), f: S.local.f });
+}
+
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  S.keys[e.key.toLowerCase()] = true;
+  const k = e.key.toLowerCase();
+  if (k === "e") doUse();
+  if (k === "r") doReport();
+  if (k === "q") doKill();
+  if (k === "enter") { e.preventDefault(); $("#msg").focus(); }
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
+});
+addEventListener("keyup", e => { S.keys[e.key.toLowerCase()] = false; });
+addEventListener("blur", () => { S.keys = {}; });
+
+/* touch stick */
+const stick = $("#stick"), knob = $("#knob");
+if (matchMedia("(pointer:coarse)").matches) stick.style.display = "block";
+let stickId = null;
+stick.addEventListener("pointerdown", e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); moveStick(e); });
+stick.addEventListener("pointermove", e => { if (stickId === e.pointerId) moveStick(e); });
+stick.addEventListener("pointerup", endStick);
+stick.addEventListener("pointercancel", endStick);
+function moveStick(e) {
+  const r = stick.getBoundingClientRect();
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const m = Math.hypot(dx, dy), max = r.width / 2 - 14;
+  if (m > max) { dx = dx / m * max; dy = dy / m * max; }
+  knob.style.transform = "translate(" + dx + "px," + dy + "px)";
+  S.input.x = dx / max; S.input.y = dy / max;
+}
+function endStick() { stickId = null; knob.style.transform = ""; S.input.x = S.input.y = 0; }
+
+function update(dt) {
+  const p = me();
+  if (!p) return;
+  const frozen = S.busy || S.meta.state === "meeting" || S.meta.state === "ended";
+  let ix = 0, iy = 0;
+  if (!frozen) {
+    if (S.keys.a || S.keys.arrowleft) ix -= 1;
+    if (S.keys.d || S.keys.arrowright) ix += 1;
+    if (S.keys.w || S.keys.arrowup) iy -= 1;
+    if (S.keys.s || S.keys.arrowdown) iy += 1;
+    ix += S.input.x; iy += S.input.y;
+  }
+  const m = Math.hypot(ix, iy);
+  if (m > 1) { ix /= m; iy /= m; }
+  if (ix !== 0) S.local.f = ix > 0 ? 1 : -1;
+
+  const ghost = p.alive === false;
+  const nx = S.local.x + ix * SPEED * dt;
+  const ny = S.local.y + iy * SPEED * dt;
+  if (ghost) { S.local.x = clamp(nx, 0, 2560); S.local.y = clamp(ny, 0, 1420); }
+  else {
+    if (canStand(nx, S.local.y)) S.local.x = nx;
+    if (canStand(S.local.x, ny)) S.local.y = ny;
+  }
+  if (m > 0.01) pushMe();
+
+  // camera
+  const k = 1 - Math.exp(-9 * dt);
+  S.cam.x += (S.local.x - S.cam.x) * k;
+  S.cam.y += (S.local.y - S.cam.y) * k;
+
+  // remote interpolation
+  const ki = 1 - Math.exp(-13 * dt);
+  for (const [id, q] of Object.entries(S.players)) {
+    if (id === S.uid) continue;
+    const s = S.smooth[id] || (S.smooth[id] = { x: q.x, y: q.y });
+    s.x += (q.x - s.x) * ki; s.y += (q.y - s.y) * ki;
+  }
+  for (const id of Object.keys(S.smooth)) if (!S.players[id]) delete S.smooth[id];
+
+  findNearest();
+  updateActions();
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+/* ============================================================================
+   10. INTERACTIONS
+   ========================================================================== */
+function findNearest() {
+  S.nearest = null;
+  const p = me();
+  if (!p || S.meta.state !== "playing") return;
+  let best = null, bd = 1e9;
+
+  // your own unfinished tasks (impostors see them too — fake tasks)
+  for (const id of (p.taskList || [])) {
+    if ((p.tasks || {})[id]) continue;
+    const t = TASK_BY_ID[id];
+    const d = dist(S.local.x, S.local.y, t.x, t.y);
+    if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "task", task: t }; }
+  }
+  // lights panel
+  if (S.meta.sabotage === "lights") {
+    const d = dist(S.local.x, S.local.y, LIGHT_PANEL.x, LIGHT_PANEL.y);
+    if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "lights" }; }
+  }
+  // emergency button
+  if (!p.usedEmergency && p.alive !== false) {
+    const d = dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y);
+    if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "emergency" }; }
+  }
+  S.nearest = best;
+}
+
+function nearestBody() {
+  let best = null, bd = REPORT_RANGE;
+  for (const [id, b] of Object.entries(S.bodies)) {
+    const d = dist(S.local.x, S.local.y, b.x, b.y);
+    if (d < bd) { bd = d; best = { id, ...b }; }
+  }
+  return best;
+}
+function nearestVictim() {
+  let best = null, bd = KILL_RANGE;
+  for (const [id, q] of Object.entries(S.players)) {
+    if (id === S.uid || q.role === "imp" || q.alive === false) continue;
+    const s = S.smooth[id] || q;
+    const d = dist(S.local.x, S.local.y, s.x, s.y);
+    if (d < bd) { bd = d; best = { id, ...q }; }
+  }
+  return best;
+}
+
+function updateActions() {
+  const p = me(), playing = S.meta.state === "playing";
+  const alive = p && p.alive !== false;
+  $("#useBtn").disabled = !S.nearest;
+  $("#repBtn").disabled = !(playing && alive && nearestBody());
+  const cd = Math.max(0, Math.ceil((S.killAt - Date.now()) / 1000));
+  $("#killBtn").disabled = !(playing && alive && amImp() && cd === 0 && nearestVictim());
+  $("#cdMask").style.display = cd > 0 && amImp() ? "flex" : "none";
+  $("#cdMask").textContent = cd;
+  const scd = Math.max(0, Math.ceil((S.sabAt - Date.now()) / 1000));
+  $("#sabBtn").disabled = !(playing && alive && amImp() && scd === 0 && S.meta.sabotage !== "lights");
+}
+
+function doUse() {
+  if (!S.nearest || S.busy) return;
+  const n = S.nearest;
+  if (n.kind === "task") openTask(n.task);
+  else if (n.kind === "lights") openTask({ id: "lights", n: "Restore Lights", r: "Electrical", t: "wires" });
+  else if (n.kind === "emergency") {
+    S.pRef.update({ usedEmergency: true });
+    callMeeting("emergency", null);
+  }
+}
+function doReport() {
+  const b = nearestBody();
+  if (!b || S.meta.state !== "playing" || amDead()) return;
+  callMeeting("body", b.name);
+}
+function doKill() {
+  if (!amImp() || amDead() || S.meta.state !== "playing" || Date.now() < S.killAt) return;
+  const v = nearestVictim();
+  if (!v) return;
+  S.killAt = Date.now() + KILL_CD * 1000;
+  const up = {};
+  up["players/" + v.id + "/alive"] = false;
+  up["bodies/" + v.id] = { x: Math.round(v.x), y: Math.round(v.y), color: v.color, name: v.name };
+  roomRef().update(up);
+  S.local.x = v.x; S.local.y = v.y; pushMe(true);   // step onto the body
+}
+$("#useBtn").onclick = doUse;
+$("#repBtn").onclick = doReport;
+$("#killBtn").onclick = doKill;
+$("#sabBtn").onclick = () => {
+  if (!amImp() || Date.now() < S.sabAt) return;
+  S.sabAt = Date.now() + SAB_CD * 1000;
+  roomRef("meta/sabotage").set("lights");
+  say("Lights are down across the ship", true);
+};
+
+/* ============================================================================
+   11. MEETINGS + VOTING
+   ========================================================================== */
+async function callMeeting(type, who) {
+  await roomRef().update({
+    meeting: { type, by: S.name, who: who || null, endsAt: Date.now() + VOTE_SECONDS * 1000, votes: {} },
+    bodies: null,
+    "meta/state": "meeting",
+    "meta/sabotage": null
+  });
+  say(type === "body" ? S.name + " reported " + who + "'s body"
+                      : S.name + " called an emergency meeting", true);
+}
+
+function renderMeeting() {
+  if (!S.meeting || S.meta.state !== "meeting") return;
+  const votes = S.meeting.votes || {};
+  const iVoted = !!votes[S.uid];
+  $("#meetTitle").textContent = S.meeting.type === "body" ? "Body reported" : "Emergency meeting";
+  $("#meetSub").textContent = S.meeting.type === "body"
+    ? (S.meeting.who || "Someone").toUpperCase() + " FOUND DEAD · CALLED BY " + (S.meeting.by || "").toUpperCase()
+    : "CALLED BY " + (S.meeting.by || "").toUpperCase();
+
+  const tally = {};
+  Object.values(votes).forEach(v => tally[v] = (tally[v] || 0) + 1);
+  const ids = Object.keys(S.players).sort();
+  $("#crew").innerHTML = ids.map(id => {
+    const p = S.players[id];
+    const dead = p.alive === false;
+    return '<div class="crewRow' + (dead ? " dead" : "") + (id === S.uid ? " me" : "") + '">' +
+      '<span class="dot" style="background:' + p.color + '"></span>' +
+      '<span class="nm">' + esc(p.name) + (dead ? " (dead)" : "") + "</span>" +
+      (!dead && !iVoted && !amDead()
+        ? '<button class="voteBtn" data-vote="' + id + '">Vote</button>' : "") +
+      '<span class="tally">' + (tally[id] ? "●".repeat(tally[id]) : "") + "</span></div>";
+  }).join("");
+  $$("#crew .voteBtn").forEach(b => b.onclick = () => castVote(b.dataset.vote));
+  $("#skipBtn").style.display = (iVoted || amDead()) ? "none" : "block";
+  $("#voteNote").textContent = amDead()
+    ? "Ghosts don't vote. You can still watch and talk to the dead."
+    : iVoted ? "Vote locked in. Waiting for the rest of the crew."
+             : "Talk it out in chat, then vote. A tie skips.";
+  if (isHost()) hostCheckVotes();
+}
+function castVote(target) {
+  if (amDead()) return;
+  roomRef("meeting/votes/" + S.uid).set(target);
+}
+$("#skipBtn").onclick = () => castVote("skip");
+
+function hostCheckVotes() {
+  if (!S.meeting || S.meta.state !== "meeting") return;
+  const alive = Object.entries(S.players).filter(([, p]) => p.alive !== false).map(([id]) => id);
+  const votes = S.meeting.votes || {};
+  const allIn = alive.length > 0 && alive.every(id => votes[id]);
+  if (!allIn && Date.now() < (S.meeting.endsAt || 0)) return;
+  resolveMeeting(votes);
+}
+
+let resolving = false;
+async function resolveMeeting(votes) {
+  if (resolving) return;
+  resolving = true;
+  setTimeout(() => resolving = false, 2000);
+  const tally = {};
+  Object.values(votes).forEach(v => tally[v] = (tally[v] || 0) + 1);
+  let top = null, topN = 0, tie = false;
+  for (const [k, n] of Object.entries(tally)) {
+    if (n > topN) { top = k; topN = n; tie = false; }
+    else if (n === topN) tie = true;
+  }
+  const up = { meeting: null, "meta/state": "playing" };
+  let msg = "Nobody was ejected.";
+  if (top && top !== "skip" && !tie && S.players[top]) {
+    up["players/" + top + "/alive"] = false;
+    const wasImp = S.players[top].role === "imp";
+    msg = S.players[top].name + " was ejected. " + (wasImp ? "They were the Impostor." : "They were not the Impostor.");
+  } else if (tie) msg = "Tied vote — nobody was ejected.";
+  // reset everyone to the cafeteria
+  Object.keys(S.players).forEach((id, i) => {
+    up["players/" + id + "/x"] = EMERGENCY.x + Math.cos(i * 1.1) * 140;
+    up["players/" + id + "/y"] = EMERGENCY.y + 60 + Math.sin(i * 1.1) * 80;
+  });
+  await roomRef().update(up);
+  say(msg, true);
+  setTimeout(hostCheckWin, 400);
+}
+
+let voteTick = setInterval(() => {
+  if (!S.meeting || S.meta.state !== "meeting") return;
+  const left = Math.max(0, Math.ceil((S.meeting.endsAt - Date.now()) / 1000));
+  $("#voteTimer").textContent = left;
+  if (left === 0 && isHost()) hostCheckVotes();
+}, 500);
+
+/* ============================================================================
+   12. WIN CONDITIONS
+   ========================================================================== */
+let winLock = false;
+function hostCheckWin() {
+  if (winLock || S.meta.state !== "playing") return;
+  const ps = Object.values(S.players);
+  if (ps.length < 2) return;                       // solo sandbox: no win checks
+  const impAlive = ps.filter(p => p.role === "imp" && p.alive !== false).length;
+  const crewAlive = ps.filter(p => p.role === "crew" && p.alive !== false).length;
+  let winner = null, reason = "";
+  if (impAlive === 0) { winner = "crew"; reason = "Every impostor was ejected."; }
+  else if (impAlive >= crewAlive) { winner = "imp"; reason = "The impostors outnumber the crew."; }
+  else if (progress() >= 1) { winner = "crew"; reason = "The crew finished every task."; }
+  if (winner) {
+    winLock = true;
+    roomRef("meta").update({ state: "ended", winner, reason }).then(() => setTimeout(() => winLock = false, 1500));
+  }
+}
+
+function showEnd() {
+  const crewWon = S.meta.winner === "crew";
+  $("#endTitle").textContent = crewWon ? "Crewmates win" : "Impostors win";
+  $("#endTitle").style.color = crewWon ? "var(--signal)" : "var(--hazard)";
+  $("#endSub").textContent = (S.meta.reason || "").toUpperCase();
+  $("#endCrew").innerHTML = '<div class="crewgrid">' + Object.values(S.players).map(p =>
+    '<div class="crewRow"><span class="dot" style="background:' + p.color + '"></span>' +
+    '<span class="nm">' + esc(p.name) + '</span><span class="tally" style="color:' +
+    (p.role === "imp" ? "var(--hazard)" : "var(--dim)") + '">' +
+    (p.role === "imp" ? "IMPOSTOR" : "CREW") + "</span></div>").join("") + "</div>";
+  $("#endOv").classList.add("on");
+  $("#againBtn").style.display = isHost() ? "block" : "none";
+}
+$("#againBtn").onclick = async () => {
+  const up = { "meta/state": "lobby", "meta/winner": null, "meta/sabotage": null, bodies: null, meeting: null };
+  Object.keys(S.players).forEach(id => {
+    up["players/" + id + "/alive"] = true;
+    up["players/" + id + "/role"] = "crew";
+    up["players/" + id + "/tasks"] = {};
+    up["players/" + id + "/taskList"] = [];
+  });
+  await roomRef().update(up);
+};
+
+/* ============================================================================
+   13. TASK MINIGAMES
+   ========================================================================== */
+let miniDone = null, miniTimer = null;
+function openTask(t) {
+  S.busy = true;
+  miniDone = () => finishTask(t);
+  $("#miniTitle").textContent = t.n;
+  $("#miniSub").textContent = t.r.toUpperCase();
+  $("#miniHint").textContent = "";
+  const b = $("#miniBody"); b.innerHTML = "";
+  $("#taskOv").classList.add("on");   // must be visible before the games measure it
+  ({ hold: gameHold, wires: gameWires, keypad: gameKeypad, slider: gameSlider }[t.t] || gameHold)(b);
+}
+function closeMini() {
+  if (miniTimer) { clearInterval(miniTimer); miniTimer = null; }
+  S.busy = false;
+  $("#taskOv").classList.remove("on");
+  $("#miniBody").innerHTML = "";
+}
+$("#miniClose").onclick = closeMini;
+
+function finishTask(t) {
+  $("#miniHint").textContent = "Complete.";
+  if (t.id === "lights") {
+    roomRef("meta/sabotage").set(null);
+    say("Lights restored", true);
+  } else if (!amImp()) {
+    roomRef("players/" + S.uid + "/tasks/" + t.id).set(true);
+  }
+  setTimeout(closeMini, 550);
+}
+
+function gameHold(b) {
+  b.innerHTML = '<div id="holdBtn"><div id="holdFill"></div><span>HOLD TO RUN</span></div>';
+  $("#miniHint").textContent = "Press and hold until the bar fills.";
+  const btn = $("#holdBtn"), fill = $("#holdFill");
+  let t0 = 0, pct = 0;
+  const start = () => {
+    if (miniTimer) return;
+    t0 = Date.now();
+    miniTimer = setInterval(() => {
+      pct = Math.min(100, (Date.now() - t0) / 2200 * 100);
+      fill.style.width = pct + "%";
+      if (pct >= 100) stop(true);
+    }, 50);
+  };
+  const stop = ok => {
+    clearInterval(miniTimer); miniTimer = null;
+    if (ok) miniDone(); else fill.style.width = "0%";
+  };
+  btn.addEventListener("pointerdown", e => { e.preventDefault(); start(); });
+  btn.addEventListener("pointerup", () => miniTimer && stop(false));
+  btn.addEventListener("pointerleave", () => miniTimer && stop(false));
+}
+
+function gameWires(b) {
+  $("#miniHint").textContent = "Connect each wire to its matching colour.";
+  const cols = ["#ff4d5e", "#ffe14d", "#3d7bff", "#ff9c3d"];
+  const L = shuffle(cols.slice()), R = shuffle(cols.slice());
+  let sel = null, done = 0;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%;pointer-events:none");
+  b.appendChild(svg);
+  const RX = (b.clientWidth || 300) - 72;
+  const mk = (side, i, c) => {
+    const d = document.createElement("button");
+    d.className = "wire";
+    d.style.background = c;
+    d.style.top = (18 + i * 62) + "px";
+    d.style[side] = "8px";
+    d.dataset.c = c; d.dataset.side = side; d.dataset.i = i;
+    d.onclick = () => {
+      if (d.classList.contains("done")) return;
+      if (side === "left") { $$(".wire").forEach(w => w.classList.remove("sel")); sel = d; d.classList.add("sel"); }
+      else if (sel && sel.dataset.c === c) {
+        sel.classList.add("done"); d.classList.add("done"); sel.classList.remove("sel");
+        const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        ln.setAttribute("x1", "74"); ln.setAttribute("y1", 40 + sel.dataset.i * 62);
+        ln.setAttribute("x2", RX); ln.setAttribute("y2", 40 + i * 62);
+        ln.setAttribute("stroke", c); ln.setAttribute("stroke-width", "6");
+        svg.appendChild(ln);
+        sel = null;
+        if (++done === 4) miniDone();
+      } else if (sel) { $("#miniHint").textContent = "Colours don't match."; }
+    };
+    b.appendChild(d);
+  };
+  L.forEach((c, i) => mk("left", i, c));
+  R.forEach((c, i) => mk("right", i, c));
+}
+
+function gameKeypad(b) {
+  $("#miniHint").textContent = "Press the numbers in order, 1 to 8.";
+  const order = shuffle([0, 1, 2, 3, 4, 5, 6, 7]);
+  let next = 1;
+  order.forEach((slot, idx) => {
+    const n = idx + 1;
+    const btn = document.createElement("button");
+    btn.className = "key";
+    btn.textContent = n;
+    btn.style.left = (4 + (slot % 4) * 74) + "px";
+    btn.style.top = (40 + Math.floor(slot / 4) * 68) + "px";
+    btn.onclick = () => {
+      if (n === next) {
+        btn.classList.add("hit"); next++;
+        if (next > 8) miniDone();
+      } else {
+        next = 1;
+        $$(".key").forEach(k => k.classList.remove("hit"));
+        $("#miniHint").textContent = "Wrong order — start again.";
+      }
+    };
+    b.appendChild(btn);
+  });
+}
+
+function gameSlider(b) {
+  $("#miniHint").textContent = "Drag the lever onto the amber mark and hold it there.";
+  b.innerHTML = '<div id="track"></div><div id="target"></div><div id="handle"></div>';
+  const W = b.clientWidth || 300;
+  const tx = 40 + Math.random() * (W - 120);
+  $("#target").style.left = tx + "px";
+  const h = $("#handle");
+  let x = W - 40, hold = 0, drag = false;
+  h.style.left = x + "px";
+  const move = e => {
+    if (!drag) return;
+    const r = b.getBoundingClientRect();
+    x = clamp(e.clientX - r.left - 17, 0, W - 34);
+    h.style.left = x + "px";
+  };
+  h.addEventListener("pointerdown", e => { drag = true; h.setPointerCapture(e.pointerId); });
+  h.addEventListener("pointermove", move);
+  h.addEventListener("pointerup", () => drag = false);
+  miniTimer = setInterval(() => {
+    if (Math.abs((x + 17) - tx) < 12) {
+      hold += 100;
+      h.style.borderColor = "var(--amber)";
+      if (hold >= 700) { clearInterval(miniTimer); miniTimer = null; miniDone(); }
+    } else { hold = 0; h.style.borderColor = "var(--signal)"; }
+  }, 100);
+}
+
+/* ============================================================================
+   14. RENDER
+   ========================================================================== */
+const cv = $("#cv"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, devicePixelRatio || 1);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener("resize", resize);
+
+const STARS = Array.from({ length: 160 }, () => ({
+  x: Math.random() * 2600, y: Math.random() * 1500, r: Math.random() * 1.4 + .3, a: Math.random() * .6 + .15
+}));
+
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = "#070b14"; ctx.fillRect(0, 0, W, H);
+  const p = me();
+  if (!p) return;
+  const ox = W / 2 - S.cam.x, oy = H / 2 - S.cam.y;
+  ctx.save(); ctx.translate(ox, oy);
+
+  // starfield
+  ctx.fillStyle = "#9fb4d8";
+  for (const s of STARS) { ctx.globalAlpha = s.a; ctx.fillRect(s.x, s.y, s.r, s.r); }
+  ctx.globalAlpha = 1;
+
+  // hull
+  for (const q of HALLS) plate(q, "#121a2b", "#243149");
+  for (const q of ROOMS) plate(q, "#162034", "#2b3a57");
+  // room labels
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "700 15px 'Arial Narrow',Arial,sans-serif";
+  ctx.fillStyle = "rgba(123,138,168,.55)";
+  for (const q of ROOMS) ctx.fillText(q.n.toUpperCase(), q.x + q.w / 2, q.y + 26);
+
+  // emergency button
+  const t = Date.now() / 1000;
+  ring(EMERGENCY.x, EMERGENCY.y, 26, "#ff4d5e", .5 + Math.sin(t * 2) * .2);
+  ctx.fillStyle = "#8c2431"; ctx.beginPath(); ctx.arc(EMERGENCY.x, EMERGENCY.y, 15, 0, 7); ctx.fill();
+
+  // lights panel when sabotaged
+  if (S.meta.sabotage === "lights") {
+    ring(LIGHT_PANEL.x, LIGHT_PANEL.y, 24, "#ffb545", .4 + Math.sin(t * 6) * .3);
+  }
+
+  // your task markers
+  const doneMap = p.tasks || {};
+  for (const id of (p.taskList || [])) {
+    if (doneMap[id]) continue;
+    const q = TASK_BY_ID[id];
+    ring(q.x, q.y, 22 + Math.sin(t * 3) * 3, amImp() ? "#7b8aa8" : "#ffb545", .75);
+    ctx.fillStyle = amImp() ? "rgba(123,138,168,.2)" : "rgba(255,181,69,.18)";
+    ctx.beginPath(); ctx.arc(q.x, q.y, 16, 0, 7); ctx.fill();
+  }
+
+  // bodies
+  for (const b of Object.values(S.bodies)) bean(b.x, b.y, b.color, 1, 1, false, true);
+
+  // players
+  const iAmGhost = p.alive === false;
+  for (const [id, q] of Object.entries(S.players)) {
+    const s = id === S.uid ? S.local : (S.smooth[id] || q);
+    const dead = q.alive === false;
+    if (dead && !iAmGhost && id !== S.uid) continue;   // living crew can't see ghosts
+    bean(s.x, s.y, q.color, q.f || 1, dead ? .45 : 1, dead, false);
+    ctx.font = "600 13px system-ui,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = dead ? "rgba(232,237,247,.5)" : "#e8edf7";
+    ctx.strokeStyle = "rgba(0,0,0,.65)"; ctx.lineWidth = 3;
+    const label = q.name + (q.role === "imp" && amImp() ? " ⌁" : "");
+    ctx.strokeText(label, s.x, s.y - 34);
+    ctx.fillText(label, s.x, s.y - 34);
+  }
+  ctx.restore();
+
+  // fog of war
+  let vis = amImp() ? VISION_IMP : VISION;
+  if (S.meta.sabotage === "lights" && !amImp()) vis = VISION_DARK;
+  if (iAmGhost || S.meta.state === "lobby") vis = 900;
+  const cx = W / 2 + (S.local.x - S.cam.x), cy = H / 2 + (S.local.y - S.cam.y);
+  const g = ctx.createRadialGradient(cx, cy, vis * .45, cx, cy, vis);
+  g.addColorStop(0, "rgba(4,7,14,0)");
+  g.addColorStop(1, "rgba(4,7,14,.94)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // location stencil
+  ctx.font = "700 11px 'Arial Narrow',Arial,sans-serif";
+  ctx.fillStyle = "rgba(123,138,168,.85)"; ctx.textAlign = "center";
+  ctx.fillText(roomAt(S.local.x, S.local.y).toUpperCase(), W / 2, H - 14);
+}
+
+function plate(q, fill, stroke) {
+  ctx.fillStyle = fill; ctx.fillRect(q.x, q.y, q.w, q.h);
+  ctx.strokeStyle = stroke; ctx.lineWidth = 3;
+  ctx.strokeRect(q.x + 1.5, q.y + 1.5, q.w - 3, q.h - 3);
+}
+function ring(x, y, r, c, a) {
+  ctx.globalAlpha = a; ctx.strokeStyle = c; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+/* the little bean crewmate */
+function bean(x, y, color, f, alpha, ghost, body) {
+  ctx.save();
+  ctx.globalAlpha = alpha * (ghost ? .55 : 1);
+  ctx.translate(x, y);
+  if (body) ctx.rotate(Math.PI / 2);
+  else ctx.scale(f >= 0 ? 1 : -1, 1);
+
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.ellipse(0, 20, 16, 5, 0, 0, 7); ctx.fill();
+
+  // backpack
+  ctx.fillStyle = shade(color, -28);
+  rrect(-24, -8, 12, 22, 5); ctx.fill();
+  // body
+  ctx.fillStyle = color;
+  rrect(-16, -22, 30, 42, 14); ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,.16)";
+  rrect(-16, 6, 30, 14, 8); ctx.fill();
+  // visor
+  ctx.fillStyle = "#9fd8ef";
+  rrect(-2, -16, 18, 15, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.55)";
+  rrect(2, -13, 6, 6, 3); ctx.fill();
+  ctx.restore();
+}
+function rrect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => clamp(v + amt, 0, 255));
+  return "rgb(" + c.join(",") + ")";
+}
+const esc = s => String(s).replace(/[<>&"]/g, m => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m]));
+
+/* ============================================================================
+   15. LOOP
+   ========================================================================== */
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (S.room) { update(dt); draw(); }
+  requestAnimationFrame(loop);
+}
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
