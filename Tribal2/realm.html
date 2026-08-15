@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Realm — a shared world</title>
+<title>Saxons Strategy — a shared world</title>
 <style>
   /* ==== Design tokens — "war room at dusk": aged leather and iron with a
      brass/candlelight accent, in place of the earlier cream-and-sage look. ==== */
@@ -49,11 +49,19 @@
   .battle-report .report-detail { font-size:12px; margin-top:8px; line-height:1.6; }
 
   #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; }
-  .cell { aspect-ratio:1; background:var(--bg-deep); border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
-  .cell.mine { background:#2b3620; border-color:var(--accent); }
-  .cell.ally { background:#1e2f3d; border-color:var(--ally); }
+  .cell {
+    aspect-ratio:1; background-color:var(--bg-deep);
+    background-image:url('Artwork/Grass1.jpg'); background-size:cover; background-position:center;
+    border:1px solid var(--border); border-radius:4px;
+    display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default;
+  }
+  /* Ownership tint layers a translucent color over the grass texture
+     rather than replacing it, so the artwork still shows through. */
+  .cell.mine { background-image:linear-gradient(rgba(43,54,32,0.6),rgba(43,54,32,0.6)),url('Artwork/Grass1.jpg'); border-color:var(--accent); }
+  .cell.ally { background-image:linear-gradient(rgba(30,47,61,0.6),rgba(30,47,61,0.6)),url('Artwork/Grass1.jpg'); border-color:var(--ally); }
   .cell.other { cursor:pointer; }
   .cell.other:hover { outline:2px solid var(--accent); }
+  .cell .village-icon { width:72%; height:72%; object-fit:contain; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
   .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .map-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
   .map-controls button { padding:6px 10px; border:1px solid var(--border); background:var(--panel-alt); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px; font-family:var(--font-body); }
@@ -132,7 +140,7 @@
 <body>
 
   <div id="join-screen">
-    <h1>&#127984; The Realm</h1>
+    <h1>&#127984; Saxons Strategy</h1>
     <p class="muted">Drop your banner on the shared map. Everyone sees it live.</p>
     <p class="muted" style="font-size:12px;text-align:left;background:var(--panel-alt);padding:10px;border-radius:6px;border:1px solid var(--border);">
       <strong>How it works:</strong> your village generates wood, clay and iron on its own.
@@ -161,7 +169,7 @@
 
   <div id="game">
     <header>
-      <h1>&#127984; The Realm</h1>
+      <h1>&#127984; Saxons Strategy</h1>
       <div>
         <span id="who"></span> &middot; <span id="count"></span> &middot; <span id="online-count"></span>
         &middot; <label style="font-weight:normal;font-size:13px;cursor:pointer;"><input type="checkbox" id="mute-toggle" style="vertical-align:middle;"> Mute raid alert sound</label>
@@ -319,7 +327,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v46</div>
+  <div id="build-tag">build: realm-v49</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -344,7 +352,7 @@
     // If this fails, nothing else on the page can work anyway — replace
     // the whole page with a clear explanation instead of leaving a
     // silent, do-nothing page with no clue why. :root CSS variables still
-    // apply here since they live on <html>, not <body>.
+    // apply here since they live on the root html element, not body.
     document.body.innerHTML = `
       <div style="max-width:420px;margin:15vh auto;padding:28px;background:var(--panel,#241d17);border:1px solid var(--danger,#cc5f54);border-radius:6px;color:var(--text,#e8dcc0);font-family:sans-serif;text-align:center;">
         <h2 style="color:var(--danger,#cc5f54);margin-top:0;">Couldn't connect</h2>
@@ -418,6 +426,18 @@
     militia: 'Artwork/Militia1.jpg',
     scout: 'Artwork/Scout1.jpg',
   };
+  // Map artwork — same convention as everything above: drop a file at
+  // this path and it's used automatically. If it's not there yet,
+  // villages fall back to the castle emoji, so nothing looks broken in
+  // the meantime. The grass tile background itself is set directly in
+  // the .cell CSS rule below (it's the same image for every cell, so
+  // there's no per-item lookup needed the way there is here).
+  // .png here specifically (not .jpg like everything else) because this
+  // one needs real transparency to sit on top of the grass tile rather
+  // than showing a rectangle — if you swap in your own art, either export
+  // it as a transparent PNG at this same path, or change the extension
+  // below to whatever you're using.
+  const VILLAGE_IMAGE = 'Artwork/Village1.png';
   const RESOURCE_BUILDING = { wood: 'timber_camp', clay: 'clay_pit', iron: 'iron_mine' };
   const MAX_BUILD_QUEUE = 3;
   const MAX_TRAIN_QUEUE = 5;
@@ -609,7 +629,7 @@
     Object.entries(latestBanners).forEach(([uid, b]) => {
       const cell = cells[`${b.x}_${b.y}`];
       if (!cell) return; // outside the current viewport — still counted below, just not drawn
-      cell.innerHTML = `&#127984;<span class="label">${b.tag ? `[${b.tag}] ` : ''}${b.name}</span>`;
+      cell.innerHTML = `<img class="village-icon" src="${VILLAGE_IMAGE}" alt="${b.name}" onerror="this.outerHTML='&#127984;'"><span class="label">${b.tag ? `[${b.tag}] ` : ''}${b.name}</span>`;
       if (uid === myUid) {
         cell.classList.add('mine');
         cell.title = b.name;
