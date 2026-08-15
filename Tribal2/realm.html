@@ -48,21 +48,24 @@
   .battle-report summary { cursor:pointer; font-size:13px; font-weight:normal; font-family:var(--font-body); color:inherit; }
   .battle-report .report-detail { font-size:12px; margin-top:8px; line-height:1.6; }
 
-  #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; }
+  #grid {
+    display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; padding:1px; border-radius:4px;
+    background-color:var(--bg-deep);
+    background-image:url('Artwork/Grass1.jpg'); background-repeat:repeat;
+  }
   .cell {
-    aspect-ratio:1; background-color:var(--bg-deep);
-    background-image:url('Artwork/Grass1.jpg'); background-size:cover; background-position:center;
-    border:1px solid var(--border); border-radius:4px;
+    aspect-ratio:1; background:transparent; border-radius:2px;
     display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default;
   }
-  /* Ownership tint layers a translucent color over the grass texture
-     rather than replacing it, so the artwork still shows through. */
-  .cell.mine { background-image:linear-gradient(rgba(43,54,32,0.6),rgba(43,54,32,0.6)),url('Artwork/Grass1.jpg'); border-color:var(--accent); }
-  .cell.ally { background-image:linear-gradient(rgba(30,47,61,0.6),rgba(30,47,61,0.6)),url('Artwork/Grass1.jpg'); border-color:var(--ally); }
+  /* Ownership is now a translucent tint plus a border, sitting on top of
+     the one continuous texture on #grid above — not a second copy of the
+     image per cell, which is what caused the repeating/stamped look. */
+  .cell.mine { background-color:rgba(43,54,32,0.55); border:1px solid var(--accent); }
+  .cell.ally { background-color:rgba(30,47,61,0.55); border:1px solid var(--ally); }
   .cell.other { cursor:pointer; }
   .cell.other:hover { outline:2px solid var(--accent); }
   .cell .village-icon { width:72%; height:72%; object-fit:contain; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
-  .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cell .label { position:absolute; bottom:1px; left:1px; right:1px; font-size:8px; text-align:center; color:var(--text); background:rgba(15,12,10,0.7); border-radius:0 0 2px 2px; padding:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .map-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
   .map-controls button { padding:6px 10px; border:1px solid var(--border); background:var(--panel-alt); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px; font-family:var(--font-body); }
   .map-controls button:hover { background:var(--border); border-color:var(--accent); }
@@ -327,7 +330,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v49</div>
+  <div id="build-tag">build: realm-v50</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
