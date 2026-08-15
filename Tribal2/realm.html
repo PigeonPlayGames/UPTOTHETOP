@@ -4,57 +4,75 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Realm — a shared world</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Spectral:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#f4f1ea; --panel:#fff; --border:#d8d2c4; --text:#2b2620; --muted:#7a7368; --accent:#5c7a4f; --accent-dark:#46603b; --danger:#a3453b; }
+  /* ==== Design tokens — "war room at dusk": aged leather and iron with a
+     brass/candlelight accent, in place of the earlier cream-and-sage look. ==== */
+  :root {
+    --bg:#161210; --bg-deep:#0f0c0a; --panel:#241d17; --panel-alt:#2c2318;
+    --border:#4a3c28; --border-light:#5c4b34;
+    --text:#e8dcc0; --muted:#a3906c;
+    --accent:#c9973f; --accent-dark:#9c7530; --accent-glow:rgba(201,151,63,0.45);
+    --danger:#cc5f54; --danger-dark:#a34840;
+    --ally:#5b8fb5; --ally-dark:#43708f;
+    --gold:#e0b558;
+    --scout:#5c7d88; --scout-dark:#425a63;
+    --font-display:'Cinzel',serif; --font-body:'Spectral',serif; --font-mono:'Space Mono',monospace;
+  }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-  #join-screen { max-width:360px; margin:12vh auto; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:28px; text-align:center; }
-  #join-screen h1 { margin-top:0; font-size:22px; }
-  #join-screen input { width:100%; padding:10px; border:1px solid var(--border); border-radius:4px; font-size:14px; margin:12px 0; }
-  #join-screen button { width:100%; padding:10px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
-  #join-screen button:hover { background:var(--accent-dark); }
+  body { margin:0; background:var(--bg-deep); background-image:radial-gradient(ellipse 1200px 700px at 50% 0%, var(--bg) 0%, var(--bg-deep) 75%); background-attachment:fixed; color:var(--text); font-family:var(--font-body); }
+
+  #join-screen { max-width:380px; margin:10vh auto; background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:32px 28px; text-align:center; box-shadow:0 16px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04); }
+  #join-screen h1 { margin-top:0; font-family:var(--font-display); font-size:26px; font-weight:700; letter-spacing:0.5px; color:var(--accent); text-shadow:0 0 24px var(--accent-glow); }
+  #join-screen input { width:100%; padding:11px; border:1px solid var(--border); border-radius:4px; font-size:14px; margin:12px 0; background:var(--bg-deep); color:var(--text); font-family:var(--font-body); }
+  #join-screen input::placeholder { color:var(--muted); }
+  #join-screen button { width:100%; padding:11px; border:1px solid var(--accent-dark); border-radius:4px; background:linear-gradient(180deg,var(--accent) 0%,var(--accent-dark) 100%); color:var(--bg-deep); font-family:var(--font-display); font-weight:700; letter-spacing:0.5px; font-size:14px; cursor:pointer; transition:box-shadow 0.2s; }
+  #join-screen button:hover { box-shadow:0 0 18px var(--accent-glow); }
   #join-status { font-size:12px; color:var(--muted); min-height:16px; }
 
   #game { display:none; max-width:760px; margin:0 auto; padding:20px; }
-  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
-  header h1 { font-size:20px; margin:0; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+  header h1 { font-family:var(--font-display); font-size:24px; font-weight:700; letter-spacing:0.5px; margin:0; color:var(--accent); text-shadow:0 0 24px var(--accent-glow); }
   #who { font-size:13px; color:var(--muted); }
-  #count { font-size:13px; color:var(--accent-dark); font-weight:600; }
-  #resources { display:flex; gap:14px; font-size:14px; margin:10px 0 16px; flex-wrap:wrap; }
-  #resources .rate { font-size:11px; color:var(--muted); display:block; }
+  #count { font-size:13px; color:var(--accent); font-weight:600; }
+  #resources { display:flex; gap:16px; font-size:15px; margin:16px 0 18px; flex-wrap:wrap; font-family:var(--font-mono); }
+  #resources .rate { font-size:11px; color:var(--muted); display:block; font-family:var(--font-body); }
 
-  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:16px; }
-  .panel h3 { margin-top:0; font-size:15px; }
-  .panel summary { font-size:15px; font-weight:600; cursor:pointer; color:var(--accent-dark); }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:16px; margin-bottom:16px; box-shadow:0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03); }
+  .panel h3 { margin:0 0 14px; font-family:var(--font-display); font-size:16px; font-weight:600; letter-spacing:0.4px; color:var(--accent); padding-bottom:10px; border-bottom:1px solid var(--border); position:relative; }
+  .panel h3::after { content:''; position:absolute; left:0; bottom:-1px; width:36px; height:2px; background:var(--accent); }
+  .panel summary { font-family:var(--font-display); font-size:15px; font-weight:600; cursor:pointer; color:var(--accent); }
   .panel details ul { line-height:1.6; }
-  .battle-report { border-left:3px solid var(--border); padding:6px 10px; margin-bottom:6px; background:#faf8f2; border-radius:4px; }
+  .battle-report { border-left:3px solid var(--border); padding:6px 10px; margin-bottom:6px; background:var(--panel-alt); border-radius:4px; }
   .battle-report.won { border-left-color:var(--accent); }
   .battle-report.lost { border-left-color:var(--danger); }
-  .battle-report summary { cursor:pointer; font-size:13px; font-weight:normal; color:inherit; }
+  .battle-report summary { cursor:pointer; font-size:13px; font-weight:normal; font-family:var(--font-body); color:inherit; }
   .battle-report .report-detail { font-size:12px; margin-top:8px; line-height:1.6; }
 
   #grid { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; }
-  .cell { aspect-ratio:1; background:#efeadf; border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
-  .cell.mine { background:#cfe0c6; }
-  .cell.ally { background:#d6e6f0; }
+  .cell { aspect-ratio:1; background:var(--bg-deep); border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; position:relative; cursor:default; }
+  .cell.mine { background:#2b3620; border-color:var(--accent); }
+  .cell.ally { background:#1e2f3d; border-color:var(--ally); }
   .cell.other { cursor:pointer; }
   .cell.other:hover { outline:2px solid var(--accent); }
   .cell .label { position:absolute; bottom:-16px; left:0; right:0; font-size:9px; text-align:center; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .map-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
-  .map-controls button { padding:6px 10px; border:1px solid var(--border); background:var(--panel); border-radius:4px; cursor:pointer; font-size:13px; }
-  .map-controls button:hover { background:#efeadf; }
+  .map-controls button { padding:6px 10px; border:1px solid var(--border); background:var(--panel-alt); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px; font-family:var(--font-body); }
+  .map-controls button:hover { background:var(--border); border-color:var(--accent); }
   #mini-map { display:grid; grid-template-columns:repeat(20, 1fr); gap:1px; max-width:280px; margin:0 auto; background:var(--border); padding:1px; border-radius:4px; }
-  #mini-map .mini-cell { aspect-ratio:1; background:#efeadf; }
+  #mini-map .mini-cell { aspect-ratio:1; background:var(--bg-deep); }
   #mini-map .mini-cell.mine { background:var(--accent); cursor:pointer; }
-  #mini-map .mini-cell.ally { background:#5a8fb0; cursor:pointer; }
-  #mini-map .mini-cell.other { background:#b08a5a; cursor:pointer; }
-  #mini-map .mini-cell.viewport { box-shadow:inset 0 0 0 1px var(--accent-dark); }
+  #mini-map .mini-cell.ally { background:var(--ally); cursor:pointer; }
+  #mini-map .mini-cell.other { background:#8a6a3d; cursor:pointer; }
+  #mini-map .mini-cell.viewport { box-shadow:inset 0 0 0 1px var(--gold); }
 
-  .item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); }
+  .item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 0; border-bottom:1px solid var(--border); }
   .item-row:last-child { border-bottom:none; }
-  .item-row button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; white-space:nowrap; }
-  .item-row button:hover { background:var(--accent-dark); }
-  .item-row button:disabled { background:#bdb8ab; cursor:not-allowed; }
+  .item-row button { padding:8px 14px; border:1px solid var(--accent-dark); border-radius:4px; background:linear-gradient(180deg,var(--accent) 0%,var(--accent-dark) 100%); color:var(--bg-deep); font-family:var(--font-body); font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap; transition:box-shadow 0.15s; }
+  .item-row button:hover { box-shadow:0 0 12px var(--accent-glow); }
+  .item-row button:disabled { background:var(--border); border-color:var(--border); color:var(--muted); cursor:not-allowed; box-shadow:none; }
   .item-row .building-icon { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
   .item-row .unit-icon { width:56px; height:76px; object-fit:cover; object-position:50% 10%; border-radius:6px; border:1px solid var(--border); flex-shrink:0; margin:0 12px; }
   .item-row .unit-icon-militia { width:100px; height:64px; object-position:50% 25%; }
@@ -71,40 +89,47 @@
     .item-row button { flex: 1 1 auto; max-width: 200px; }
   }
 
-  #movements .move-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); font-size:13px; margin-bottom:6px; }
-  #movements .move-line.incoming { border-color:var(--danger); background:#fbeeec; }
+  #movements .move-line { padding:8px 10px; background:var(--panel-alt); border-radius:4px; border:1px solid var(--border); font-size:13px; margin-bottom:6px; }
+  #movements .move-line.incoming { border-color:var(--danger); background:#2e1815; }
 
-  #account-panel input { width:100%; padding:8px; border:1px solid var(--border); border-radius:4px; font-size:13px; margin:6px 0; }
-  #account-panel button { padding:8px 14px; border:none; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; cursor:pointer; }
-  #account-panel button:hover { background:var(--accent-dark); }
+  #account-panel input { width:100%; padding:8px; border:1px solid var(--border); border-radius:4px; font-size:13px; margin:6px 0; background:var(--bg-deep); color:var(--text); font-family:var(--font-body); }
+  #account-panel button { padding:8px 14px; border:1px solid var(--accent-dark); border-radius:4px; background:linear-gradient(180deg,var(--accent) 0%,var(--accent-dark) 100%); color:var(--bg-deep); font-weight:600; font-size:13px; cursor:pointer; transition:box-shadow 0.15s; }
+  #account-panel button:hover { box-shadow:0 0 12px var(--accent-glow); }
   #account-status { font-size:12px; min-height:16px; margin-top:4px; }
   #account-status.error { color:var(--danger); }
-  #account-status.success { color:var(--accent-dark); }
+  #account-status.success { color:var(--accent); }
   #raid-panel { margin-top:12px; }
-  #raid-panel .box { padding:12px; background:#faf8f2; border-radius:6px; border:1px solid var(--border); }
+  #raid-panel .box { padding:14px; background:var(--panel-alt); border-radius:6px; border:1px solid var(--border); }
   #raid-panel .troop-inputs { display:flex; flex-direction:column; gap:6px; margin:10px 0; font-size:13px; }
-  #raid-panel .troop-inputs input { width:60px; padding:4px; border:1px solid var(--border); border-radius:4px; }
-  #raid-panel .actions { display:flex; gap:8px; margin-top:10px; }
-  #raid-panel .actions button { padding:8px 14px; border:none; border-radius:4px; color:#fff; font-size:13px; cursor:pointer; }
-  #raid-panel .attack-btn { background:var(--danger); }
-  #raid-panel .attack-btn:hover { background:#8a3a31; }
-  #raid-panel .support-btn { background:var(--accent); }
-  #raid-panel .support-btn:hover { background:var(--accent-dark); }
-  #raid-panel .cancel-btn { background:#bdb8ab; }
-  #raid-panel .gift-btn { background:#b8860b; }
-  #raid-panel .gift-btn:hover { background:#966e09; }
+  #raid-panel .troop-inputs input { width:60px; padding:4px; border:1px solid var(--border); border-radius:4px; background:var(--bg-deep); color:var(--text); font-family:var(--font-mono); }
+  #raid-panel .actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  #raid-panel .actions button { padding:8px 14px; border-radius:4px; color:#fdf8ee; font-family:var(--font-body); font-weight:600; font-size:13px; cursor:pointer; transition:box-shadow 0.15s; }
+  /* Each action gets its own hue so the four choices (and pin/cancel) read
+     at a glance: red=aggression, blue=aid, gold=generosity, slate=stealth. */
+  #raid-panel .attack-btn { background:linear-gradient(180deg,#d97367 0%,var(--danger) 100%); border:1px solid var(--danger-dark); }
+  #raid-panel .attack-btn:hover { box-shadow:0 0 12px rgba(204,95,84,0.5); }
+  #raid-panel .support-btn { background:linear-gradient(180deg,#7bacce 0%,var(--ally) 100%); border:1px solid var(--ally-dark); }
+  #raid-panel .support-btn:hover { box-shadow:0 0 12px rgba(91,143,181,0.5); }
+  #raid-panel .scout-btn { background:linear-gradient(180deg,#7d9ba5 0%,var(--scout) 100%); border:1px solid var(--scout-dark); }
+  #raid-panel .scout-btn:hover { box-shadow:0 0 12px rgba(92,125,136,0.5); }
+  #raid-panel .gift-btn { background:linear-gradient(180deg,#d9a840 0%,#b8860b 100%); border:1px solid #8f6a08; }
+  #raid-panel .gift-btn:hover { box-shadow:0 0 12px rgba(184,134,11,0.5); }
+  #raid-panel .cancel-btn { background:var(--border); border:1px solid var(--border); color:var(--text); }
+  #raid-panel .cancel-btn:hover { background:var(--border-light); }
+  #raid-panel .pin-btn { background:transparent; border:1px solid var(--accent-dark); color:var(--accent); }
+  #raid-panel .pin-btn:hover { background:rgba(201,151,63,0.1); }
 
-  #leaderboard-list .item-row.me { background:#f0e6b8; margin:0 -14px; padding:8px 14px; border-radius:4px; }
-  #leaderboard-list .rank { display:inline-block; width:26px; color:var(--muted); }
+  #leaderboard-list .item-row.me { background:rgba(224,181,88,0.15); margin:0 -14px; padding:8px 14px; border-radius:4px; border-bottom-color:transparent; }
+  #leaderboard-list .rank { display:inline-block; width:26px; color:var(--muted); font-family:var(--font-mono); }
 
-  .toggle-link { font-size:12px; color:var(--accent-dark); cursor:pointer; text-decoration:underline; }
+  .toggle-link { font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline; }
 
   #log { display:flex; flex-direction:column-reverse; gap:6px; max-height:200px; overflow-y:auto; font-size:13px; }
-  .log-line { padding:6px 8px; background:#faf8f2; border-radius:4px; border:1px solid var(--border); }
+  .log-line { padding:6px 8px; background:var(--panel-alt); border-radius:4px; border:1px solid var(--border); }
   .log-line.new { animation: flash 1.5s ease-out; }
-  @keyframes flash { from { background:#f0e6b8; } to { background:#faf8f2; } }
+  @keyframes flash { from { background:rgba(224,181,88,0.35); } to { background:var(--panel-alt); } }
   .muted { color:var(--muted); font-size:13px; }
-  #build-tag { text-align:center; font-size:10px; color:#bbb; margin-top:20px; }
+  #build-tag { text-align:center; font-size:10px; color:var(--muted); margin-top:20px; font-family:var(--font-mono); }
 </style>
 </head>
 <body>
@@ -112,7 +137,7 @@
   <div id="join-screen">
     <h1>&#127984; The Realm</h1>
     <p class="muted">Drop your banner on the shared map. Everyone sees it live.</p>
-    <p class="muted" style="font-size:12px;text-align:left;background:#faf8f2;padding:10px;border-radius:6px;border:1px solid var(--border);">
+    <p class="muted" style="font-size:12px;text-align:left;background:var(--panel-alt);padding:10px;border-radius:6px;border:1px solid var(--border);">
       <strong>How it works:</strong> your village generates wood, clay and iron on its own.
       Spend them upgrading buildings and training troops, then click another lord's banner
       on the map to raid them for loot or send support to defend them. Everything keeps
@@ -297,7 +322,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v44</div>
+  <div id="build-tag">build: realm-v45</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1759,97 +1784,4 @@
     const myPresenceRef = db.ref(`presence/${myUid}`);
     db.ref('.info/connected').on('value', (snap) => {
       if (snap.val() === true) {
-        myPresenceRef.onDisconnect().remove();
-        myPresenceRef.set(true);
-      }
-    });
-  }
-
-  async function showGame(banner, name) {
-    myName = name;
-    myLocalBanner = banner;
-    document.getElementById('join-screen').style.display = 'none';
-    document.getElementById('game').style.display = 'block';
-    document.getElementById('who').textContent = `You are ${name}`;
-
-    const welcomeMsg = buildWelcomeBackMessage(banner, Date.now());
-    if (welcomeMsg) addLogLine(welcomeMsg, true);
-
-    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); renderLeaderboard(); renderSupportPanel(); });
-    db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
-    db.ref('supportStacks').on('value', (snap) => { latestSupportStacks = snap.val() || {}; renderSupportPanel(); });
-    db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
-    db.ref(`reports/${myUid}`).limitToLast(15).on('child_added', (snap) => addReportLine(snap.val()));
-    db.ref('globalFeed').limitToLast(20).on('child_added', (snap) => addFeedLine(snap.val().message));
-    setupPresence();
-    db.ref('presence').on('value', (snap) => {
-      const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-      const el = document.getElementById('online-count');
-      if (el) el.textContent = `${count} online now`;
-    });
-
-    renderAccountPanel();
-    renderMyStats();
-    renderLeaderboard();
-    setInterval(async () => {
-      if (!myLocalBanner) { const s = await db.ref(`banners/${myUid}`).get(); myLocalBanner = s.val(); }
-      renderMyStats();
-      renderLeaderboard();
-    }, 1000);
-    setInterval(syncMyBanner, 20000);
-    setInterval(checkMovements, 3000);
-  }
-
-  async function enterRealm(name) {
-    setStatus('Connecting...');
-    try {
-      const existing = await db.ref('banners').get();
-      const banners = existing.val() || {};
-      const nameTaken = Object.values(banners).some((b) => b.name.toLowerCase() === name.toLowerCase());
-      if (nameTaken) {
-        setStatus(`A village named "${name}" already exists. If that's you, use Log In above instead — this box always starts a brand new, separate village.`);
-        return;
-      }
-      const spot = randomFreeSpot(banners);
-      const startingBanner = {
-        name, x: spot.x, y: spot.y,
-        resources: { wood: 100, clay: 100, iron: 100 },
-        troops: emptyTroops(),
-        buildings: defaultBuildings(),
-        buildQueue: [],
-        trainQueue: [],
-        lastUpdated: Date.now(),
-      };
-      await db.ref(`banners/${myUid}`).set(startingBanner);
-      showGame(startingBanner, name);
-    } catch (err) {
-      setStatus('Error: ' + (err.message || String(err)));
-    }
-  }
-
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) { auth.signInAnonymously(); return; }
-    myUid = user.uid;
-    const snap = await db.ref(`banners/${myUid}`).get();
-    const existing = snap.val();
-    if (existing) showGame(existing, existing.name);
-  });
-
-  document.getElementById('join-btn').addEventListener('click', () => {
-    const name = document.getElementById('name-input').value.trim();
-    if (name.length < 2) { setStatus('Enter a name (2+ characters).'); return; }
-    if (!myUid) { setStatus('Still connecting, try again in a second...'); return; }
-    enterRealm(name);
-  });
-  document.getElementById('name-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('join-btn').click();
-  });
-
-  document.getElementById('login-btn').addEventListener('click', () => {
-    const email = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value;
-    loginWithEmail(email, password, document.getElementById('login-status'));
-  });
-</script>
-</body>
-</html>
+      
