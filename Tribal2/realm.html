@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Realm — a shared world</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Spectral:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   /* ==== Design tokens — "war room at dusk": aged leather and iron with a
      brass/candlelight accent, in place of the earlier cream-and-sage look. ==== */
@@ -322,7 +319,7 @@
     </div>
   </div>
 
-  <div id="build-tag">build: realm-v45</div>
+  <div id="build-tag">build: realm-v46</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -337,9 +334,25 @@
     messagingSenderId: "649122676235",
     appId: "1:649122676235:web:1e5e61df4eaf141f6e510e",
   };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.database();
+  let auth, db;
+  try {
+    if (typeof firebase === 'undefined') throw new Error('The Firebase SDK didn\'t load.');
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.database();
+  } catch (err) {
+    // If this fails, nothing else on the page can work anyway — replace
+    // the whole page with a clear explanation instead of leaving a
+    // silent, do-nothing page with no clue why. :root CSS variables still
+    // apply here since they live on <html>, not <body>.
+    document.body.innerHTML = `
+      <div style="max-width:420px;margin:15vh auto;padding:28px;background:var(--panel,#241d17);border:1px solid var(--danger,#cc5f54);border-radius:6px;color:var(--text,#e8dcc0);font-family:sans-serif;text-align:center;">
+        <h2 style="color:var(--danger,#cc5f54);margin-top:0;">Couldn't connect</h2>
+        <p>${err.message} This usually means an ad-blocker or privacy extension is blocking Google's servers, or there's a connection problem.</p>
+        <p style="font-size:13px;opacity:0.8;">Try disabling any content-blocking extension for this site and reloading. If that doesn't help, it may be a temporary issue — try again shortly.</p>
+      </div>`;
+    throw err;
+  }
 
   // ---- Game constants ------------------------------------------------
   const GRID_SIZE = 20;      // the full world is 20x20 — plenty of room to grow into
@@ -1784,4 +1797,97 @@
     const myPresenceRef = db.ref(`presence/${myUid}`);
     db.ref('.info/connected').on('value', (snap) => {
       if (snap.val() === true) {
-      
+        myPresenceRef.onDisconnect().remove();
+        myPresenceRef.set(true);
+      }
+    });
+  }
+
+  async function showGame(banner, name) {
+    myName = name;
+    myLocalBanner = banner;
+    document.getElementById('join-screen').style.display = 'none';
+    document.getElementById('game').style.display = 'block';
+    document.getElementById('who').textContent = `You are ${name}`;
+
+    const welcomeMsg = buildWelcomeBackMessage(banner, Date.now());
+    if (welcomeMsg) addLogLine(welcomeMsg, true);
+
+    db.ref('banners').on('value', (snap) => { latestBanners = snap.val() || {}; renderGrid(); renderLeaderboard(); renderSupportPanel(); });
+    db.ref('raidMovements').on('value', (snap) => { latestMovements = snap.val() || {}; renderMovements(); });
+    db.ref('supportStacks').on('value', (snap) => { latestSupportStacks = snap.val() || {}; renderSupportPanel(); });
+    db.ref(`events/${myUid}`).limitToLast(20).on('child_added', (snap) => addLogLine(snap.val().message, true));
+    db.ref(`reports/${myUid}`).limitToLast(15).on('child_added', (snap) => addReportLine(snap.val()));
+    db.ref('globalFeed').limitToLast(20).on('child_added', (snap) => addFeedLine(snap.val().message));
+    setupPresence();
+    db.ref('presence').on('value', (snap) => {
+      const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+      const el = document.getElementById('online-count');
+      if (el) el.textContent = `${count} online now`;
+    });
+
+    renderAccountPanel();
+    renderMyStats();
+    renderLeaderboard();
+    setInterval(async () => {
+      if (!myLocalBanner) { const s = await db.ref(`banners/${myUid}`).get(); myLocalBanner = s.val(); }
+      renderMyStats();
+      renderLeaderboard();
+    }, 1000);
+    setInterval(syncMyBanner, 20000);
+    setInterval(checkMovements, 3000);
+  }
+
+  async function enterRealm(name) {
+    setStatus('Connecting...');
+    try {
+      const existing = await db.ref('banners').get();
+      const banners = existing.val() || {};
+      const nameTaken = Object.values(banners).some((b) => b.name.toLowerCase() === name.toLowerCase());
+      if (nameTaken) {
+        setStatus(`A village named "${name}" already exists. If that's you, use Log In above instead — this box always starts a brand new, separate village.`);
+        return;
+      }
+      const spot = randomFreeSpot(banners);
+      const startingBanner = {
+        name, x: spot.x, y: spot.y,
+        resources: { wood: 100, clay: 100, iron: 100 },
+        troops: emptyTroops(),
+        buildings: defaultBuildings(),
+        buildQueue: [],
+        trainQueue: [],
+        lastUpdated: Date.now(),
+      };
+      await db.ref(`banners/${myUid}`).set(startingBanner);
+      showGame(startingBanner, name);
+    } catch (err) {
+      setStatus('Error: ' + (err.message || String(err)));
+    }
+  }
+
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) { auth.signInAnonymously(); return; }
+    myUid = user.uid;
+    const snap = await db.ref(`banners/${myUid}`).get();
+    const existing = snap.val();
+    if (existing) showGame(existing, existing.name);
+  });
+
+  document.getElementById('join-btn').addEventListener('click', () => {
+    const name = document.getElementById('name-input').value.trim();
+    if (name.length < 2) { setStatus('Enter a name (2+ characters).'); return; }
+    if (!myUid) { setStatus('Still connecting, try again in a second...'); return; }
+    enterRealm(name);
+  });
+  document.getElementById('name-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('join-btn').click();
+  });
+
+  document.getElementById('login-btn').addEventListener('click', () => {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    loginWithEmail(email, password, document.getElementById('login-status'));
+  });
+</script>
+</body>
+</html>
