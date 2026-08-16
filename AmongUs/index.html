@@ -61,7 +61,14 @@
     --cut:14px;
   }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0;background:var(--void);color:var(--bone);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;background:var(--void);color:var(--bone);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;-webkit-touch-callout:none;user-select:none;overscroll-behavior:none}
+  /* Holding a task button used to select its label and raise the
+     Copy / Select All callout, which stole the press and stalled the task.
+     Selection stays switched on where it's actually wanted: the chat log
+     and any text field. */
+  #log,input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+  button{touch-action:manipulation}
   button{font-family:var(--stencil);cursor:pointer;color:inherit}
   input{font-family:var(--body)}
 
@@ -188,7 +195,9 @@
   #mini{width:340px;padding:20px}
   #miniBody{position:relative;height:280px;margin-top:12px}
   #holdBtn{position:absolute;inset:0;background:#0d1424;border:2px solid var(--signal);color:var(--signal);
-    font-size:14px;letter-spacing:.18em;display:flex;align-items:center;justify-content:center}
+    font-size:14px;letter-spacing:.18em;display:flex;align-items:center;justify-content:center;
+    touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #holdBtn span{pointer-events:none}
   #holdFill{position:absolute;left:0;bottom:0;width:0%;height:100%;background:rgba(77,227,255,.18);pointer-events:none;transition:width .08s linear}
   .wire{position:absolute;width:64px;height:44px;border:2px solid rgba(255,255,255,.25)}
   .wire.sel{outline:2px solid var(--bone);outline-offset:2px}
@@ -753,6 +762,13 @@ $("#roomTag").onclick = () => {
 };
 $("#roomTag").style.cursor = "pointer";
 window.addEventListener("beforeunload", () => { if (S.pRef) S.pRef.remove(); });
+/* Android's long-press menu arrives via contextmenu rather than the callout,
+   so it needs blocking too — everywhere but the chat log and text fields. */
+document.addEventListener("contextmenu", e => {
+  const t = e.target;
+  if (t.tagName === "INPUT" || t.closest("#log")) return;
+  e.preventDefault();
+});
 
 /* ============================================================================
    6. CHAT
@@ -1459,9 +1475,17 @@ function gameHold(b) {
     clearInterval(miniTimer); miniTimer = null;
     if (ok) miniDone(); else fill.style.width = "0%";
   };
-  btn.addEventListener("pointerdown", e => { e.preventDefault(); start(); });
+  /* Capturing the pointer keeps every move and release aimed at this button,
+     so a finger drifting a few pixels no longer cancels the hold — and it
+     stops the browser treating the press as a text selection gesture. */
+  btn.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    start();
+  });
   btn.addEventListener("pointerup", () => miniTimer && stop(false));
-  btn.addEventListener("pointerleave", () => miniTimer && stop(false));
+  btn.addEventListener("pointercancel", () => miniTimer && stop(false));
+  btn.addEventListener("contextmenu", e => e.preventDefault());
 }
 
 function gameWires(b) {
