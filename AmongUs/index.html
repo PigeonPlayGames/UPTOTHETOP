@@ -129,9 +129,13 @@
   .task b{color:var(--dim);font-weight:600;font-family:var(--mono);font-size:10px;letter-spacing:.06em}
   .task.done{color:#55637d;text-decoration:line-through}
 
-  #chat{position:absolute;left:8px;bottom:8px;width:min(340px,64vw);display:flex;flex-direction:column;
+  #chat{position:absolute;left:8px;bottom:8px;width:min(340px,64vw);display:flex;flex-direction:column;z-index:5;
     background:linear-gradient(180deg,rgba(19,26,43,.5),rgba(10,15,26,.86));border:1px solid var(--line);
     clip-path:polygon(var(--cut) 0,100% 0,100% 100%,0 100%,0 var(--cut))}
+  /* during a meeting the chat lifts above the overlay so the crew can argue */
+  #chat.raised{z-index:30;position:fixed;background:linear-gradient(180deg,rgba(19,26,43,.92),rgba(10,15,26,.97));
+    border-color:var(--signal);width:min(380px,80vw)}
+  #chat.raised #log{height:200px}
   #log{height:150px;overflow-y:auto;padding:9px 11px;font-size:13px;line-height:1.45;scrollbar-width:thin}
   #log div{margin-bottom:3px;word-wrap:break-word}
   #log .sys{color:var(--amber);font-family:var(--mono);font-size:11px;letter-spacing:.05em}
@@ -149,6 +153,7 @@
   .act:disabled{opacity:.35}
   .act.use{border-color:var(--signal);color:var(--signal)}
   .act.rep{border-color:var(--amber);color:var(--amber)}
+  .act.meet{border-color:var(--bone);color:var(--bone)}
   .act.kill{border-color:var(--hazard);color:#ff8b96}
   .act.sab{border-color:#a86bff;color:#c9a4ff}
   #cdMask{position:absolute;inset:0;background:rgba(6,10,18,.78);display:flex;align-items:center;justify-content:center;
@@ -197,6 +202,9 @@
     #tasks{display:none!important}
     #chat{width:58vw}
     #log{height:104px}
+    #chat.raised{width:calc(100vw - 16px)}
+    #chat.raised #log{height:120px}
+    #meetOv{align-items:flex-start;padding-bottom:230px}
     .act{width:64px;height:64px;font-size:10px}
     .crewgrid{grid-template-columns:1fr}
   }
@@ -264,6 +272,7 @@
     <button id="sabBtn" class="act sab">Sabotage<small>lights</small></button>
     <button id="killBtn" class="act kill">Kill<small>Q</small><span id="cdMask" style="display:none"></span></button>
     <button id="repBtn" class="act rep">Report<small>R</small></button>
+    <button id="meetBtn" class="act meet">Meeting<small>button</small></button>
     <button id="useBtn" class="act use">Use<small>E</small></button>
   </div>
 </div>
@@ -323,8 +332,6 @@
 /* ============================================================================
    1. CONFIG  — paste your own Firebase web config here
    ========================================================================== */
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const FB = {
   apiKey: "AIzaSyBBKwwjN0bst4R1YKHLR9XbMfLw6m4cdhM",
   authDomain: "amongus-f79f9.firebaseapp.com",
@@ -332,11 +339,8 @@ const FB = {
   projectId: "amongus-f79f9",
   storageBucket: "amongus-f79f9.firebasestorage.app",
   messagingSenderId: "1062024084134",
-  appId: "1:1062024084134:web:78de750c309697e1259267",
-  measurementId: "G-KE08TLPNJC"
+  appId: "1:1062024084134:web:78de750c309697e1259267"
 };
-
-// Initialize Firebase
 
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
@@ -635,6 +639,7 @@ function onMeta() {
   if (st !== lastState) {
     if (st === "lobby") {
       lobbyDismissed = false;
+      clearInterval(endTimer); endTimer = null;
       $("#lobbyOv").classList.add("on");
       $("#endOv").classList.remove("on");
     }
@@ -661,12 +666,18 @@ function onMeta() {
       pushMe(true);
       $("#meetOv").classList.add("on");
     }
+    $("#chat").classList.toggle("raised", st === "meeting");
     if (st === "ended") showEnd();
     lastState = st;
   }
   const sab = S.meta.sabotage === "lights";
   $("#alert").style.display = sab && st === "playing" ? "block" : "none";
   refreshHud();
+  /* The meeting and meta listeners fire in whatever order Firebase hands them
+     over. If meeting arrived first, renderMeeting bailed out because the state
+     was still "playing" — which is how the person who called the meeting ended
+     up staring at a panel with no vote buttons. Redraw once state is known. */
+  renderMeeting();
 }
 
 let rosterSig = "";
@@ -878,6 +889,15 @@ function findNearest() {
   if (!p || S.meta.state !== "playing") return;
   let best = null, bd = 1e9;
 
+  /* Standing on the emergency button always means the button — impostors get
+     fake task markers too, and letting one of those win the proximity contest
+     is what stopped them calling meetings. */
+  if (!p.usedEmergency && p.alive !== false &&
+      dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y) < USE_RANGE) {
+    S.nearest = { kind: "emergency" };
+    return;
+  }
+
   // your own unfinished tasks (impostors see them too — fake tasks)
   for (const id of (p.taskList || [])) {
     if ((p.tasks || {})[id]) continue;
@@ -889,11 +909,6 @@ function findNearest() {
   if (S.meta.sabotage === "lights") {
     const d = dist(S.local.x, S.local.y, LIGHT_PANEL.x, LIGHT_PANEL.y);
     if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "lights" }; }
-  }
-  // emergency button
-  if (!p.usedEmergency && p.alive !== false) {
-    const d = dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y);
-    if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "emergency" }; }
   }
   S.nearest = best;
 }
@@ -928,6 +943,8 @@ function updateActions() {
   $("#cdMask").textContent = cd;
   const scd = Math.max(0, Math.ceil((S.sabAt - Date.now()) / 1000));
   $("#sabBtn").disabled = !(playing && alive && amImp() && scd === 0 && S.meta.sabotage !== "lights");
+  $("#meetBtn").disabled = !(playing && alive && p && !p.usedEmergency &&
+    dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y) < USE_RANGE);
 }
 
 function doUse() {
@@ -935,10 +952,14 @@ function doUse() {
   const n = S.nearest;
   if (n.kind === "task") openTask(n.task);
   else if (n.kind === "lights") openTask({ id: "lights", n: "Restore Lights", r: "Electrical", t: "wires" });
-  else if (n.kind === "emergency") {
-    S.pRef.update({ usedEmergency: true });
-    callMeeting("emergency", null);
-  }
+  else if (n.kind === "emergency") callEmergency();
+}
+function callEmergency() {
+  const p = me();
+  if (!p || p.alive === false || p.usedEmergency || S.meta.state !== "playing") return;
+  if (dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y) > USE_RANGE) return;
+  S.pRef.update({ usedEmergency: true });
+  callMeeting("emergency", null);
 }
 function doReport() {
   const b = nearestBody();
@@ -957,6 +978,7 @@ function doKill() {
   S.local.x = v.x; S.local.y = v.y; pushMe(true);   // step onto the body
 }
 $("#useBtn").onclick = doUse;
+$("#meetBtn").onclick = callEmergency;
 $("#repBtn").onclick = doReport;
 $("#killBtn").onclick = doKill;
 $("#sabBtn").onclick = () => {
@@ -981,7 +1003,7 @@ async function callMeeting(type, who) {
 }
 
 function renderMeeting() {
-  if (!S.meeting || S.meta.state !== "meeting") return;
+  if (!S.meeting || !$("#meetOv").classList.contains("on")) return;
   const votes = S.meeting.votes || {};
   const iVoted = !!votes[S.uid];
   $("#meetTitle").textContent = S.meeting.type === "body" ? "Body reported" : "Emergency meeting";
@@ -1081,6 +1103,7 @@ function hostCheckWin() {
   }
 }
 
+let endTimer = null;
 function showEnd() {
   const crewWon = S.meta.winner === "crew";
   $("#endTitle").textContent = crewWon ? "Crewmates win" : "Impostors win";
@@ -1092,18 +1115,44 @@ function showEnd() {
     (p.role === "imp" ? "var(--hazard)" : "var(--dim)") + '">' +
     (p.role === "imp" ? "IMPOSTOR" : "CREW") + "</span></div>").join("") + "</div>";
   $("#endOv").classList.add("on");
-  $("#againBtn").style.display = isHost() ? "block" : "none";
+
+  /* Anyone can send the room back to the lobby, and if nobody clicks it
+     happens on its own — waiting on one specific person to press a button is
+     how a finished round turns into everyone closing the tab. */
+  let left = 12;
+  const btn = $("#againBtn");
+  btn.style.display = "block";
+  btn.disabled = false;
+  clearInterval(endTimer);
+  endTimer = setInterval(() => {
+    left--;
+    btn.textContent = "Back to lobby (" + left + ")";
+    if (left <= 0) { clearInterval(endTimer); endTimer = null; backToLobby(); }
+  }, 1000);
+  btn.textContent = "Back to lobby (" + left + ")";
 }
-$("#againBtn").onclick = async () => {
-  const up = { "meta/state": "lobby", "meta/winner": null, "meta/sabotage": null, bodies: null, meeting: null };
-  Object.keys(S.players).forEach(id => {
+
+async function backToLobby() {
+  clearInterval(endTimer); endTimer = null;
+  if (S.meta.state !== "ended") return;
+  $("#againBtn").disabled = true;
+  const up = {
+    "meta/state": "lobby", "meta/winner": null, "meta/reason": null,
+    "meta/sabotage": null, bodies: null, meeting: null
+  };
+  Object.keys(S.players).forEach((id, i) => {
     up["players/" + id + "/alive"] = true;
     up["players/" + id + "/role"] = "crew";
     up["players/" + id + "/tasks"] = {};
     up["players/" + id + "/taskList"] = [];
+    up["players/" + id + "/usedEmergency"] = false;
+    up["players/" + id + "/x"] = SPAWN.x + Math.cos(i * 1.3) * 130;
+    up["players/" + id + "/y"] = SPAWN.y + Math.sin(i * 1.3) * 80;
   });
   await roomRef().update(up);
-};
+  say("Back to the lobby. Ready up for another round.", true);
+}
+$("#againBtn").onclick = backToLobby;
 
 /* ============================================================================
    13. TASK MINIGAMES
