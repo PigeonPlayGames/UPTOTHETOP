@@ -132,10 +132,12 @@
   #chat{position:absolute;left:8px;bottom:8px;width:min(340px,64vw);display:flex;flex-direction:column;z-index:5;
     background:linear-gradient(180deg,rgba(19,26,43,.5),rgba(10,15,26,.86));border:1px solid var(--line);
     clip-path:polygon(var(--cut) 0,100% 0,100% 100%,0 100%,0 var(--cut))}
-  /* during a meeting the chat lifts above the overlay so the crew can argue */
-  #chat.raised{z-index:30;position:fixed;background:linear-gradient(180deg,rgba(19,26,43,.92),rgba(10,15,26,.97));
-    border-color:var(--signal);width:min(380px,80vw)}
-  #chat.raised #log{height:200px}
+  /* #game is position:fixed, so it owns a stacking context and no z-index on
+     the chat can beat an overlay outside it. The chat node is moved into the
+     open panel instead, and this is how it looks once it's there. */
+  #chat.inpanel{position:static;width:100%;margin:14px 0 0;clip-path:none;
+    background:rgba(8,12,22,.72);border-color:var(--line)}
+  #chat.inpanel #log{height:158px}
   #log{height:150px;overflow-y:auto;padding:9px 11px;font-size:13px;line-height:1.45;scrollbar-width:thin}
   #log div{margin-bottom:3px;word-wrap:break-word}
   #log .sys{color:var(--amber);font-family:var(--mono);font-size:11px;letter-spacing:.05em}
@@ -198,13 +200,22 @@
   #target{position:absolute;top:100px;width:4px;height:54px;background:var(--amber)}
   #handle{position:absolute;top:106px;width:34px;height:42px;background:#1b2b46;border:2px solid var(--signal);touch-action:none}
   #miniHint{font-size:12px;color:var(--dim);margin-top:12px;text-align:center;min-height:16px}
+
+  /* full-screen event banner: ejections, deaths, sabotage calls */
+  #flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:40;
+    pointer-events:none;opacity:0;transition:opacity .4s;padding:24px;text-align:center;
+    font-family:var(--stencil);text-transform:uppercase;letter-spacing:.14em;font-weight:700;
+    font-size:clamp(22px,5vw,42px);line-height:1.2;text-shadow:0 4px 30px rgba(0,0,0,.9)}
+  #flash.on{opacity:1}
+  #muteBtn{padding:0 12px;font-size:15px;letter-spacing:0;min-width:46px}
+  #muteBtn.off{color:var(--dim);text-decoration:line-through;text-decoration-thickness:2px}
   @media (max-width:640px){
     #tasks{display:none!important}
     #chat{width:58vw}
     #log{height:104px}
-    #chat.raised{width:calc(100vw - 16px)}
-    #chat.raised #log{height:120px}
-    #meetOv{align-items:flex-start;padding-bottom:230px}
+    #chat.inpanel{width:100%}
+    #chat.inpanel #log{height:118px}
+    #meetOv{align-items:flex-start}
     .act{width:64px;height:64px;font-size:10px}
     .crewgrid{grid-template-columns:1fr}
   }
@@ -250,6 +261,7 @@
       <div id="prog"><div id="progFill"></div></div>
     </div>
     <div id="roomTag" class="plate" data-code=""><span id="roomCode">----</span></div>
+    <button id="muteBtn" class="btn" title="Sound on or off">♪</button>
     <button id="leaveBtn" class="btn">Leave</button>
   </div>
 
@@ -283,9 +295,11 @@
     <h2>Waiting to launch</h2>
     <div class="sub">ROOM <span id="lobbyCode" style="color:var(--signal)"></span> · SHARE THIS CODE</div>
     <div id="crewLobby"></div>
+    <div id="lobbyChat"></div>
     <div class="hz"></div>
     <div class="row">
       <button id="startBtn" class="btn primary">Start game</button>
+      <button id="colorBtn" class="btn">Change colour</button>
       <button id="closeLobby" class="btn">Walk around</button>
     </div>
     <p class="note" id="lobbyNote">You are the host. Start when everyone is aboard.</p>
@@ -299,6 +313,7 @@
     <div class="sub"><span id="meetSub">DISCUSS · THEN VOTE</span> · <span id="voteTimer">45</span>s</div>
     <div id="crew" class="crewgrid"></div>
     <button id="skipBtn" class="btn" style="width:100%">Skip vote</button>
+    <div id="meetChat"></div>
     <p class="note" id="voteNote">Talk it out in chat, then vote. Ties skip.</p>
   </div>
 </div>
@@ -320,10 +335,13 @@
     <h2 id="endTitle">Crewmates win</h2>
     <div class="sub" id="endSub"></div>
     <div id="endCrew"></div>
+    <div id="endChat"></div>
     <div class="hz"></div>
     <button id="againBtn" class="btn primary" style="width:100%">Back to lobby</button>
   </div>
 </div>
+
+<div id="flash"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -364,7 +382,116 @@ try {
 }
 
 /* ============================================================================
-   2. CONSTANTS
+   2. SOUND — everything is synthesised, so there are no audio files to host
+   and nothing extra to load. Browsers block audio until the first gesture,
+   so the context is created lazily and resumed on the join click.
+   ========================================================================== */
+const SFX = (() => {
+  let ac = null, muted = false;
+  try { muted = localStorage.getItem("v9mute") === "1"; } catch (e) {}
+
+  function ctx() {
+    if (muted) return null;
+    try {
+      if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === "suspended") ac.resume();
+      return ac;
+    } catch (e) { return null; }
+  }
+  /* one shaped oscillator note; f2 makes it glide */
+  function tone(o) {
+    const c = ctx(); if (!c) return;
+    const t = c.currentTime + (o.at || 0), dur = o.dur || .18;
+    const osc = c.createOscillator(), g = c.createGain();
+    osc.type = o.type || "sine";
+    osc.frequency.setValueAtTime(o.f, t);
+    if (o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f2), t + dur);
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(o.vol || .16, t + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    osc.connect(g).connect(c.destination);
+    osc.start(t); osc.stop(t + dur + .03);
+  }
+  /* filtered noise burst — thuds, whooshes, static */
+  function noise(o) {
+    const c = ctx(); if (!c) return;
+    const t = c.currentTime + (o.at || 0), dur = o.dur || .3;
+    const n = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, o.decay || 1.6);
+    const src = c.createBufferSource(); src.buffer = buf;
+    const f = c.createBiquadFilter();
+    f.type = o.filter || "lowpass";
+    f.frequency.setValueAtTime(o.cut || 900, t);
+    if (o.cut2) f.frequency.exponentialRampToValueAtTime(Math.max(40, o.cut2), t + dur);
+    const g = c.createGain(); g.gain.value = o.vol || .15;
+    src.connect(f).connect(g).connect(c.destination);
+    src.start(t);
+  }
+  const seq = (notes, opt) => notes.forEach((f, i) =>
+    tone(Object.assign({ f, at: i * (opt.gap || .09) }, opt)));
+
+  return {
+    wake() { ctx(); },
+    isMuted: () => muted,
+    toggle() {
+      muted = !muted;
+      try { localStorage.setItem("v9mute", muted ? "1" : "0"); } catch (e) {}
+      if (!muted) tone({ f: 660, dur: .1, type: "triangle", vol: .14 });
+      return muted;
+    },
+
+    ui:        () => tone({ f: 520, dur: .05, type: "square", vol: .06 }),
+    error:     () => tone({ f: 190, f2: 110, dur: .2, type: "sawtooth", vol: .1 }),
+    join:      () => seq([523, 784], { dur: .12, type: "triangle", vol: .12, gap: .08 }),
+    part:      () => seq([523, 349], { dur: .14, type: "triangle", vol: .1, gap: .08 }),
+    chat:      () => tone({ f: 1050, dur: .05, type: "sine", vol: .07 }),
+
+    taskOpen:  () => seq([440, 660], { dur: .09, type: "triangle", vol: .1, gap: .06 }),
+    taskStep:  () => tone({ f: 760, dur: .05, type: "square", vol: .07 }),
+    taskDone:  () => seq([660, 880, 1320], { dur: .13, type: "triangle", vol: .13, gap: .075 }),
+
+    sabotage() {
+      for (let i = 0; i < 3; i++) tone({ f: 820, f2: 240, dur: .34, type: "sawtooth", vol: .12, at: i * .36 });
+      noise({ dur: .5, cut: 1800, cut2: 300, vol: .07 });
+    },
+    restore:   () => seq([220, 440, 880], { dur: .16, type: "triangle", vol: .12, gap: .09 }),
+
+    kill() {
+      noise({ dur: .45, cut: 700, cut2: 90, vol: .3, decay: 2.4 });
+      tone({ f: 110, f2: 38, dur: .5, type: "sawtooth", vol: .2 });
+    },
+    died() {
+      tone({ f: 300, f2: 60, dur: .9, type: "sawtooth", vol: .2 });
+      noise({ dur: .8, cut: 500, cut2: 80, vol: .2, decay: 2 });
+    },
+    meeting() {
+      for (let i = 0; i < 4; i++) {
+        tone({ f: 740, dur: .16, type: "square", vol: .13, at: i * .26 });
+        tone({ f: 520, dur: .16, type: "square", vol: .13, at: i * .26 + .13 });
+      }
+    },
+    report() {
+      noise({ dur: .5, cut: 2400, cut2: 400, vol: .12 });
+      for (let i = 0; i < 3; i++) tone({ f: 300, f2: 620, dur: .22, type: "sawtooth", vol: .14, at: i * .24 });
+    },
+    vote:      () => seq([880, 1250], { dur: .06, type: "square", vol: .1, gap: .055 }),
+    tick:      () => tone({ f: 1000, dur: .04, type: "square", vol: .07 }),
+    eject() {
+      noise({ dur: 1.1, filter: "bandpass", cut: 1400, cut2: 180, vol: .22, decay: .8 });
+      tone({ f: 700, f2: 70, dur: 1.1, type: "sine", vol: .14 });
+    },
+    ready:     () => seq([880, 1320], { dur: .09, type: "triangle", vol: .1, gap: .07 }),
+    win:       () => seq([523, 659, 784, 1047], { dur: .3, type: "triangle", vol: .15, gap: .13 }),
+    lose() {
+      seq([392, 330, 262], { dur: .4, type: "sawtooth", vol: .13, gap: .18 });
+      tone({ f: 90, dur: 1.4, type: "sine", vol: .12, at: .18 });
+    }
+  };
+})();
+
+/* ============================================================================
+   3. CONSTANTS
    ========================================================================== */
 const PLAYER_R = 18, SPEED = 215, NET_MS = 70;
 const KILL_RANGE = 96, KILL_CD = 25, SAB_CD = 30;
@@ -492,8 +619,8 @@ const randCode = () => Array.from({ length: 4 }, () =>
 auth.signInAnonymously().catch(e => { $("#joinErr").textContent = e.message; });
 auth.onAuthStateChanged(u => { if (u) S.uid = u.uid; });
 
-$("#hostBtn").onclick = () => enter(randCode(), true);
-$("#joinBtn").onclick = () => enter($("#code").value.trim().toUpperCase(), false);
+$("#hostBtn").onclick = () => { SFX.wake(); enter(randCode(), true); };
+$("#joinBtn").onclick = () => { SFX.wake(); enter($("#code").value.trim().toUpperCase(), false); };
 $("#code").addEventListener("keydown", e => { if (e.key === "Enter") $("#joinBtn").click(); });
 $("#name").addEventListener("keydown", e => { if (e.key === "Enter") $("#code").focus(); });
 
@@ -507,11 +634,16 @@ async function enter(code, creating) {
 
   try {
     const snap = await db.ref("rooms/" + code + "/meta").get();
+    const ghostRoom = snap.exists() &&
+      !(await db.ref("rooms/" + code + "/players").get()).exists();
     if (!snap.exists() && !creating) throw new Error("No room called " + code + ". Check the code or create one.");
-    if (snap.exists() && creating) throw new Error("That code is taken — try Create again.");
+    if (snap.exists() && creating && !ghostRoom) throw new Error("That code is taken — try Create again.");
+    /* A room whose last player vanished mid-round would otherwise stay stuck
+       in "ended" forever. Nobody is in it, so reset it. */
+    if (ghostRoom) await db.ref("rooms/" + code).remove();
 
     S.room = code; S.name = name;
-    if (creating) {
+    if (creating || ghostRoom) {
       await roomRef("meta").set({ host: S.uid, state: "lobby", sabotage: null, createdAt: Date.now() });
     } else if (snap.val().state !== "lobby") {
       // Join mid-game as a ghost so you can still watch and chat with the dead.
@@ -564,6 +696,9 @@ function listen() {
 }
 
 function leave() {
+  /* Last one out turns the lights off, so abandoned codes don't pile up in
+     the database and block their own reuse later. */
+  if (S.room && Object.keys(S.players).length <= 1) roomRef().remove();
   S.refs.forEach(([r, e, h]) => r.off(e, h));
   S.refs = [];
   if (S.pRef) { S.pRef.onDisconnect().cancel(); S.pRef.remove(); }
@@ -571,11 +706,50 @@ function leave() {
   $$(".ov").forEach(o => o.classList.remove("on"));
   $("#game").style.display = "none";
   $("#join").style.display = "flex";
+  syncChatMount();
+  knownIds = null; lastSab = null; seenEject = null; lastChatTs = 0;
 }
 $("#leaveBtn").onclick = leave;
+
+/* ---- chat follows whichever panel is open ---------------------------------
+   Moving the node is the only reliable fix: #game is a stacking context, so
+   a chat box living inside it can never paint above a full-screen overlay. */
+function syncChatMount() {
+  const c = $("#chat");
+  let host = null;
+  if ($("#meetOv").classList.contains("on")) host = $("#meetChat");
+  else if ($("#endOv").classList.contains("on")) host = $("#endChat");
+  else if ($("#lobbyOv").classList.contains("on")) host = $("#lobbyChat");
+  const want = host || $("#game");
+  if (c.parentElement === want) return;          // no needless DOM churn
+  want.appendChild(c);
+  c.classList.toggle("inpanel", !!host);
+  $("#log").scrollTop = $("#log").scrollHeight;
+}
+
+let flashT = null;
+function flash(text, color) {
+  const f = $("#flash");
+  f.textContent = text;
+  f.style.color = color || "var(--bone)";
+  f.classList.add("on");
+  clearTimeout(flashT);
+  flashT = setTimeout(() => f.classList.remove("on"), 3200);
+}
+
+function paintMute() {
+  const m = SFX.isMuted();
+  $("#muteBtn").textContent = "♪";
+  $("#muteBtn").classList.toggle("off", m);
+  $("#muteBtn").title = m ? "Sound off — click to unmute" : "Sound on — click to mute";
+}
+$("#muteBtn").onclick = () => { SFX.toggle(); paintMute(); };
+paintMute();
 /* Tapping the room code brings the lobby panel back after "Walk around". */
 $("#roomTag").onclick = () => {
-  if ((S.meta.state || "lobby") === "lobby") $("#lobbyOv").classList.add("on");
+  if ((S.meta.state || "lobby") !== "lobby") return;
+  $("#lobbyOv").classList.add("on");
+  syncChatMount();
 };
 $("#roomTag").style.cursor = "pointer";
 window.addEventListener("beforeunload", () => { if (S.pRef) S.pRef.remove(); });
@@ -608,6 +782,7 @@ $("#msg").addEventListener("keydown", e => {
   if (e.key === "Escape") $("#msg").blur();
 });
 
+let lastChatTs = 0;
 function renderChat(obj) {
   const log = $("#log");
   const near = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
@@ -628,6 +803,12 @@ function renderChat(obj) {
     log.appendChild(d);
   }
   if (near) log.scrollTop = log.scrollHeight;
+
+  /* Blip only for other people's new lines, and never for the backlog that
+     arrives in one lump when you first join. */
+  const newest = msgs.length ? msgs[msgs.length - 1] : null;
+  if (newest && lastChatTs && newest.ts > lastChatTs && newest.uid !== S.uid) SFX.chat();
+  if (newest) lastChatTs = newest.ts;
 }
 
 /* ============================================================================
@@ -666,24 +847,60 @@ function onMeta() {
       pushMe(true);
       $("#meetOv").classList.add("on");
     }
-    $("#chat").classList.toggle("raised", st === "meeting");
     if (st === "ended") showEnd();
+    if (st === "meeting") SFX.meeting();
     lastState = st;
   }
   const sab = S.meta.sabotage === "lights";
   $("#alert").style.display = sab && st === "playing" ? "block" : "none";
+  if (sab !== lastSab) {
+    if (lastSab !== null) {
+      if (sab) { SFX.sabotage(); flash("Lights sabotaged", "var(--hazard)"); }
+      else { SFX.restore(); }
+    }
+    lastSab = sab;
+  }
+
+  /* Ejections are announced through meta so every client shows the same beat
+     at the same moment, rather than each one guessing from the player list. */
+  const ej = S.meta.lastEject;
+  if (ej && ej.ts !== seenEject) {
+    if (seenEject !== null) {
+      SFX.eject();
+      flash(ej.text, !ej.out ? "var(--dim)" : ej.imp ? "var(--signal)" : "var(--hazard)");
+    }
+    seenEject = ej.ts;
+  }
+
   refreshHud();
   /* The meeting and meta listeners fire in whatever order Firebase hands them
      over. If meeting arrived first, renderMeeting bailed out because the state
      was still "playing" — which is how the person who called the meeting ended
      up staring at a panel with no vote buttons. Redraw once state is known. */
   renderMeeting();
+  syncChatMount();
 }
+let lastSab = null, seenEject = null;
 
-let rosterSig = "";
+let rosterSig = "", knownIds = null, wasAlive = true;
 function onPlayers() {
   const p = me();
   if (!p) return;
+
+  const ids = Object.keys(S.players);
+  if (knownIds) {
+    if (ids.some(i => !knownIds.includes(i))) SFX.join();
+    else if (knownIds.some(i => !ids.includes(i))) SFX.part();
+  }
+  knownIds = ids;
+
+  const aliveNow = p.alive !== false;
+  if (wasAlive && !aliveNow && S.meta.state === "playing") {
+    SFX.died();
+    flash("You were killed", "var(--hazard)");
+  }
+  wasAlive = aliveNow;
+
   refreshHud();
   /* Positions stream in ~14x a second. Rebuilding the crew lists that often
      would thrash the DOM and cancel taps on the vote buttons, so only redraw
@@ -763,8 +980,21 @@ function renderLobby() {
     ? "You're the host. Start when everyone's aboard — 4 or more makes a proper game."
     : "Waiting for the host to start. You can walk around in the meantime.";
 }
-$("#closeLobby").onclick = () => { $("#lobbyOv").classList.remove("on"); lobbyDismissed = true; };
+$("#closeLobby").onclick = () => {
+  $("#lobbyOv").classList.remove("on"); lobbyDismissed = true; syncChatMount();
+};
 $("#startBtn").onclick = startGame;
+$("#colorBtn").onclick = () => {
+  const p = me();
+  if (!p || S.meta.state !== "lobby") return;
+  const taken = Object.entries(S.players).filter(([id]) => id !== S.uid).map(([, q]) => q.color);
+  const at = COLORS.findIndex(c => c[1] === p.color);
+  for (let i = 1; i <= COLORS.length; i++) {
+    const next = COLORS[(at + i) % COLORS.length][1];
+    if (!taken.includes(next)) { S.pRef.update({ color: next }); SFX.ui(); return; }
+  }
+  SFX.error();
+};
 
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -877,6 +1107,7 @@ function update(dt) {
 
   findNearest();
   updateActions();
+  syncChatMount();
 }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
@@ -932,12 +1163,15 @@ function nearestVictim() {
   return best;
 }
 
+let lastCd = 0;
 function updateActions() {
   const p = me(), playing = S.meta.state === "playing";
   const alive = p && p.alive !== false;
   $("#useBtn").disabled = !S.nearest;
   $("#repBtn").disabled = !(playing && alive && nearestBody());
   const cd = Math.max(0, Math.ceil((S.killAt - Date.now()) / 1000));
+  if (amImp() && cd === 0 && lastCd > 0 && playing && alive) SFX.ready();
+  lastCd = cd;
   $("#killBtn").disabled = !(playing && alive && amImp() && cd === 0 && nearestVictim());
   $("#cdMask").style.display = cd > 0 && amImp() ? "flex" : "none";
   $("#cdMask").textContent = cd;
@@ -964,6 +1198,7 @@ function callEmergency() {
 function doReport() {
   const b = nearestBody();
   if (!b || S.meta.state !== "playing" || amDead()) return;
+  SFX.report();
   callMeeting("body", b.name);
 }
 function doKill() {
@@ -975,6 +1210,7 @@ function doKill() {
   up["players/" + v.id + "/alive"] = false;
   up["bodies/" + v.id] = { x: Math.round(v.x), y: Math.round(v.y), color: v.color, name: v.name };
   roomRef().update(up);
+  SFX.kill();
   S.local.x = v.x; S.local.y = v.y; pushMe(true);   // step onto the body
 }
 $("#useBtn").onclick = doUse;
@@ -1007,9 +1243,12 @@ function renderMeeting() {
   const votes = S.meeting.votes || {};
   const iVoted = !!votes[S.uid];
   $("#meetTitle").textContent = S.meeting.type === "body" ? "Body reported" : "Emergency meeting";
-  $("#meetSub").textContent = S.meeting.type === "body"
+  const aliveCount = Object.values(S.players).filter(q => q.alive !== false).length;
+  const castCount = Object.keys(votes).length;
+  $("#meetSub").textContent = (S.meeting.type === "body"
     ? (S.meeting.who || "Someone").toUpperCase() + " FOUND DEAD · CALLED BY " + (S.meeting.by || "").toUpperCase()
-    : "CALLED BY " + (S.meeting.by || "").toUpperCase();
+    : "CALLED BY " + (S.meeting.by || "").toUpperCase())
+    + " · " + castCount + "/" + aliveCount + " VOTED";
 
   const tally = {};
   Object.values(votes).forEach(v => tally[v] = (tally[v] || 0) + 1);
@@ -1034,6 +1273,7 @@ function renderMeeting() {
 }
 function castVote(target) {
   if (amDead()) return;
+  SFX.vote();
   roomRef("meeting/votes/" + S.uid).set(target);
 }
 $("#skipBtn").onclick = () => castVote("skip");
@@ -1065,7 +1305,9 @@ async function resolveMeeting(votes) {
     up["players/" + top + "/alive"] = false;
     const wasImp = S.players[top].role === "imp";
     msg = S.players[top].name + " was ejected. " + (wasImp ? "They were the Impostor." : "They were not the Impostor.");
+    up["meta/lastEject"] = { text: msg, imp: wasImp, out: true, ts: Date.now() };
   } else if (tie) msg = "Tied vote — nobody was ejected.";
+  if (!up["meta/lastEject"]) up["meta/lastEject"] = { text: msg, imp: false, out: false, ts: Date.now() };
   // reset everyone to the cafeteria
   Object.keys(S.players).forEach((id, i) => {
     up["players/" + id + "/x"] = EMERGENCY.x + Math.cos(i * 1.1) * 140;
@@ -1079,7 +1321,12 @@ async function resolveMeeting(votes) {
 let voteTick = setInterval(() => {
   if (!S.meeting || S.meta.state !== "meeting") return;
   const left = Math.max(0, Math.ceil((S.meeting.endsAt - Date.now()) / 1000));
-  $("#voteTimer").textContent = left;
+  const el = $("#voteTimer");
+  if (el.textContent !== String(left)) {
+    el.textContent = left;
+    el.style.color = left <= 10 ? "var(--hazard)" : "var(--amber)";
+    if (left > 0 && left <= 5) SFX.tick();
+  }
   if (left === 0 && isHost()) hostCheckVotes();
 }, 500);
 
@@ -1115,6 +1362,11 @@ function showEnd() {
     (p.role === "imp" ? "var(--hazard)" : "var(--dim)") + '">' +
     (p.role === "imp" ? "IMPOSTOR" : "CREW") + "</span></div>").join("") + "</div>";
   $("#endOv").classList.add("on");
+  syncChatMount();
+  const p = me();
+  const iWon = p && ((p.role === "imp") === (S.meta.winner === "imp"));
+  iWon ? SFX.win() : SFX.lose();
+  flash(crewWon ? "Crewmates win" : "Impostors win", crewWon ? "var(--signal)" : "var(--hazard)");
 
   /* Anyone can send the room back to the lobby, and if nobody clicks it
      happens on its own — waiting on one specific person to press a button is
@@ -1165,6 +1417,7 @@ function openTask(t) {
   $("#miniSub").textContent = t.r.toUpperCase();
   $("#miniHint").textContent = "";
   const b = $("#miniBody"); b.innerHTML = "";
+  SFX.taskOpen();
   $("#taskOv").classList.add("on");   // must be visible before the games measure it
   ({ hold: gameHold, wires: gameWires, keypad: gameKeypad, slider: gameSlider }[t.t] || gameHold)(b);
 }
@@ -1178,6 +1431,7 @@ $("#miniClose").onclick = closeMini;
 
 function finishTask(t) {
   $("#miniHint").textContent = "Complete.";
+  SFX.taskDone();
   if (t.id === "lights") {
     roomRef("meta/sabotage").set(null);
     say("Lights restored", true);
@@ -1230,6 +1484,7 @@ function gameWires(b) {
       if (d.classList.contains("done")) return;
       if (side === "left") { $$(".wire").forEach(w => w.classList.remove("sel")); sel = d; d.classList.add("sel"); }
       else if (sel && sel.dataset.c === c) {
+        SFX.taskStep();
         sel.classList.add("done"); d.classList.add("done"); sel.classList.remove("sel");
         const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
         ln.setAttribute("x1", "74"); ln.setAttribute("y1", 40 + sel.dataset.i * 62);
@@ -1238,7 +1493,7 @@ function gameWires(b) {
         svg.appendChild(ln);
         sel = null;
         if (++done === 4) miniDone();
-      } else if (sel) { $("#miniHint").textContent = "Colours don't match."; }
+      } else if (sel) { SFX.error(); $("#miniHint").textContent = "Colours don't match."; }
     };
     b.appendChild(d);
   };
@@ -1259,11 +1514,12 @@ function gameKeypad(b) {
     btn.style.top = (40 + Math.floor(slot / 4) * 68) + "px";
     btn.onclick = () => {
       if (n === next) {
-        btn.classList.add("hit"); next++;
+        SFX.taskStep(); btn.classList.add("hit"); next++;
         if (next > 8) miniDone();
       } else {
         next = 1;
         $$(".key").forEach(k => k.classList.remove("hit"));
+        SFX.error();
         $("#miniHint").textContent = "Wrong order — start again.";
       }
     };
