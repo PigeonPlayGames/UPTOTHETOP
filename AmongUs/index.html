@@ -216,6 +216,12 @@
     font-family:var(--stencil);text-transform:uppercase;letter-spacing:.14em;font-weight:700;
     font-size:clamp(22px,5vw,42px);line-height:1.2;text-shadow:0 4px 30px rgba(0,0,0,.9)}
   #flash.on{opacity:1}
+  #opts{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;margin:14px 0 0}
+  .optName{font-family:var(--stencil);text-transform:uppercase;letter-spacing:.16em;font-size:11px;color:var(--dim)}
+  .optVals{display:flex;gap:5px}
+  .optBtn{padding:5px 11px;font-size:10px;letter-spacing:.1em;background:#0d1424;border:1px solid var(--line)}
+  .optBtn.on{border-color:var(--signal);color:var(--signal);background:#12203a}
+  .optBtn:disabled{opacity:.5;cursor:default}
   #muteBtn{padding:0 12px;font-size:15px;letter-spacing:0;min-width:46px}
   #muteBtn.off{color:var(--dim);text-decoration:line-through;text-decoration-thickness:2px}
   @media (max-width:640px){
@@ -304,6 +310,7 @@
     <h2>Waiting to launch</h2>
     <div class="sub">ROOM <span id="lobbyCode" style="color:var(--signal)"></span> · SHARE THIS CODE</div>
     <div id="crewLobby"></div>
+    <div id="opts"></div>
     <div id="lobbyChat"></div>
     <div class="hz"></div>
     <div class="row">
@@ -324,6 +331,22 @@
     <button id="skipBtn" class="btn" style="width:100%">Skip vote</button>
     <div id="meetChat"></div>
     <p class="note" id="voteNote">Talk it out in chat, then vote. Ties skip.</p>
+  </div>
+</div>
+
+<!-- ===================== SABOTAGE PICKER ===================== -->
+<div id="sabOv" class="ov">
+  <div class="panel plate" data-code="SAB-03" style="width:min(420px,100%)">
+    <h2>Sabotage</h2>
+    <div class="sub">PICK YOUR DAMAGE</div>
+    <button id="sabLights" class="btn" style="width:100%;text-align:left;padding:14px">
+      Lights <span style="color:var(--dim);letter-spacing:0;text-transform:none"> — blinds the crew until someone fixes the panel in Electrical</span>
+    </button>
+    <button id="sabReactor" class="btn danger" style="width:100%;text-align:left;padding:14px;margin-top:8px">
+      Reactor meltdown <span style="color:#ffb9c0;letter-spacing:0;text-transform:none"> — you win in 45 seconds unless two crew reach both hand scanners</span>
+    </button>
+    <div class="hz"></div>
+    <button id="sabCancel" class="btn" style="width:100%">Cancel</button>
   </div>
 </div>
 
@@ -491,6 +514,10 @@ const SFX = (() => {
       tone({ f: 700, f2: 70, dur: 1.1, type: "sine", vol: .14 });
     },
     ready:     () => seq([880, 1320], { dur: .09, type: "triangle", vol: .1, gap: .07 }),
+    alarm() {
+      tone({ f: 660, dur: .16, type: "square", vol: .11 });
+      tone({ f: 440, dur: .18, type: "square", vol: .11, at: .17 });
+    },
     win:       () => seq([523, 659, 784, 1047], { dur: .3, type: "triangle", vol: .15, gap: .13 }),
     lose() {
       seq([392, 330, 262], { dur: .4, type: "sawtooth", vol: .13, gap: .18 });
@@ -503,9 +530,26 @@ const SFX = (() => {
    3. CONSTANTS
    ========================================================================== */
 const PLAYER_R = 18, SPEED = 215, NET_MS = 70;
-const KILL_RANGE = 96, KILL_CD = 25, SAB_CD = 30;
+const KILL_RANGE = 96, SAB_CD = 30;
 const USE_RANGE = 78, REPORT_RANGE = 120;
-const VOTE_SECONDS = 45, TASKS_PER_PLAYER = 6;
+const REACTOR_SECONDS = 45;
+
+/* Host-tunable room options, with the old hard-coded values as defaults. */
+const DEFAULT_OPTS = { imps: 0, killCd: 25, voteTime: 45, tasks: 6 };
+const OPT_CHOICES = {
+  imps:     [[0, "Auto"], [1, "1"], [2, "2"]],
+  killCd:   [[15, "15s"], [25, "25s"], [40, "40s"]],
+  voteTime: [[30, "30s"], [45, "45s"], [60, "60s"]],
+  tasks:    [[4, "4"], [6, "6"], [8, "8"]]
+};
+const OPT_LABEL = { imps: "Impostors", killCd: "Kill cooldown", voteTime: "Meeting time", tasks: "Tasks each" };
+
+/* The two hand scanners that stop a meltdown. Different rooms, far enough
+   apart that nobody can reach both — it always takes two people. */
+const PADS = [
+  { id: "a", room: "Reactor",      x: 230, y: 850 },
+  { id: "b", room: "Upper Engine", x: 460, y: 520 }
+];
 const VISION = 330, VISION_IMP = 460, VISION_DARK = 130;
 
 const COLORS = [
@@ -589,10 +633,16 @@ const S = {
   lastNet: 0,
   refs: [], pRef: null,
   nearest: null,                  // { kind, ...target } computed each frame
+  pads: {}, myPad: null,          // reactor hand scanners
   busy: false                     // a minigame is open
 };
 
 const me = () => S.players[S.uid] || null;
+const opt = k => (S.meta.opts && S.meta.opts[k] != null) ? S.meta.opts[k] : DEFAULT_OPTS[k];
+/* sabotage is an object now: { type:"lights" } or { type:"reactor", endsAt } */
+const sabType = () => (S.meta.sabotage && S.meta.sabotage.type) || null;
+const meltdownLeft = () => sabType() === "reactor"
+  ? Math.max(0, Math.ceil((S.meta.sabotage.endsAt - Date.now()) / 1000)) : 0;
 const amDead = () => { const p = me(); return !!p && p.alive === false; };
 const amImp = () => { const p = me(); return !!p && p.role === "imp"; };
 const roomRef = p => db.ref("rooms/" + S.room + (p ? "/" + p : ""));
@@ -653,7 +703,10 @@ async function enter(code, creating) {
 
     S.room = code; S.name = name;
     if (creating || ghostRoom) {
-      await roomRef("meta").set({ host: S.uid, state: "lobby", sabotage: null, createdAt: Date.now() });
+      await roomRef("meta").set({
+        host: S.uid, state: "lobby", sabotage: null,
+        opts: Object.assign({}, DEFAULT_OPTS), createdAt: Date.now()
+      });
     } else if (snap.val().state !== "lobby") {
       // Join mid-game as a ghost so you can still watch and chat with the dead.
       err.textContent = "";
@@ -697,11 +750,23 @@ function listen() {
   add("players", s => { S.players = s.val() || {}; onPlayers(); });
   add("meta",    s => { S.meta = s.val() || {}; onMeta(); });
   add("bodies",  s => { S.bodies = s.val() || {}; });
+  add("pads",    s => { S.pads = s.val() || {}; onPads(); });
   add("meeting", s => { S.meeting = s.val() || null; renderMeeting(); });
 
   const cr = roomRef("chat").limitToLast(60);
   const ch = cr.on("value", s => renderChat(s.val() || {}));
   S.refs.push([cr, "value", ch]);
+}
+
+/* Both scanners held by two different living crew stabilises the reactor.
+   Only the host commits the fix, so the write happens once. */
+function onPads() {
+  if (sabType() !== "reactor" || !isHost()) return;
+  const held = PADS.map(pd => S.pads[pd.id]).filter(Boolean);
+  if (held.length < PADS.length) return;
+  if (new Set(held).size < PADS.length) return;     // one person, two scanners
+  roomRef().update({ "meta/sabotage": null, pads: null });
+  say("Reactor stabilised", true);
 }
 
 function leave() {
@@ -867,12 +932,14 @@ function onMeta() {
     if (st === "meeting") SFX.meeting();
     lastState = st;
   }
-  const sab = S.meta.sabotage === "lights";
+  const sab = sabType();
   $("#alert").style.display = sab && st === "playing" ? "block" : "none";
+  if (sab !== "reactor") S.myPad = null;
   if (sab !== lastSab) {
     if (lastSab !== null) {
-      if (sab) { SFX.sabotage(); flash("Lights sabotaged", "var(--hazard)"); }
-      else { SFX.restore(); }
+      if (sab === "reactor") { SFX.sabotage(); flash("Reactor meltdown", "var(--hazard)"); }
+      else if (sab === "lights") { SFX.sabotage(); flash("Lights sabotaged", "var(--hazard)"); }
+      else { SFX.restore(); flash("Systems restored", "var(--signal)"); }
     }
     lastSab = sab;
   }
@@ -894,6 +961,7 @@ function onMeta() {
      was still "playing" — which is how the person who called the meeting ended
      up staring at a panel with no vote buttons. Redraw once state is known. */
   renderMeeting();
+  renderOpts();
   syncChatMount();
 }
 let lastSab = null, seenEject = null;
@@ -990,12 +1058,32 @@ function renderLobby() {
       p.color + '"></span><span class="nm">' + esc(p.name) + "</span>" +
       (id === ids[0] ? '<span class="tally">HOST</span>' : "") + "</div>";
   }).join("") + "</div>";
+  renderOpts();
   const host = isHost();
   $("#startBtn").style.display = host ? "block" : "none";
   $("#lobbyNote").textContent = host
     ? "You're the host. Start when everyone's aboard — 4 or more makes a proper game."
     : "Waiting for the host to start. You can walk around in the meantime.";
 }
+let optSig = "";
+function renderOpts() {
+  const host = isHost();
+  const sig = JSON.stringify(S.meta.opts || {}) + host;
+  if (sig === optSig) return;                 // don't rebuild mid-click
+  optSig = sig;
+  $("#opts").innerHTML = Object.keys(OPT_CHOICES).map(k =>
+    '<span class="optName">' + OPT_LABEL[k] + '</span><span class="optVals">' +
+    OPT_CHOICES[k].map(([v, lab]) =>
+      '<button class="optBtn' + (opt(k) === v ? " on" : "") + '" data-k="' + k +
+      '" data-v="' + v + '"' + (host ? "" : " disabled") + ">" + lab + "</button>").join("") +
+    "</span>").join("");
+  if (!host) return;
+  $$("#opts .optBtn").forEach(b => b.onclick = () => {
+    SFX.ui();
+    roomRef("meta/opts/" + b.dataset.k).set(Number(b.dataset.v));
+  });
+}
+
 $("#closeLobby").onclick = () => {
   $("#lobbyOv").classList.remove("on"); lobbyDismissed = true; syncChatMount();
 };
@@ -1016,11 +1104,16 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 
 async function startGame() {
   const ids = shuffle(Object.keys(S.players));
-  const impCount = ids.length >= 7 ? 2 : (ids.length >= 2 ? 1 : 0);
+  /* Parity ends the round the moment impostors >= crew, so a count that big
+     would decide the game before anyone moved: 2 impostors needs 5 players,
+     and under 3 players there are none at all (a sandbox for testing). */
+  const chosen = opt("imps") || (ids.length >= 7 ? 2 : 1);
+  const impCount = ids.length < 3 ? 0
+    : Math.max(1, Math.min(chosen, Math.floor((ids.length - 1) / 2)));
   const up = {};
   ids.forEach((id, i) => {
     const role = i < impCount ? "imp" : "crew";
-    const list = shuffle(TASKS.slice()).slice(0, TASKS_PER_PLAYER).map(t => t.id);
+    const list = shuffle(TASKS.slice()).slice(0, opt("tasks")).map(t => t.id);
     up["players/" + id + "/role"] = role;
     up["players/" + id + "/alive"] = true;
     up["players/" + id + "/tasks"] = {};
@@ -1031,8 +1124,10 @@ async function startGame() {
   });
   up["bodies"] = null;
   up["meeting"] = null;
+  up["pads"] = null;
   up["meta/sabotage"] = null;
   up["meta/winner"] = null;
+  up["meta/impCount"] = impCount;
   up["meta/state"] = "playing";
   up["meta/startedAt"] = Date.now();
   await roomRef().update(up);
@@ -1121,6 +1216,13 @@ function update(dt) {
   }
   for (const id of Object.keys(S.smooth)) if (!S.players[id]) delete S.smooth[id];
 
+  /* wandering away from a scanner lets go of it */
+  if (S.myPad) {
+    const pad = PADS.find(q => q.id === S.myPad);
+    if (!pad || sabType() !== "reactor" || p.alive === false ||
+        dist(S.local.x, S.local.y, pad.x, pad.y) > USE_RANGE + 24) releasePad();
+  }
+
   findNearest();
   updateActions();
   syncChatMount();
@@ -1153,9 +1255,16 @@ function findNearest() {
     if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "task", task: t }; }
   }
   // lights panel
-  if (S.meta.sabotage === "lights") {
+  if (sabType() === "lights") {
     const d = dist(S.local.x, S.local.y, LIGHT_PANEL.x, LIGHT_PANEL.y);
     if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "lights" }; }
+  }
+  // reactor hand scanners
+  if (sabType() === "reactor") {
+    for (const pad of PADS) {
+      const d = dist(S.local.x, S.local.y, pad.x, pad.y);
+      if (d < USE_RANGE && d < bd) { bd = d; best = { kind: "pad", pad }; }
+    }
   }
   S.nearest = best;
 }
@@ -1180,7 +1289,18 @@ function nearestVictim() {
 }
 
 let lastCd = 0;
+function paintAlert() {
+  const t = sabType();
+  if (!t || S.meta.state !== "playing") return;
+  const el = $("#alert");
+  if (t === "lights") { el.textContent = "LIGHTS SABOTAGED — FIX THE PANEL IN ELECTRICAL"; return; }
+  const held = PADS.filter(pd => S.pads[pd.id]).length;
+  el.textContent = "REACTOR MELTDOWN · " + meltdownLeft() + "s · SCANNERS " + held + "/2" +
+    (S.myPad ? " · HOLDING — WAIT FOR THE OTHER" : "");
+}
+
 function updateActions() {
+  paintAlert();
   const p = me(), playing = S.meta.state === "playing";
   const alive = p && p.alive !== false;
   $("#useBtn").disabled = !S.nearest;
@@ -1192,8 +1312,8 @@ function updateActions() {
   $("#cdMask").style.display = cd > 0 && amImp() ? "flex" : "none";
   $("#cdMask").textContent = cd;
   const scd = Math.max(0, Math.ceil((S.sabAt - Date.now()) / 1000));
-  $("#sabBtn").disabled = !(playing && alive && amImp() && scd === 0 && S.meta.sabotage !== "lights");
-  $("#meetBtn").disabled = !(playing && alive && p && !p.usedEmergency &&
+  $("#sabBtn").disabled = !(playing && alive && amImp() && scd === 0 && !sabType());
+  $("#meetBtn").disabled = !(playing && alive && p && !p.usedEmergency && sabType() !== "reactor" &&
     dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y) < USE_RANGE);
 }
 
@@ -1202,18 +1322,25 @@ function doUse() {
   const n = S.nearest;
   if (n.kind === "task") openTask(n.task);
   else if (n.kind === "lights") openTask({ id: "lights", n: "Restore Lights", r: "Electrical", t: "wires" });
+  else if (n.kind === "pad") grabPad(n.pad.id);
   else if (n.kind === "emergency") callEmergency();
 }
 function callEmergency() {
   const p = me();
   if (!p || p.alive === false || p.usedEmergency || S.meta.state !== "playing") return;
+  if (sabType() === "reactor") return meltdownBlocked();
   if (dist(S.local.x, S.local.y, EMERGENCY.x, EMERGENCY.y) > USE_RANGE) return;
   S.pRef.update({ usedEmergency: true });
   callMeeting("emergency", null);
 }
+function meltdownBlocked() {
+  SFX.error();
+  flash("No meetings during a meltdown", "var(--hazard)");
+}
 function doReport() {
   const b = nearestBody();
   if (!b || S.meta.state !== "playing" || amDead()) return;
+  if (sabType() === "reactor") return meltdownBlocked();
   SFX.report();
   callMeeting("body", b.name);
 }
@@ -1221,7 +1348,7 @@ function doKill() {
   if (!amImp() || amDead() || S.meta.state !== "playing" || Date.now() < S.killAt) return;
   const v = nearestVictim();
   if (!v) return;
-  S.killAt = Date.now() + KILL_CD * 1000;
+  S.killAt = Date.now() + opt("killCd") * 1000;
   const up = {};
   up["players/" + v.id + "/alive"] = false;
   up["bodies/" + v.id] = { x: Math.round(v.x), y: Math.round(v.y), color: v.color, name: v.name };
@@ -1234,19 +1361,58 @@ $("#meetBtn").onclick = callEmergency;
 $("#repBtn").onclick = doReport;
 $("#killBtn").onclick = doKill;
 $("#sabBtn").onclick = () => {
-  if (!amImp() || Date.now() < S.sabAt) return;
-  S.sabAt = Date.now() + SAB_CD * 1000;
-  roomRef("meta/sabotage").set("lights");
-  say("Lights are down across the ship", true);
+  if ($("#sabBtn").disabled) return;
+  SFX.ui();
+  $("#sabOv").classList.add("on");
 };
+$("#sabCancel").onclick = () => $("#sabOv").classList.remove("on");
+
+function sabotage(kind) {
+  if (!amImp() || amDead() || Date.now() < S.sabAt || sabType() || S.meta.state !== "playing") return;
+  S.sabAt = Date.now() + SAB_CD * 1000;
+  $("#sabOv").classList.remove("on");
+  if (kind === "lights") {
+    roomRef("meta/sabotage").set({ type: "lights" });
+    say("Lights are down across the ship", true);
+  } else {
+    roomRef().update({
+      "meta/sabotage": { type: "reactor", endsAt: Date.now() + REACTOR_SECONDS * 1000 },
+      pads: null
+    });
+    say("REACTOR MELTDOWN — both hand scanners, now", true);
+  }
+}
+$("#sabLights").onclick = () => sabotage("lights");
+$("#sabReactor").onclick = () => sabotage("reactor");
+
+/* ---- reactor hand scanners ----------------------------------------------
+   Holding is a toggle rather than a press-and-hold: far kinder on a phone,
+   and walking out of range releases you automatically. */
+function grabPad(id) {
+  if (S.myPad === id) { releasePad(); return; }
+  releasePad();
+  S.myPad = id;
+  const ref = roomRef("pads/" + id);
+  ref.set(S.uid);
+  ref.onDisconnect().remove();
+  SFX.taskStep();
+}
+function releasePad() {
+  if (!S.myPad) return;
+  const ref = roomRef("pads/" + S.myPad);
+  ref.onDisconnect().cancel();
+  if (S.pads[S.myPad] === S.uid) ref.remove();
+  S.myPad = null;
+}
 
 /* ============================================================================
    11. MEETINGS + VOTING
    ========================================================================== */
 async function callMeeting(type, who) {
   await roomRef().update({
-    meeting: { type, by: S.name, who: who || null, endsAt: Date.now() + VOTE_SECONDS * 1000, votes: {} },
+    meeting: { type, by: S.name, who: who || null, endsAt: Date.now() + opt("voteTime") * 1000, votes: {} },
     bodies: null,
+    pads: null,
     "meta/state": "meeting",
     "meta/sabotage": null
   });
@@ -1334,6 +1500,26 @@ async function resolveMeeting(votes) {
   setTimeout(hostCheckWin, 400);
 }
 
+let lastAlarmSec = -1;
+setInterval(() => {
+  if (!S.room) return;
+  /* meltdown: alarm, countdown, and the crew losing if it runs out */
+  if (sabType() === "reactor" && S.meta.state === "playing") {
+    const left = meltdownLeft();
+    if (left !== lastAlarmSec) {
+      lastAlarmSec = left;
+      if (left > 0 && left <= 10) SFX.tick();
+      else if (left > 0 && left % 3 === 0) SFX.alarm();
+    }
+    if (left <= 0 && isHost() && !winLock) {
+      winLock = true;
+      roomRef("meta").update({
+        state: "ended", winner: "imp", reason: "The reactor melted down."
+      }).then(() => setTimeout(() => winLock = false, 1500));
+    }
+  } else lastAlarmSec = -1;
+}, 250);
+
 let voteTick = setInterval(() => {
   if (!S.meeting || S.meta.state !== "meeting") return;
   const left = Math.max(0, Math.ceil((S.meeting.endsAt - Date.now()) / 1000));
@@ -1353,13 +1539,18 @@ let winLock = false;
 function hostCheckWin() {
   if (winLock || S.meta.state !== "playing") return;
   const ps = Object.values(S.players);
-  if (ps.length < 2) return;                       // solo sandbox: no win checks
+  if (ps.length < 2) return;
   const impAlive = ps.filter(p => p.role === "imp" && p.alive !== false).length;
   const crewAlive = ps.filter(p => p.role === "crew" && p.alive !== false).length;
+  /* A round started with nobody as impostor (1-2 players) is a practice run:
+     the role checks would otherwise declare a winner on the first frame. */
+  const hadImps = S.meta.impCount == null ? 1 : S.meta.impCount;
   let winner = null, reason = "";
-  if (impAlive === 0) { winner = "crew"; reason = "Every impostor was ejected."; }
-  else if (impAlive >= crewAlive) { winner = "imp"; reason = "The impostors outnumber the crew."; }
-  else if (progress() >= 1) { winner = "crew"; reason = "The crew finished every task."; }
+  if (hadImps > 0) {
+    if (impAlive === 0) { winner = "crew"; reason = "Every impostor was ejected."; }
+    else if (impAlive >= crewAlive) { winner = "imp"; reason = "The impostors outnumber the crew."; }
+  }
+  if (!winner && progress() >= 1) { winner = "crew"; reason = "The crew finished every task."; }
   if (winner) {
     winLock = true;
     roomRef("meta").update({ state: "ended", winner, reason }).then(() => setTimeout(() => winLock = false, 1500));
@@ -1406,7 +1597,7 @@ async function backToLobby() {
   $("#againBtn").disabled = true;
   const up = {
     "meta/state": "lobby", "meta/winner": null, "meta/reason": null,
-    "meta/sabotage": null, bodies: null, meeting: null
+    "meta/sabotage": null, bodies: null, meeting: null, pads: null
   };
   Object.keys(S.players).forEach((id, i) => {
     up["players/" + id + "/alive"] = true;
@@ -1622,8 +1813,33 @@ function draw() {
   ring(EMERGENCY.x, EMERGENCY.y, 26, "#ff4d5e", .5 + Math.sin(t * 2) * .2);
   ctx.fillStyle = "#8c2431"; ctx.beginPath(); ctx.arc(EMERGENCY.x, EMERGENCY.y, 15, 0, 7); ctx.fill();
 
+  /* Hand scanners: drawn only during a meltdown, with a guide line toward
+     the nearest one so nobody has to know the map by heart under pressure. */
+  if (sabType() === "reactor") {
+    for (const pad of PADS) {
+      const held = !!S.pads[pad.id];
+      ring(pad.x, pad.y, 26 + Math.sin(t * 5) * 4, held ? "#2fd07a" : "#ff4d5e", .9);
+      ctx.fillStyle = held ? "rgba(47,208,122,.3)" : "rgba(255,77,94,.22)";
+      ctx.beginPath(); ctx.arc(pad.x, pad.y, 18, 0, 7); ctx.fill();
+      ctx.font = "700 11px 'Arial Narrow',Arial,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = held ? "#8ff0bd" : "#ffb9c0";
+      ctx.fillText(held ? "HELD" : "SCANNER", pad.x, pad.y + 40);
+    }
+    if (p.alive !== false) {
+      const near = PADS.slice().sort((a, b) =>
+        dist(S.local.x, S.local.y, a.x, a.y) - dist(S.local.x, S.local.y, b.x, b.y))[0];
+      const ang = Math.atan2(near.y - S.local.y, near.x - S.local.x);
+      ctx.strokeStyle = "rgba(255,77,94,.5)"; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(S.local.x + Math.cos(ang) * 46, S.local.y + Math.sin(ang) * 46);
+      ctx.lineTo(S.local.x + Math.cos(ang) * 82, S.local.y + Math.sin(ang) * 82);
+      ctx.stroke();
+    }
+  }
+
   // lights panel when sabotaged
-  if (S.meta.sabotage === "lights") {
+  if (sabType() === "lights") {
     ring(LIGHT_PANEL.x, LIGHT_PANEL.y, 24, "#ffb545", .4 + Math.sin(t * 6) * .3);
   }
 
@@ -1659,7 +1875,7 @@ function draw() {
 
   // fog of war
   let vis = amImp() ? VISION_IMP : VISION;
-  if (S.meta.sabotage === "lights" && !amImp()) vis = VISION_DARK;
+  if (sabType() === "lights" && !amImp()) vis = VISION_DARK;
   if (iAmGhost || S.meta.state === "lobby") vis = 900;
   const cx = W / 2 + (S.local.x - S.cam.x), cy = H / 2 + (S.local.y - S.cam.y);
   const g = ctx.createRadialGradient(cx, cy, vis * .45, cx, cy, vis);
