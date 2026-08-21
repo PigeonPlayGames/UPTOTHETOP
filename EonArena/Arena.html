@@ -157,6 +157,7 @@
 
   #board{position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:25; background:rgba(6,8,13,.6)}
   #board.on{display:flex}
+  body.touch #board{pointer-events:none}
   #board .panel{padding:24px; width:min(520px,92vw)}
   table{width:100%; border-collapse:collapse; font-size:12px}
   th{font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--dim); text-align:left; padding:0 0 10px; font-weight:400}
@@ -175,7 +176,7 @@
 
 
   /* ---------- touch controls ---------- */
-  #touch{position:fixed; inset:0; z-index:12; display:none; pointer-events:none}
+  #touch{position:fixed; inset:0; z-index:26; display:none; pointer-events:none}
   body.touch #touch{display:block}
   .tbtn{
     position:absolute; pointer-events:auto; border:1px solid var(--line);
