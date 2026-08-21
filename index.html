@@ -3,17 +3,267 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>eon games</title>
-
-  <link rel="stylesheet" href="styles.css" />
-
-  <!-- Animated SVG Favicon -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-
-  <!-- Firebase Compat SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <title>eon games — preview</title>
+  <style>
+:root {
+  --bg: #050816;
+  --bg-2: #0a1022;
+  --bg-3: #111a36;
+  --card: rgba(255, 255, 255, 0.07);
+  --card-strong: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(124, 92, 255, 0.28);
+  --text: #eef2ff;
+  --muted: #a7b0d6;
+  --accent: #7c5cff;
+  --accent-2: #26d0ff;
+  --accent-3: #ff9f43;
+  --success: #23d18b;
+  --danger: #ff7474;
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.22);
+  --radius: 22px;
+  --radius-sm: 14px;
+  --max-width: 1220px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: Inter, Arial, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(124, 92, 255, 0.15), transparent 30%),
+    radial-gradient(circle at top right, rgba(38, 208, 255, 0.12), transparent 28%),
+    radial-gradient(circle at center, rgba(255, 159, 67, 0.07), transparent 26%),
+    linear-gradient(180deg, var(--bg), var(--bg-2) 55%, #070c1a 100%);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+#starfield { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -3; pointer-events: none; }
+a { color: inherit; text-decoration: none; }
+button, input, textarea { font: inherit; }
+img { max-width: 100%; display: block; }
+.background-glow {
+  position: fixed; width: 420px; height: 420px; border-radius: 50%;
+  filter: blur(100px); opacity: 0.18; z-index: -2; pointer-events: none;
+}
+.glow-1 { background: var(--accent); top: -90px; left: -90px; }
+.glow-2 { background: var(--accent-2); bottom: -110px; right: -90px; }
+.site-header {
+  width: min(var(--max-width), calc(100% - 32px));
+  margin: 20px auto 0; padding: 16px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  background: rgba(9, 12, 28, 0.7);
+  border: 1px solid var(--border); border-radius: 999px;
+  backdrop-filter: blur(18px); position: sticky; top: 16px; z-index: 1000;
+  box-shadow: var(--shadow);
+}
+.logo-wrap { display: flex; align-items: center; min-width: 0; }
+.site-logo {
+  height: 44px; width: auto; object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(124, 92, 255, 0.18)) drop-shadow(0 0 20px rgba(38, 208, 255, 0.08));
+}
+.nav { display: flex; align-items: center; gap: 24px; }
+.nav a { color: var(--muted); transition: color 0.2s ease, transform 0.2s ease; position: relative; }
+.nav a:hover { color: var(--text); transform: translateY(-1px); }
+.nav a::after {
+  content: ""; position: absolute; left: 0; bottom: -7px; width: 100%; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transform: scaleX(0); transform-origin: center; transition: transform 0.2s ease; border-radius: 999px;
+}
+.nav a:hover::after { transform: scaleX(1); }
+.auth-area { display: flex; align-items: center; gap: 12px; }
+.welcome-user {
+  color: var(--muted); font-size: 0.95rem; max-width: 260px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.btn {
+  border: none; border-radius: 999px; padding: 12px 18px; cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white; box-shadow: 0 10px 25px rgba(124, 92, 255, 0.22);
+}
+.btn-primary:hover { box-shadow: 0 14px 30px rgba(124, 92, 255, 0.28); }
+.btn-secondary, .btn-glass, .btn-card {
+  background: rgba(255, 255, 255, 0.08); color: var(--text);
+  border: 1px solid var(--border); backdrop-filter: blur(10px);
+}
+.btn-secondary:hover, .btn-glass:hover, .btn-card:hover { border-color: var(--border-strong); }
+.btn-card { width: fit-content; }
+.full-width { width: 100%; }
+main { width: min(var(--max-width), calc(100% - 32px)); margin: 40px auto 80px; }
+.hero {
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px;
+  align-items: center; min-height: 75vh; padding: 36px 0 22px;
+}
+.hero-content {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 42px; box-shadow: var(--shadow); backdrop-filter: blur(16px);
+}
+.eyebrow, .section-tag {
+  color: var(--accent-2); font-size: 0.82rem; letter-spacing: 0.16em;
+  text-transform: uppercase; margin-bottom: 14px; font-weight: 800;
+}
+.hero h1, .page-hero h1 { font-size: clamp(2.8rem, 6vw, 5.2rem); line-height: 0.96; margin-bottom: 18px; }
+.hero h1 span, .page-hero h1 span {
+  background: linear-gradient(135deg, #ffffff, #8ccfff, #b89cff, #ffca88);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hero-text, .page-hero p {
+  font-size: 1.08rem; line-height: 1.7; color: var(--muted); max-width: 640px; margin-bottom: 28px;
+}
+.hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+.hero-image-card, .page-panel {
+  position: relative; border-radius: 30px; overflow: hidden; border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(124, 92, 255, 0.15), transparent 30%),
+    radial-gradient(circle at 60% 55%, rgba(255, 159, 67, 0.12), transparent 22%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: var(--shadow); min-height: 520px;
+  display: flex; align-items: center; justify-content: center; isolation: isolate;
+}
+.hero-image-card::before, .page-panel::before {
+  content: ""; position: absolute; inset: auto 10% 7% 10%; height: 55px;
+  background: radial-gradient(circle, rgba(124, 92, 255, 0.28), transparent 68%);
+  filter: blur(24px); z-index: 0; pointer-events: none;
+}
+.hero-image {
+  position: relative; z-index: 1; width: 100%; max-width: 540px; height: auto;
+  object-fit: contain; min-height: 520px; padding: 24px;
+  filter: drop-shadow(0 0 20px rgba(124, 92, 255, 0.22)) drop-shadow(0 0 30px rgba(38, 208, 255, 0.08));
+}
+.section { margin-top: 52px; padding: 22px 0; }
+.section-header { margin-bottom: 28px; }
+.section-header h2 { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 12px; }
+.section-header p { color: var(--muted); max-width: 760px; line-height: 1.7; }
+.games-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.game-card, .info-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;
+  box-shadow: var(--shadow-soft); backdrop-filter: blur(14px);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.game-card:hover, .info-card:hover {
+  transform: translateY(-4px); border-color: rgba(124, 92, 255, 0.55);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
+}
+.game-card-top { display: flex; justify-content: space-between; margin-bottom: 18px; }
+.status-pill {
+  background: rgba(38, 208, 255, 0.12); color: #9deaff;
+  border: 1px solid rgba(38, 208, 255, 0.25); padding: 8px 12px;
+  border-radius: 999px; font-size: 0.82rem; font-weight: 700;
+}
+.game-card h3, .info-card h3 { font-size: 1.45rem; margin-bottom: 12px; }
+.game-card p, .info-card p { color: var(--muted); line-height: 1.7; margin-bottom: 20px; }
+.community-layout, .page-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 22px; }
+.comment-form-card, .comment-list-card, .about-section .section-header {
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-soft); backdrop-filter: blur(12px);
+}
+.comment-form-card h3, .comment-list-card h3 { margin-bottom: 16px; }
+#commentForm { display: flex; flex-direction: column; gap: 14px; }
+#commentText, .auth-form input {
+  width: 100%; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.06);
+  color: var(--text); border-radius: 16px; padding: 14px 16px; outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+#commentText:focus, .auth-form input:focus {
+  border-color: rgba(38, 208, 255, 0.42); background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 4px rgba(38, 208, 255, 0.08);
+}
+#commentText { min-height: 150px; resize: vertical; }
+#commentText::placeholder, .auth-form input::placeholder { color: #8790b7; }
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.comment-list {
+  display: flex; flex-direction: column; gap: 14px;
+  max-height: 520px; overflow-y: auto; padding-right: 6px;
+}
+.comment-list::-webkit-scrollbar { width: 10px; }
+.comment-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
+.comment { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); border-radius: 18px; padding: 16px; }
+.comment-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
+.comment-user { font-weight: 700; }
+.comment-time { color: var(--muted); font-size: 0.9rem; }
+.comment-text { color: var(--text); line-height: 1.6; margin: 10px 0 14px; word-break: break-word; }
+.comment-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.like-btn {
+  border: 1px solid var(--border); background: rgba(255, 255, 255, 0.08); color: var(--text);
+  border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+.like-btn:hover { transform: translateY(-1px); border-color: rgba(255, 159, 67, 0.34); background: rgba(255, 159, 67, 0.09); }
+.likes-count { color: var(--muted); font-size: 0.95rem; }
+.site-footer {
+  width: min(var(--max-width), calc(100% - 32px)); margin: 0 auto 32px; padding: 22px;
+  text-align: center; color: var(--muted); border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.modal {
+  display: none; position: fixed; inset: 0; background: rgba(4, 8, 20, 0.7);
+  backdrop-filter: blur(8px); z-index: 2000; padding: 24px;
+}
+.modal-content {
+  width: min(440px, 100%); margin: 8vh auto 0;
+  background: linear-gradient(180deg, rgba(17, 23, 42, 0.98), rgba(11, 16, 32, 0.98));
+  border: 1px solid var(--border); border-radius: 24px; padding: 28px;
+  position: relative; box-shadow: var(--shadow);
+}
+.auth-modal-card { overflow: hidden; }
+.auth-modal-head { margin-bottom: 18px; position: relative; }
+.auth-modal-head h2 { margin-bottom: 8px; }
+.auth-modal-head p { color: var(--muted); line-height: 1.6; }
+.auth-orb {
+  width: 70px; height: 70px; border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(38, 208, 255, 0.95), rgba(38, 208, 255, 0.15) 35%, transparent 55%),
+    radial-gradient(circle at 65% 60%, rgba(124, 92, 255, 0.95), rgba(124, 92, 255, 0.15) 35%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(255, 159, 67, 0.8), transparent 40%);
+  filter: blur(1px); margin-bottom: 14px; box-shadow: 0 0 35px rgba(124, 92, 255, 0.22);
+}
+.close-btn {
+  position: absolute; top: 14px; right: 16px; background: transparent; border: none;
+  color: var(--muted); font-size: 2rem; cursor: pointer; line-height: 1;
+}
+.close-btn:hover { color: var(--text); }
+.modal-switch { margin-top: 16px; color: var(--muted); }
+.text-btn { background: none; border: none; color: var(--accent-2); cursor: pointer; font-weight: 700; }
+.text-btn:hover { color: #8de7ff; }
+.auth-message { margin-top: 12px; font-size: 0.95rem; color: var(--muted); }
+.auth-message.error { color: var(--danger); }
+.auth-message.success { color: var(--success); }
+#logout-btn { display: none; }
+@media (max-width: 980px) {
+  .hero, .community-layout, .games-grid, .page-grid { grid-template-columns: 1fr; }
+  .hero, .page-hero { min-height: auto; }
+  .hero-image-card, .page-panel { min-height: 320px; }
+  .hero-image { min-height: 320px; max-width: 420px; padding: 20px; }
+  .site-header { flex-wrap: wrap; border-radius: 26px; gap: 14px; }
+  .nav { order: 3; width: 100%; justify-content: center; }
+  .auth-area { width: 100%; justify-content: center; flex-wrap: wrap; }
+}
+@media (max-width: 640px) {
+  .hero-content, .comment-form-card, .comment-list-card,
+  .about-section .section-header, .game-card, .page-panel, .info-card { padding: 20px; }
+  .hero h1, .page-hero h1 { font-size: 2.4rem; }
+  .site-header { padding: 16px; }
+  .site-logo { height: 36px; }
+  .nav { gap: 16px; flex-wrap: wrap; }
+  .welcome-user { max-width: 100%; text-align: center; }
+  .hero-image { min-height: 280px; padding: 16px; }
+}
+/* preview-only: stand-in for the missing logo image */
+.preview-art {
+  width: 100%; max-width: 460px; min-height: 380px; border-radius: 24px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); text-align: center; padding: 24px; position: relative; z-index: 1;
+}
+  </style>
 </head>
 <body>
   <canvas id="starfield"></canvas>
@@ -23,7 +273,7 @@
 
   <header class="site-header">
     <a href="index.html" class="logo-wrap" aria-label="eon games home">
-      <img src="eongames.png" alt="eon games logo" class="site-logo" />
+      <strong style="font-size:1.3rem;letter-spacing:-0.02em;">eon games</strong>
     </a>
 
     <nav class="nav">
@@ -34,8 +284,7 @@
 
     <div class="auth-area">
       <span id="welcome-user" class="welcome-user"></span>
-      <button id="login-btn" class="btn btn-primary" type="button" onclick="openModal()">Login</button>
-      <button id="logout-btn" class="btn btn-secondary" type="button" onclick="logout()">Logout</button>
+      <button id="login-btn" class="btn btn-primary" type="button">Login</button>
     </div>
   </header>
 
@@ -56,7 +305,7 @@
       </div>
 
       <div class="hero-image-card">
-        <img src="eongames.png" alt="eon games main artwork" class="hero-image" />
+        <div class="preview-art">eongames.png goes here</div>
       </div>
     </section>
 
@@ -64,43 +313,73 @@
       <div class="section-header">
         <p class="section-tag">OUR GAMES</p>
         <h2>Featured titles</h2>
-        <p>Three projects. Three different experiences. More details coming soon.</p>
+        <p>Nine projects. Nine different experiences. More details coming soon.</p>
       </div>
 
       <div class="games-grid">
-  <article class="game-card">
-    <div class="game-card-top">
-      <span class="status-pill">Coming Soon</span>
-    </div>
-    <h3>Neon Rift</h3>
-    <p>
-      A sleek and immersive new experience from eon games. More details will be added later.
-    </p>
-    <a href="game1.html" class="btn btn-card">View Game</a>
-  </article>
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Neon Rift</h3>
+          <p>A sleek and immersive new experience from eon games. More details will be added later.</p>
+          <a href="game1.html" class="btn btn-card">View Game</a>
+        </article>
 
-  <article class="game-card">
-    <div class="game-card-top">
-      <span class="status-pill">In Development</span>
-    </div>
-    <h3>Saxons Strategy</h3>
-    <p>
-      Build an empire and take rule the relm. Built with Claude, based on Tribalwars. 
-    </p>
-    <a href="Tribal2/realm.html" class="btn btn-card">View Game</a>
-  </article>
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">In Development</span></div>
+          <h3>Saxons Strategy</h3>
+          <p>Build an empire and take rule the relm. Built with Claude, based on Tribalwars.</p>
+          <a href="Tribal2/realm.html" class="btn btn-card">View Game</a>
+        </article>
 
-  <article class="game-card">
-    <div class="game-card-top">
-      <span class="status-pill">AmongUs</span>
-    </div>
-    <h3>Who me?</h3>
-    <p>
-      A new universe in progress. AmongUs style game
-    </p>
-    <a href="AmongUs/index.html" class="btn btn-card">View Game</a>
-  </article>
-</div>
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">AmongUs</span></div>
+          <h3>Who me?</h3>
+          <p>A new universe in progress. AmongUs style game</p>
+          <a href="AmongUs/index.html" class="btn btn-card">View Game</a>
+        </article>
+
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Game Four</h3>
+          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
+          <a href="game4.html" class="btn btn-card">View Game</a>
+        </article>
+
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Game Five</h3>
+          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
+          <a href="game5.html" class="btn btn-card">View Game</a>
+        </article>
+
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Game Six</h3>
+          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
+          <a href="game6.html" class="btn btn-card">View Game</a>
+        </article>
+
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Game Seven</h3>
+          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
+          <a href="game7.html" class="btn btn-card">View Game</a>
+        </article>
+
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Game Eight</h3>
+          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
+          <a href="game8.html" class="btn btn-card">View Game</a>
+        </article>
+
+        <article class="game-card">
+          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
+          <h3>Game Nine</h3>
+          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
+          <a href="game9.html" class="btn btn-card">View Game</a>
+        </article>
+      </div>
     </section>
 
     <section id="community" class="section">
@@ -114,20 +393,16 @@
         <div class="comment-form-card">
           <h3>Leave a comment</h3>
           <form id="commentForm">
-            <textarea
-              id="commentText"
-              name="commentText"
-              placeholder="Share your thoughts..."
-              autocomplete="off"
-              required
-            ></textarea>
-            <button type="submit" class="btn btn-primary">Post Comment</button>
+            <textarea id="commentText" placeholder="Share your thoughts..."></textarea>
+            <button type="button" class="btn btn-primary">Post Comment</button>
           </form>
         </div>
 
         <div class="comment-list-card">
           <h3>Latest comments</h3>
-          <div id="commentList" class="comment-list"></div>
+          <div id="commentList" class="comment-list">
+            <p class="comment-text" style="margin:0;color:#a7b0d6;">Comments load from Firebase on the live site.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -149,82 +424,41 @@
     <p>© 2026 eon games. All rights reserved.</p>
   </footer>
 
-  <!-- Login Modal -->
-  <div id="login-modal" class="modal">
-    <div class="modal-content auth-modal-card">
-      <button class="close-btn" type="button" onclick="closeModal()" aria-label="Close login">&times;</button>
-
-      <div class="auth-modal-head">
-        <div class="auth-orb"></div>
-        <h2>Login</h2>
-        <p>Enter your account to join the community.</p>
-      </div>
-
-      <form id="login-form" class="auth-form">
-        <input
-          type="email"
-          id="email"
-          name="email"
-          placeholder="Email"
-          autocomplete="email"
-          required
-        />
-        <input
-          type="password"
-          id="password"
-          name="password"
-          placeholder="Password"
-          autocomplete="current-password"
-          required
-        />
-        <button type="submit" class="btn btn-primary full-width">Login</button>
-      </form>
-
-      <p class="modal-switch">
-        Don’t have an account?
-        <button class="text-btn" type="button" onclick="showSignup()">Sign up</button>
-      </p>
-    </div>
-  </div>
-
-  <!-- Signup Modal -->
-  <div id="signup-modal" class="modal">
-    <div class="modal-content auth-modal-card">
-      <button class="close-btn" type="button" onclick="closeSignupModal()" aria-label="Close sign up">&times;</button>
-
-      <div class="auth-modal-head">
-        <div class="auth-orb"></div>
-        <h2>Create account</h2>
-        <p>Join eon games and start posting comments.</p>
-      </div>
-
-      <form id="signup-form" class="auth-form">
-        <input
-          type="email"
-          id="signup-email"
-          name="signup-email"
-          placeholder="Email"
-          autocomplete="email"
-          required
-        />
-        <input
-          type="password"
-          id="signup-password"
-          name="signup-password"
-          placeholder="Password"
-          autocomplete="new-password"
-          required
-        />
-        <button type="submit" class="btn btn-primary full-width">Create Account</button>
-      </form>
-
-      <p class="modal-switch">
-        Already have an account?
-        <button class="text-btn" type="button" onclick="switchToLogin()">Login</button>
-      </p>
-    </div>
-  </div>
-
-  <script src="script.js"></script>
+  <script>
+  function initStarfield() {
+    const canvas = document.getElementById("starfield");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let width = 0, height = 0, stars = [];
+    function resizeCanvas() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      const starCount = Math.max(80, Math.floor((width * height) / 12000));
+      stars = Array.from({ length: starCount }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        speed: Math.random() * 0.45 + 0.12,
+        radius: Math.random() * 1.6 + 0.2,
+        alpha: Math.random() * 0.75 + 0.2
+      }));
+    }
+    function drawFrame() {
+      ctx.clearRect(0, 0, width, height);
+      for (const star of stars) {
+        star.y += star.speed;
+        if (star.y > height + 2) { star.y = -2; star.x = Math.random() * width; }
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(220, 230, 255, ${star.alpha})`;
+        ctx.fill();
+      }
+      requestAnimationFrame(drawFrame);
+    }
+    resizeCanvas();
+    drawFrame();
+    window.addEventListener("resize", resizeCanvas);
+  }
+  initStarfield();
+  </script>
 </body>
 </html>
