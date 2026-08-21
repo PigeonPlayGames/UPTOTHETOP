@@ -173,6 +173,36 @@
   #chatBox.on{display:block}
   #chatInput{width:100%; background:rgba(10,14,23,.95); border:1px solid var(--amber); color:var(--ink); font-family:var(--mono); font-size:13px; padding:8px 10px; outline:none}
 
+
+  /* ---------- touch controls ---------- */
+  #touch{position:fixed; inset:0; z-index:12; display:none; pointer-events:none}
+  body.touch #touch{display:block}
+  .tbtn{
+    position:absolute; pointer-events:auto; border:1px solid var(--line);
+    background:rgba(17,22,35,.62); color:var(--ink); border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    -webkit-tap-highlight-color:transparent; user-select:none; padding:0;
+  }
+  .tbtn:active, .tbtn.on{background:rgba(232,176,75,.3); border-color:var(--amber); color:var(--amber)}
+  #tFire{right:calc(22px + env(safe-area-inset-right)); bottom:calc(104px + env(safe-area-inset-bottom)); width:98px; height:98px; font-size:12px; border-width:2px}
+  #tJump{right:calc(134px + env(safe-area-inset-right)); bottom:calc(76px + env(safe-area-inset-bottom)); width:66px; height:66px}
+  #tReload{right:calc(38px + env(safe-area-inset-right)); bottom:calc(26px + env(safe-area-inset-bottom)); width:60px; height:60px}
+  #tAds{right:calc(142px + env(safe-area-inset-right)); bottom:calc(158px + env(safe-area-inset-bottom)); width:58px; height:58px}
+  #tTools{position:absolute; top:calc(12px + env(safe-area-inset-top)); right:calc(12px + env(safe-area-inset-right)); display:flex; gap:8px}
+  #tTools .tbtn{position:relative; border-radius:18px; height:36px; padding:0 14px; width:auto}
+  #stick{position:absolute; width:126px; height:126px; margin:-63px 0 0 -63px; border:1px solid var(--line); border-radius:50%; background:rgba(17,22,35,.34); display:none}
+  #stick i{position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%; background:rgba(232,176,75,.5); border:1px solid var(--amber)}
+  body.touch #arms{bottom:calc(206px + env(safe-area-inset-bottom)); right:calc(22px + env(safe-area-inset-right))}
+  body.touch #wlist{display:none}
+  body.touch #vitals{left:calc(20px + env(safe-area-inset-left)); bottom:calc(20px + env(safe-area-inset-bottom))}
+  body.touch #feed{top:64px; max-width:40vw}
+  body.touch #mini{width:112px; height:112px; left:calc(16px + env(safe-area-inset-left)); top:calc(14px + env(safe-area-inset-top))}
+  body.touch #score{left:calc(16px + env(safe-area-inset-left)); top:calc(136px + env(safe-area-inset-top))}
+  body.touch #chat{bottom:calc(240px + env(safe-area-inset-bottom)); left:calc(16px + env(safe-area-inset-left)); width:min(360px,44vw)}
+  #rotate{position:fixed; inset:0; z-index:70; display:none; align-items:center; justify-content:center; background:var(--void); text-align:center; padding:30px}
+  body.touch.playing.portrait #rotate{display:flex}
+  #rotate .big{font-family:var(--display); font-weight:800; font-size:26px; letter-spacing:-.02em; margin:12px 0 8px}
   #boot{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:60; background:var(--void); color:var(--dim); letter-spacing:.3em; text-transform:uppercase; font-size:11px}
   @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
   @media (max-width:700px){
@@ -207,6 +237,28 @@
 <div id="chat">
   <div id="chatLog"></div>
   <div id="chatBox"><input id="chatInput" maxlength="120" autocomplete="off" placeholder="Say something…"></div>
+</div>
+
+
+<div id="touch">
+  <div id="stick"><i></i></div>
+  <button class="tbtn" id="tFire">Fire</button>
+  <button class="tbtn" id="tJump">Jump</button>
+  <button class="tbtn" id="tReload">Load</button>
+  <button class="tbtn" id="tAds">Focus</button>
+  <div id="tTools">
+    <button class="tbtn" id="tWeap">Weapon</button>
+    <button class="tbtn" id="tChat">Chat</button>
+    <button class="tbtn" id="tBoard">Score</button>
+  </div>
+</div>
+
+<div id="rotate">
+  <div>
+    <div class="eyebrow">Eon Arena</div>
+    <div class="big">Turn your device sideways</div>
+    <div class="note" style="color:var(--dim)">The arena needs landscape to fit the controls.</div>
+  </div>
 </div>
 
 <div id="board" class="overlay">
@@ -267,6 +319,7 @@
       <div class="opt"><label for="fovIn">Field of view</label><input id="fovIn" type="range" min="70" max="110" value="88"><small id="fovVal">88°</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="shadowIn" checked> Dynamic shadows</label><small>Turn off on older laptops</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="soundIn" checked> Sound</label><small>Synthesised, no downloads</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
     </div>
 
     <div class="divider"></div>
@@ -276,6 +329,7 @@
       <button id="btnSolo">Practice offline</button>
     </div>
     <div id="status"></div>
+    <div class="note" id="touchNote" style="display:none">Touch controls are on: left thumb to move, right thumb to look, buttons on the right to fire. Landscape works best.</div>
     <div class="note">Practice offline drops you in alone with three training drones — no Firebase needed. <b>Enter arena</b> needs your Firebase config pasted at the top of this file.</div>
   </div>
 </div>
@@ -292,7 +346,7 @@
    Single file. three.js r128 + Firebase Realtime Database (compat SDK).
 
    ---------------------------------------------------------------------
-   1. PASTE YOUR FIREBASE CONFIG BELOW
+   Config below is already filled in for the eonarena-60b50 project.
    ---------------------------------------------------------------------
    Firebase console → Project settings → Your apps → Web app → Config.
    You need Anonymous auth switched on (Authentication → Sign-in method)
@@ -425,7 +479,8 @@ const colliders = [];   // {min:{x,y,z}, max:{x,y,z}}
 
 function initRender(){
   renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.5 : 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.shadowMap.enabled = true;
@@ -443,7 +498,7 @@ function initRender(){
   sun = new THREE.DirectionalLight(0xFFE6BE, 1.15);
   sun.position.set(28, 42, 18);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024,1024);
+  sun.shadow.mapSize.set(coarse ? 512 : 1024, coarse ? 512 : 1024);
   const sc = sun.shadow.camera;
   sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 130;
   scene.add(sun);
@@ -751,6 +806,119 @@ let mouseDown = false, pointerLocked = false, chatting = false;
 let mode = 'menu';   // menu | online | solo
 let sensitivity = 1.10, targetFov = 88;
 
+/* ===================== TOUCH CONTROLS ===================== */
+const touch = {
+  on:false, moveId:null, lookId:null,
+  origin:{x:0,y:0}, move:{x:0,y:0}, mag:0, last:{x:0,y:0}
+};
+const STICK_R = 58;
+
+function touchAvailable(){ return matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0; }
+function setTouchMode(on){
+  touch.on = on;
+  const note = $('touchNote');
+  if (note) note.style.display = on ? 'block' : 'none';
+  document.body.classList.toggle('touch', on);
+  const t = $('touchIn');
+  if (t) t.checked = on;
+  if (!on){ touch.moveId = touch.lookId = null; touch.move.x = touch.move.y = 0; touch.mag = 0; $('stick').style.display = 'none'; }
+}
+function checkOrientation(){ document.body.classList.toggle('portrait', innerHeight > innerWidth); }
+
+function initTouch(){
+  const stick = $('stick');
+
+  function begin(t){
+    if (t.clientX < innerWidth*0.45 && touch.moveId === null){
+      touch.moveId = t.identifier;
+      touch.origin.x = t.clientX; touch.origin.y = t.clientY;
+      stick.style.left = t.clientX + 'px';
+      stick.style.top = t.clientY + 'px';
+      stick.style.display = 'block';
+      stick.firstElementChild.style.transform = 'translate(0px,0px)';
+    } else if (touch.lookId === null){
+      touch.lookId = t.identifier;
+      touch.last.x = t.clientX; touch.last.y = t.clientY;
+    }
+  }
+
+  addEventListener('touchstart', e => {
+    if (!touch.on) return;
+    if (e.target && e.target.closest && (e.target.closest('.tbtn') || e.target.tagName === 'INPUT')) return;
+    if (mode === 'menu' || chatting) return;
+    for (let i=0;i<e.changedTouches.length;i++) begin(e.changedTouches[i]);
+    e.preventDefault();
+  }, { passive:false });
+
+  addEventListener('touchmove', e => {
+    if (!touch.on || mode === 'menu') return;
+    for (let i=0;i<e.changedTouches.length;i++){
+      const t = e.changedTouches[i];
+      if (t.identifier === touch.moveId){
+        let dx = t.clientX - touch.origin.x, dy = t.clientY - touch.origin.y;
+        const d = Math.hypot(dx, dy);
+        if (d > STICK_R){ dx = dx/d*STICK_R; dy = dy/d*STICK_R; }
+        touch.move.x = dx/STICK_R; touch.move.y = dy/STICK_R;
+        touch.mag = Math.min(1, d/STICK_R);
+        stick.firstElementChild.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+      } else if (t.identifier === touch.lookId){
+        const s2 = sensitivity * 0.0042 * (me.ads ? 0.55 : 1);
+        me.yaw   -= (t.clientX - touch.last.x) * s2;
+        me.pitch -= (t.clientY - touch.last.y) * s2;
+        me.pitch = clamp(me.pitch, -1.53, 1.53);
+        touch.last.x = t.clientX; touch.last.y = t.clientY;
+      }
+    }
+    e.preventDefault();
+  }, { passive:false });
+
+  function end(e){
+    for (let i=0;i<e.changedTouches.length;i++){
+      const t = e.changedTouches[i];
+      if (t.identifier === touch.moveId){
+        touch.moveId = null; touch.move.x = touch.move.y = 0; touch.mag = 0;
+        stick.style.display = 'none';
+      } else if (t.identifier === touch.lookId){
+        touch.lookId = null;
+      }
+    }
+  }
+  addEventListener('touchend', end, { passive:true });
+  addEventListener('touchcancel', end, { passive:true });
+
+  // buttons — held or tapped
+  function hold(id, down, up){
+    const el = $(id);
+    el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); el.classList.add('on'); down(); }, { passive:false });
+    const release = e => { if (e) e.preventDefault(); el.classList.remove('on'); if (up) up(); };
+    el.addEventListener('touchend', release, { passive:false });
+    el.addEventListener('touchcancel', release, { passive:false });
+  }
+  hold('tFire',   () => { mouseDown = true; },  () => { mouseDown = false; });
+  hold('tJump',   () => { keys[' '] = true; },  () => { keys[' '] = false; });
+  hold('tReload', () => reload());
+  hold('tWeap',   () => swapWeapon((me.weapon + 1) % WEAPONS.length));
+  hold('tChat',   () => openChat());
+
+  const ads = $('tAds');
+  ads.addEventListener('touchstart', e => {
+    e.preventDefault(); e.stopPropagation();
+    me.ads = !me.ads;
+    ads.classList.toggle('on', me.ads);
+  }, { passive:false });
+
+  const bd = $('tBoard');
+  bd.addEventListener('touchstart', e => {
+    e.preventDefault(); e.stopPropagation();
+    const on = !$('board').classList.contains('on');
+    showBoard(on); bd.classList.toggle('on', on);
+  }, { passive:false });
+
+  addEventListener('orientationchange', checkOrientation);
+  addEventListener('resize', checkOrientation);
+  checkOrientation();
+}
+
 /* ===================== INPUT ===================== */
 function initInput(){
   addEventListener('keydown', e => {
@@ -802,16 +970,17 @@ function initInput(){
 
   document.addEventListener('pointerlockchange', () => {
     pointerLocked = document.pointerLockElement === renderer.domElement;
-    if (!pointerLocked && mode !== 'menu' && !chatting) $('paused').classList.add('on');
+    if (!pointerLocked && mode !== 'menu' && !chatting && !touch.on) $('paused').classList.add('on');
     if (pointerLocked) $('paused').classList.remove('on');
   });
   $('paused').addEventListener('click', e => { if (e.target === $('paused')) lockPointer(); });
   $('btnResume').onclick = lockPointer;
   $('btnLeave').onclick = leaveArena;
-  renderer.domElement.addEventListener('click', () => { if (mode !== 'menu' && !chatting) lockPointer(); });
+  renderer.domElement.addEventListener('click', () => { if (mode !== 'menu' && !chatting && !touch.on) lockPointer(); });
 }
 function lockPointer(){
   $('paused').classList.remove('on');
+  if (touch.on) return;
   try {
     const p = renderer.domElement.requestPointerLock();
     if (p && p.catch) p.catch(() => { if (mode !== 'menu') $('paused').classList.add('on'); });
@@ -877,11 +1046,12 @@ function movePlayer(dt){
     if (keys['s'] || keys['arrowdown']) iz -= 1;
     if (keys['d'] || keys['arrowright']) ix += 1;
     if (keys['a'] || keys['arrowleft']) ix -= 1;
+    if (touch.on){ ix += touch.move.x; iz += -touch.move.y; }
   }
   const wish = new THREE.Vector3().addScaledVector(fwd, iz).addScaledVector(right, ix);
   if (wish.lengthSq() > 0) wish.normalize();
 
-  me.sprinting = !!(keys['shift'] && iz > 0 && !me.ads);
+  me.sprinting = !me.ads && (!!(keys['shift'] && iz > 0) || (touch.on && touch.mag > 0.86 && iz > 0));
   const speed = CFG.walkSpeed * (me.sprinting ? CFG.sprintMul : 1) * (me.ads ? 0.55 : 1);
   const accel = me.onGround ? 14 : 14 * CFG.airControl;
 
@@ -1538,13 +1708,13 @@ function openChat(){
   chatting = true;
   $('chatBox').classList.add('on');
   $('chatInput').focus();
-  document.exitPointerLock();
+  if (pointerLocked) document.exitPointerLock();
 }
 function closeChat(){
   chatting = false;
   $('chatInput').value = '';
   $('chatBox').classList.remove('on');
-  setTimeout(lockPointer, 220);
+  if (!touch.on) setTimeout(lockPointer, 220); else $('chatInput').blur();
 }
 function sendChat(){
   const t = $('chatInput').value.trim().slice(0,120);
@@ -1639,8 +1809,17 @@ function initMenu(){
   soundIn.checked = !Audio2.isMuted();
   soundIn.onchange = () => Audio2.setMuted(!soundIn.checked);
 
+  const touchIn = $('touchIn');
+  const stored = localStorage.getItem('eonarena.touch');
+  setTouchMode(stored === null ? touchAvailable() : stored === '1');
+  touchIn.onchange = () => {
+    setTouchMode(touchIn.checked);
+    localStorage.setItem('eonarena.touch', touchIn.checked ? '1' : '0');
+  };
+
   const shadowIn = $('shadowIn');
-  shadowIn.checked = localStorage.getItem('eonarena.shadows') !== '0';
+  const shadowPref = localStorage.getItem('eonarena.shadows');
+  shadowIn.checked = shadowPref === null ? !touchAvailable() : shadowPref !== '0';
   renderer.shadowMap.enabled = shadowIn.checked;
   shadowIn.onchange = () => {
     renderer.shadowMap.enabled = shadowIn.checked;
@@ -1690,6 +1869,11 @@ function startGame(kind){
   me.ammo = WEAPONS.map(w => w.mag);
   me.hp = CFG.maxHp; me.alive = true;
   $('menu').style.display = 'none';
+  document.body.classList.add('playing');
+  checkOrientation();
+  if (touch.on && document.documentElement.requestFullscreen){
+    try { const fs = document.documentElement.requestFullscreen(); if (fs && fs.catch) fs.catch(()=>{}); } catch (e){}
+  }
   $('hud').classList.add('on');
   $('chat').classList.add('on');
   swapWeaponInitial();
@@ -1713,7 +1897,8 @@ function leaveArena(){
   bots.forEach(b => scene.remove(b.avatar.group));
   bots.clear();
   mode = 'menu';
-  document.exitPointerLock();
+  document.body.classList.remove('playing');
+  if (pointerLocked) document.exitPointerLock();
   $('paused').classList.remove('on');
   $('dead').classList.remove('on');
   $('hud').classList.remove('on');
@@ -1780,12 +1965,11 @@ function frame(){
   buildViewmodel();
   buildHudBits();
   initInput();
+  initTouch();
   initMenu();
   updateHud();
   $('boot').style.display = 'none';
-  if (matchMedia('(pointer:coarse)').matches || !('exitPointerLock' in document)){
-    setStatus('This one needs a mouse and keyboard — open it on a desktop browser.', 'bad');
-  } else if (typeof firebase === 'undefined'){
+  if (typeof firebase === 'undefined'){
     setStatus('Firebase SDK did not load — online play is unavailable. Practice offline still works.', 'bad');
   } else if (!configLooksReal()){
     setStatus('No Firebase config yet — paste yours at the top of arena.html to play online.', '');
