@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,6 +92,17 @@
   .divider{height:1px; background:var(--line); margin:20px 0}
   .note{font-size:11px; color:var(--dim); line-height:1.6; margin-top:14px}
   .note b{color:var(--amber); font-weight:400}
+  #realms{border:1px solid var(--line); background:#0A0E17; max-height:136px; overflow:auto; border-radius:2px}
+  .rl{
+    display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px;
+    background:none; border:0; border-bottom:1px solid var(--line); cursor:pointer;
+    text-align:left; letter-spacing:0; text-transform:none; font-size:12px; color:var(--ink);
+  }
+  .rl:last-child{border-bottom:0}
+  .rl:hover{background:rgba(232,176,75,.09); color:var(--amber); border-color:var(--line)}
+  .rl b{font-weight:400; letter-spacing:.16em; text-transform:uppercase}
+  .rl span{margin-left:auto; color:var(--dim); font-size:11px}
+  .rl-empty{padding:11px 12px; color:var(--dim); font-size:11px}
   #status{margin-top:14px; font-size:11px; line-height:1.6; min-height:16px; color:var(--dim)}
   #status.bad{color:var(--hostile)}
   #status.ok{color:var(--teal)}
@@ -319,6 +329,11 @@
     <h1 class="wordmark"><i>Eon</i> <b>Arena</b></h1>
     <p class="tagline">Six-sided combat pit. Bring friends into the same realm code and fight to twenty-five frags. Everything runs in the browser — positions, hits and taunts sync live.</p>
 
+    <div class="field">
+      <label>Live realms</label>
+      <div id="realms"><div class="rl-empty">Looking for active realms…</div></div>
+    </div>
+
     <div class="row">
       <div class="field"><label for="nameIn">Callsign</label><input id="nameIn" type="text" maxlength="14" placeholder="Operator"></div>
       <div class="field"><label for="roomIn">Realm code</label><input id="roomIn" type="text" maxlength="5" placeholder="EON01"></div>
@@ -384,7 +399,9 @@ const firebaseConfig = {
 const CFG = {
   killTarget: 25,
   respawnDelay: 3.0,
-  netRate: 0.05,          // seconds between position writes
+  netRate: 0.067,         // seconds between position writes (15Hz, interpolated)
+  botFill: 4,             // keep this many combatants in a realm by adding drones
+  maxBots: 3,
   maxHp: 100,
   gravity: 22,
   jumpVel: 8.0,
@@ -1271,6 +1288,14 @@ function dealDamage(uid, dmg, head){
     return;
   }
   if (!net.ref) return;
+  const r = remotes.get(uid);
+  if (r && r.isBot){
+    net.ref.child('botHits').push({
+      bot: uid, by: me.uid, byName: me.name, dmg, head: !!head,
+      t: firebase.database.ServerValue.TIMESTAMP
+    });
+    return;
+  }
   net.ref.child('players/' + uid + '/inbox').push({
     by: me.uid, byName: me.name, dmg, head: !!head,
     w: currentWeapon().name, t: firebase.database.ServerValue.TIMESTAMP
@@ -1315,10 +1340,12 @@ function die(byName, head){
   $('dead').classList.add('on');
   Audio2.play('die');
   if (mode === 'online' && net.ref){
+    net.sent = {};
     net.ref.child('players/' + me.uid).update({ hp:0, alive:false, deaths:me.deaths });
     pushEvent({ type:'kill', killer:byName || '', victim:me.name, head:!!head });
     if (net.lastAttacker && net.lastAttacker !== me.uid){
-      net.ref.child('players/' + net.lastAttacker + '/kills').transaction(v => (v||0) + 1);
+      const path = net.attackerIsBot ? 'bots/' : 'players/';
+      net.ref.child(path + net.lastAttacker + '/kills').transaction(v => (v||0) + 1);
     }
   }
 }
@@ -1339,6 +1366,7 @@ function respawn(){
   $('vignette').style.opacity = 0;
   Audio2.play('spawn');
   if (mode === 'online' && net.ref){
+    net.sent = {};
     net.ref.child('players/' + me.uid).update({ hp:CFG.maxHp, alive:true, x:me.pos.x, y:me.pos.y, z:me.pos.z });
   }
   updateHud();
@@ -1369,7 +1397,9 @@ function stepPickups(dt, now){
 /* ===================== NETWORK ===================== */
 const net = {
   app:null, db:null, ref:null, room:'', uid:null,
-  offset:0, joinedAt:0, lastWrite:0, lastAttacker:null, matchOver:false,
+  offset:0, joinedAt:0, lastWrite:0, lastAttacker:null, attackerIsBot:false, matchOver:false,
+  lobbyKey:null, isKeeper:false, peers:new Set(), humanCount:1, electAcc:0,
+  botAI:new Map(), botSent:new Map(), botAcc:0, sent:{},
   now(){ return Date.now() + this.offset; }
 };
 
@@ -1380,12 +1410,50 @@ function configLooksReal(){
          firebaseConfig.databaseURL.indexOf('PASTE') === -1;
 }
 
+function initFirebaseApp(){
+  if (net.app || typeof firebase === 'undefined' || !configLooksReal()) return false;
+  try {
+    net.app = firebase.initializeApp(firebaseConfig);
+    net.db = firebase.database();
+    return true;
+  } catch (e){ console.error(e); return false; }
+}
+
+/* ---- live realm directory (readable without signing in) ---- */
+function subscribeLobby(){
+  if (!net.db) return;
+  net.db.ref('lobby').on('value', snap => renderRealms(snap.val() || {}), err => {
+    console.warn('lobby read failed', err);
+    $('realms').innerHTML = '<div class="rl-empty">Realm list unavailable — check the lobby rule is published.</div>';
+  });
+}
+function renderRealms(v){
+  const rows = [];
+  for (const room in v){
+    const n = Object.keys(v[room] || {}).length;
+    if (n > 0) rows.push({ room, n });
+  }
+  rows.sort((a,b) => b.n - a.n || a.room.localeCompare(b.room));
+  const el = $('realms');
+  if (!rows.length){
+    el.innerHTML = '<div class="rl-empty">No realms active. Enter a code below to start one — drones will fill it out.</div>';
+    return;
+  }
+  el.innerHTML = rows.slice(0,8).map(r =>
+    '<button class="rl" data-room="' + esc(r.room) + '"><b>' + esc(r.room) + '</b>' +
+    '<span>' + r.n + (r.n === 1 ? ' player' : ' players') + '</span></button>'
+  ).join('');
+  [].forEach.call(el.children, b => {
+    b.onclick = () => { $('roomIn').value = b.dataset.room; $('btnJoin').click(); };
+  });
+}
+
 async function joinOnline(room){
   if (!configLooksReal()) throw new Error('Firebase config missing. Open this file and paste your project config near the top, then reload.');
   if (typeof firebase === 'undefined') throw new Error('Firebase SDK did not load. A privacy extension or offline connection can block www.gstatic.com — allow it and reload.');
 
-  if (!net.app) net.app = firebase.initializeApp(firebaseConfig);
-  net.db = firebase.database();
+  initFirebaseApp();
+  if (!net.db) throw new Error('Firebase failed to initialise.');
 
   const cred = await firebase.auth().signInAnonymously();
   net.uid = me.uid = cred.user.uid;
@@ -1412,6 +1480,8 @@ async function joinOnline(room){
 
   // remote players
   net.ref.child('players').on('child_added', snap => {
+    net.peers.add(snap.key);
+    electKeeper();
     if (snap.key === me.uid) return;
     addRemote(snap.key, snap.val());
     Audio2.play('join');
@@ -1421,6 +1491,8 @@ async function joinOnline(room){
     updateRemote(snap.key, snap.val());
   });
   net.ref.child('players').on('child_removed', snap => {
+    net.peers.delete(snap.key);
+    electKeeper();
     if (snap.key === me.uid) return;
     removeRemote(snap.key);
   });
@@ -1431,6 +1503,7 @@ async function joinOnline(room){
     snap.ref.remove();
     if (!me.alive) return;
     net.lastAttacker = v.by;
+    net.attackerIsBot = !!v.bot;
     const src = remotes.get(v.by);
     takeDamage(v.dmg || 0, v.byName || 'someone', v.head, src ? src.pos : null);
   });
@@ -1459,6 +1532,18 @@ async function joinOnline(room){
     }
   });
 
+  // advertise this realm on the menu list (no uid exposed)
+  const lobbyRef = net.db.ref('lobby/' + room).push(1);
+  net.lobbyKey = lobbyRef;
+  lobbyRef.onDisconnect().remove();
+
+  // drones, rendered by everyone, driven by whichever client is keeper
+  net.ref.child('bots').on('child_added', snap => addEntity(snap.key, snap.val(), true));
+  net.ref.child('bots').on('child_changed', snap => updateEntity(snap.key, snap.val(), true));
+  net.ref.child('bots').on('child_removed', snap => removeEntity(snap.key));
+
+  net.peers.add(me.uid);
+  electKeeper();
   pushEvent({ type:'join', name: me.name });
   net.db.ref('.info/connected').on('value', s2 => {
     if (s2.val() === false) setFeed('Connection lost — reconnecting');
@@ -1515,67 +1600,90 @@ function writeState(dt){
   net.lastWrite += dt;
   if (net.lastWrite < CFG.netRate) return;
   net.lastWrite = 0;
-  const planar = Math.hypot(me.vel.x, me.vel.z);
-  net.ref.child('players/' + me.uid).update({
-    x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),
-    ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3),
-    hp: Math.max(0, Math.round(me.hp)), alive: me.alive,
-    mv: planar > 0.8 ? 1 : 0,
-    ts: firebase.database.ServerValue.TIMESTAMP
-  });
+
+  const sent = net.sent;
+  const upd = {};
+  const x = +me.pos.x.toFixed(2), y = +me.pos.y.toFixed(2), z = +me.pos.z.toFixed(2);
+  const ry = +me.yaw.toFixed(2), rx = +me.pitch.toFixed(2);
+  const hp = Math.max(0, Math.round(me.hp));
+  const mv = Math.hypot(me.vel.x, me.vel.z) > 0.8 ? 1 : 0;
+
+  if (x !== sent.x){ upd.x = x; sent.x = x; }
+  if (y !== sent.y){ upd.y = y; sent.y = y; }
+  if (z !== sent.z){ upd.z = z; sent.z = z; }
+  if (ry !== sent.ry){ upd.ry = ry; sent.ry = ry; }
+  if (rx !== sent.rx){ upd.rx = rx; sent.rx = rx; }
+  if (hp !== sent.hp){ upd.hp = hp; sent.hp = hp; }
+  if (me.alive !== sent.alive){ upd.alive = me.alive; sent.alive = me.alive; }
+  if (mv !== sent.mv){ upd.mv = mv; sent.mv = mv; }
+
+  // heartbeat keeps the staleness check honest even when standing perfectly still
+  const nowMs = net.now();
+  if (nowMs - (sent.tsAt || 0) > 1000){ upd.ts = firebase.database.ServerValue.TIMESTAMP; sent.tsAt = nowMs; }
+
+  if (Object.keys(upd).length) net.ref.child('players/' + me.uid).update(upd);
 }
 
-/* ===================== REMOTE AVATARS ===================== */
-function addRemote(uid, v){
-  if (!v || remotes.has(uid)) return;
+/* ===================== REMOTE ENTITIES (players + networked drones) ===================== */
+function addEntity(id, v, isBot){
+  if (!v || remotes.has(id)) return;
   const av = buildAvatar(v.color || 0x4FA8FF, v.name || 'Operator');
   scene.add(av.group);
-  remotes.set(uid, {
-    uid, name: v.name || 'Operator', color: v.color || 0x4FA8FF,
-    avatar: av, alive: v.alive !== false, hp: v.hp || 100,
+  remotes.set(id, {
+    uid:id, isBot: !!isBot,
+    name: v.name || 'Operator', color: v.color || 0x4FA8FF,
+    avatar: av, alive: v.alive !== false, hp: v.hp == null ? 100 : v.hp,
     kills: v.kills || 0, deaths: v.deaths || 0,
     pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
     target: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
-    ry: v.ry || 0, targetRy: v.ry || 0, rx: 0, targetRx: 0, mv: 0, ts: v.ts || 0, walk: 0
+    ry: v.ry || 0, targetRy: v.ry || 0, rx: 0, targetRx: 0,
+    mv: 0, ts: v.ts || 0, walk: 0, stale: false
   });
   updateBoard();
 }
-function updateRemote(uid, v){
-  const r = remotes.get(uid);
-  if (!r){ addRemote(uid, v); return; }
-  r.target.set(v.x || 0, v.y || 0, v.z || 0);
-  r.targetRy = v.ry || 0;
-  r.targetRx = clamp(v.rx || 0, -1.1, 1.1);
-  r.alive = v.alive !== false;
-  r.hp = v.hp == null ? r.hp : v.hp;
-  r.kills = v.kills || 0;
-  r.deaths = v.deaths || 0;
-  r.mv = v.mv || 0;
-  r.ts = v.ts || r.ts;
-  if (r.name !== v.name && v.name) r.name = v.name;
+function updateEntity(id, v, isBot){
+  const r = remotes.get(id);
+  if (!r){ addEntity(id, v, isBot); return; }
+  if (v.x != null) r.target.x = v.x;
+  if (v.y != null) r.target.y = v.y;
+  if (v.z != null) r.target.z = v.z;
+  if (v.ry != null) r.targetRy = v.ry;
+  if (v.rx != null) r.targetRx = clamp(v.rx, -1.1, 1.1);
+  if (v.alive != null) r.alive = v.alive !== false;
+  if (v.hp != null) r.hp = v.hp;
+  if (v.kills != null) r.kills = v.kills;
+  if (v.deaths != null) r.deaths = v.deaths;
+  if (v.mv != null) r.mv = v.mv;
+  if (v.ts) r.ts = v.ts;
+  if (v.name) r.name = v.name;
   updateTag(r.avatar.tag, r.hp);
-  r.avatar.group.visible = r.alive;
+  r.avatar.group.visible = r.alive && !r.stale;
   updateBoard();
 }
-function removeRemote(uid){
-  const r = remotes.get(uid);
+function removeEntity(id){
+  const r = remotes.get(id);
   if (!r) return;
   scene.remove(r.avatar.group);
-  remotes.delete(uid);
+  remotes.delete(id);
   updateBoard();
 }
+// player-specific wrappers, kept so the existing listeners read clearly
+function addRemote(uid, v){ addEntity(uid, v, false); }
+function updateRemote(uid, v){ updateEntity(uid, v, false); }
+function removeRemote(uid){ removeEntity(uid); }
+
 function stepRemotes(dt){
-  const k = clamp(dt * 13, 0, 1);
+  const k = clamp(dt * 11, 0, 1);
   remotes.forEach(r => {
     r.pos.lerp(r.target, k);
     r.ry = angLerp(r.ry, r.targetRy, k);
     r.rx = lerp(r.rx, r.targetRx, k);
-    r.avatar.head.rotation.x = r.rx;
-    r.avatar.visor.rotation.x = r.rx;
-    r.avatar.gun.rotation.x = r.rx * 0.8;
     const g = r.avatar.group;
     g.position.copy(r.pos);
     g.rotation.y = r.ry;
+    r.avatar.head.rotation.x = r.rx;
+    r.avatar.visor.rotation.x = r.rx;
+    r.avatar.gun.rotation.x = r.rx * 0.8;
     if (r.mv){
       r.walk += dt * 9;
       const s = Math.sin(r.walk) * 0.5;
@@ -1588,6 +1696,192 @@ function stepRemotes(dt){
     r.stale = r.ts > 0 && (net.now() - r.ts) > 20000;
     if (r.stale) r.avatar.group.visible = false;
     r.avatar.tag.material.opacity = clamp(1 - (r.pos.distanceTo(me.pos) - 45)/20, 0.15, 1);
+  });
+}
+
+/* ===================== NETWORKED DRONES (keeper-driven) ===================== */
+const BOT_NAMES = ['DRONE-1','DRONE-2','DRONE-3'];
+
+// lowest uid among live humans owns the drones — deterministic, so migration needs no handshake
+function electKeeper(){
+  if (mode !== 'online' || !net.ref || !me.uid) return;
+  const ids = [me.uid];
+  net.peers.forEach(id => {
+    if (id === me.uid) return;
+    const r = remotes.get(id);
+    if (r && r.stale) return;                   // ignore ghosts
+    ids.push(id);
+  });
+  ids.sort();
+  const was = net.isKeeper;
+  net.isKeeper = ids[0] === me.uid;
+  net.humanCount = ids.length;
+
+  if (net.isKeeper && !was) becomeKeeper();
+  else if (!net.isKeeper && was) standDown();
+}
+function becomeKeeper(){
+  net.ref.child('botHits').on('child_added', onBotHit);
+  net.ref.child('bots').onDisconnect().remove();   // no orphan drones if this client vanishes
+  net.ref.child('bots').once('value', snap => {
+    const v = snap.val() || {};
+    for (const id in v) adoptBot(id, v[id]);      // inherit whatever the last keeper left
+  });
+}
+function standDown(){
+  net.ref.child('botHits').off('child_added', onBotHit);
+  net.ref.child('bots').onDisconnect().cancel();
+  net.botAI.clear();
+  net.botSent.clear();
+}
+function adoptBot(id, v){
+  if (net.botAI.has(id)) return;
+  net.botAI.set(id, {
+    id, name: v.name || id, color: v.color || 0x8892A6,
+    pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
+    goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
+    ry: v.ry || 0, hp: v.hp == null ? 100 : v.hp, alive: v.alive !== false,
+    kills: v.kills || 0, deaths: v.deaths || 0,
+    cool: rand(0.8, 2.2), respawnAt: 0, mv: 0
+  });
+}
+function spawnBot(i){
+  const id = 'd' + i;
+  const sp = pick(SPAWNS);
+  const ai = {
+    id, name: BOT_NAMES[i-1] || ('DRONE-' + i), color: 0x8892A6,
+    pos: new THREE.Vector3(sp.x, 0, sp.z), goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
+    ry: 0, hp: 100, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
+  };
+  net.botAI.set(id, ai);
+  net.ref.child('bots/' + id).set({
+    name: ai.name, color: ai.color, bot: true,
+    x: sp.x, y: 0, z: sp.z, ry: 0, hp: 100, alive: true, kills: 0, deaths: 0, mv: 0,
+    ts: firebase.database.ServerValue.TIMESTAMP
+  });
+}
+function despawnBot(id){
+  net.botAI.delete(id);
+  net.botSent.delete(id);
+  net.ref.child('bots/' + id).remove();
+}
+function ensureBotCount(){
+  const want = clamp(CFG.botFill - (net.humanCount || 1), 0, CFG.maxBots);
+  const have = net.botAI.size;
+  if (have < want){ for (let i = have+1; i <= want; i++) if (!net.botAI.has('d'+i)) spawnBot(i); }
+  else if (have > want){
+    const ids = Array.from(net.botAI.keys()).sort();
+    for (let i = want; i < ids.length; i++) despawnBot(ids[i]);
+  }
+}
+
+function onBotHit(snap){
+  const v = snap.val() || {};
+  snap.ref.remove();
+  const ai = net.botAI.get(v.bot);
+  if (!ai || !ai.alive) return;
+  ai.hp -= (v.dmg || 0);
+  if (ai.hp <= 0){
+    ai.alive = false;
+    ai.hp = 0;
+    ai.deaths++;
+    ai.respawnAt = performance.now() + 3200;
+    net.ref.child('bots/' + ai.id).update({ hp:0, alive:false, deaths:ai.deaths });
+    pushEvent({ type:'kill', killer: v.byName || 'someone', victim: ai.name, head: !!v.head });
+    if (v.by) net.ref.child('players/' + v.by + '/kills').transaction(k => (k||0) + 1);
+  } else {
+    net.ref.child('bots/' + ai.id).update({ hp: Math.round(ai.hp) });
+  }
+}
+
+function stepNetBots(dt){
+  if (!net.isKeeper || !net.ref) return;
+  ensureBotCount();
+  const now = performance.now();
+
+  // gather live humans as targets: everyone else, plus this client
+  const humans = [];
+  remotes.forEach(r => { if (!r.isBot && r.alive && !r.stale) humans.push({ id:r.uid, pos:r.pos }); });
+  if (me.alive) humans.push({ id:me.uid, pos:me.pos, self:true });
+
+  net.botAI.forEach(ai => {
+    if (!ai.alive){
+      if (now > ai.respawnAt){
+        const sp = pick(SPAWNS);
+        ai.pos.set(sp.x, 0, sp.z); ai.hp = 100; ai.alive = true;
+        net.ref.child('bots/' + ai.id).update({ hp:100, alive:true, x:sp.x, y:0, z:sp.z });
+      }
+      return;
+    }
+
+    // wander
+    if (ai.pos.distanceTo(ai.goal) < 2){
+      const sp = pick(SPAWNS);
+      ai.goal.set(sp.x + rand(-6,6), 0, sp.z + rand(-6,6));
+    }
+    const dir = ai.goal.clone().sub(ai.pos); dir.y = 0;
+    const dist = dir.length();
+    if (dist > 0.1) dir.divideScalar(dist);
+    const nx = ai.pos.x + dir.x*3.4*dt, nz = ai.pos.z + dir.z*3.4*dt;
+    let blocked = false;
+    for (const c of colliders){
+      if (nx+0.4 > c.min.x && nx-0.4 < c.max.x && nz+0.4 > c.min.z && nz-0.4 < c.max.z && c.min.y < 1.4){ blocked = true; break; }
+    }
+    if (blocked){ const sp = pick(SPAWNS); ai.goal.set(sp.x, 0, sp.z); ai.mv = 0; }
+    else { ai.pos.x = clamp(nx,-29,29); ai.pos.z = clamp(nz,-29,29); ai.mv = 1; }
+    ai.pos.y = lerp(ai.pos.y, groundAt(ai.pos.x, ai.pos.z), clamp(dt*10,0,1));
+
+    // nearest human
+    let best = null, bestD = 1e9;
+    for (const h of humans){
+      const d = ai.pos.distanceTo(h.pos);
+      if (d < bestD){ bestD = d; best = h; }
+    }
+    if (best && bestD < 42){
+      const to = best.pos.clone().sub(ai.pos);
+      ai.ry = angLerp(ai.ry, Math.atan2(-to.x, -to.z), clamp(dt*6,0,1));
+      ai.cool -= dt;
+      if (ai.cool <= 0){
+        ai.cool = rand(0.9, 2.1);
+        const from = ai.pos.clone().add(new THREE.Vector3(0,1.3,0));
+        const aim = best.pos.clone().add(new THREE.Vector3(0,1.2,0));
+        const d = from.distanceTo(aim);
+        ray.set(from, aim.clone().sub(from).normalize());
+        ray.far = d;
+        const wall = ray.intersectObjects(solids, false);
+        if (!wall.length || wall[0].distance > d - 1){
+          if (Math.random() < 0.4){
+            net.ref.child('players/' + best.id + '/inbox').push({
+              by: ai.id, byName: ai.name, bot: true,
+              dmg: Math.round(rand(6,13)), head: false, w: 'Pulse',
+              t: firebase.database.ServerValue.TIMESTAMP
+            });
+          }
+        }
+      }
+    } else {
+      ai.ry = angLerp(ai.ry, Math.atan2(-dir.x, -dir.z), clamp(dt*4,0,1));
+    }
+  });
+
+  // write drone state on the same throttle as players, deltas only
+  net.botAcc += dt;
+  if (net.botAcc < CFG.netRate) return;
+  net.botAcc = 0;
+  const nowMs = net.now();
+  net.botAI.forEach(ai => {
+    if (!ai.alive) return;
+    let sent = net.botSent.get(ai.id);
+    if (!sent){ sent = {}; net.botSent.set(ai.id, sent); }
+    const upd = {};
+    const x = +ai.pos.x.toFixed(2), y = +ai.pos.y.toFixed(2), z = +ai.pos.z.toFixed(2), ry = +ai.ry.toFixed(2);
+    if (x !== sent.x){ upd.x = x; sent.x = x; }
+    if (y !== sent.y){ upd.y = y; sent.y = y; }
+    if (z !== sent.z){ upd.z = z; sent.z = z; }
+    if (ry !== sent.ry){ upd.ry = ry; sent.ry = ry; }
+    if (ai.mv !== sent.mv){ upd.mv = ai.mv; sent.mv = ai.mv; }
+    if (nowMs - (sent.tsAt || 0) > 1000){ upd.ts = firebase.database.ServerValue.TIMESTAMP; sent.tsAt = nowMs; }
+    if (Object.keys(upd).length) net.ref.child('bots/' + ai.id).update(upd);
   });
 }
 
@@ -1769,12 +2063,12 @@ function sendChat(){
 function showBoard(on){ $('board').classList.toggle('on', on); if (on) updateBoard(); }
 function updateBoard(){
   const rows = [{ name:me.name, color:hex(COLORS[me.colorIdx].hex), kills:me.kills, deaths:me.deaths, ping:me.ping, me:true }];
-  remotes.forEach(r => { if (r.stale) return; rows.push({ name:r.name, color:hex(r.color), kills:r.kills, deaths:r.deaths, ping:Math.max(0, Math.round(net.now() - (r.ts||net.now()))) }); });
+  remotes.forEach(r => { if (r.stale) return; rows.push({ bot:r.isBot, name:r.name, color:hex(r.color), kills:r.kills, deaths:r.deaths, ping:Math.max(0, Math.round(net.now() - (r.ts||net.now()))) }); });
   bots.forEach(b => rows.push({ name:b.name, color:hex(b.color), kills:b.kills, deaths:b.deaths, ping:0 }));
   rows.sort((a,b) => b.kills - a.kills || a.deaths - b.deaths);
   $('boardRoom').textContent = mode === 'solo' ? 'practice' : net.room;
   $('boardBody').innerHTML = rows.map(r =>
-    '<tr><td><span class="chip" style="background:'+esc(r.color)+'"></span>'+esc(r.name)+(r.me?' <span style="color:var(--dim)">(you)</span>':'')+
+    '<tr><td><span class="chip" style="background:'+esc(r.color)+'"></span>'+esc(r.name)+(r.me?' <span style="color:var(--dim)">(you)</span>':'')+(r.bot?' <span style="color:var(--dim)">(drone)</span>':'')+
     '</td><td class="n">'+r.kills+'</td><td class="n">'+r.deaths+'</td><td class="n" style="color:var(--dim)">'+(r.ping?Math.min(999,r.ping)+'ms':'—')+'</td></tr>'
   ).join('');
 }
@@ -1930,8 +2224,15 @@ function swapWeaponInitial(){
 
 function leaveArena(){
   if (mode === 'online' && net.ref && me.uid){
+    if (net.isKeeper) standDown();
+    if (net.lobbyKey){ net.lobbyKey.onDisconnect().cancel(); net.lobbyKey.remove(); net.lobbyKey = null; }
     net.ref.child('players/' + me.uid).remove();
     net.ref.off();
+    net.isKeeper = false;
+    net.peers.clear();
+    net.botAI.clear();
+    net.botSent.clear();
+    net.sent = {};
   }
   remotes.forEach(r => scene.remove(r.avatar.group));
   remotes.clear();
@@ -1987,6 +2288,7 @@ function frame(){
 
     stepPickups(dt, now);
     writeState(dt);
+    if (mode === 'online') stepNetBots(dt);
     if (mode === 'solo') stepBots(dt);
   }
 
@@ -1997,6 +2299,10 @@ function frame(){
   if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); }
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
+  if (mode === 'online'){
+    net.electAcc += dt;
+    if (net.electAcc > 3){ net.electAcc = 0; electKeeper(); }
+  }
 
   renderer.render(scene, camera);
 }
@@ -2015,11 +2321,13 @@ function frame(){
   initTouch();
   initMenu();
   updateHud();
+  if (initFirebaseApp()) subscribeLobby();
   $('boot').style.display = 'none';
   if (typeof firebase === 'undefined'){
     setStatus('Firebase SDK did not load — online play is unavailable. Practice offline still works.', 'bad');
   } else if (!configLooksReal()){
     setStatus('No Firebase config yet — paste yours at the top of arena.html to play online.', '');
+    $('realms').innerHTML = '<div class="rl-empty">Add your Firebase config to see live realms.</div>';
   }
   frame();
 })();
