@@ -3,280 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>eon games — preview</title>
-  <style>
-:root {
-  --bg: #050816;
-  --bg-2: #0a1022;
-  --bg-3: #111a36;
-  --card: rgba(255, 255, 255, 0.07);
-  --card-strong: rgba(255, 255, 255, 0.12);
-  --border: rgba(255, 255, 255, 0.12);
-  --border-strong: rgba(124, 92, 255, 0.28);
-  --text: #eef2ff;
-  --muted: #a7b0d6;
-  --accent: #7c5cff;
-  --accent-2: #26d0ff;
-  --accent-3: #ff9f43;
-  --success: #23d18b;
-  --danger: #ff7474;
-  --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.22);
-  --radius: 22px;
-  --radius-sm: 14px;
-  --max-width: 1220px;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body {
-  font-family: Inter, Arial, sans-serif;
-  background:
-    radial-gradient(circle at top left, rgba(124, 92, 255, 0.15), transparent 30%),
-    radial-gradient(circle at top right, rgba(38, 208, 255, 0.12), transparent 28%),
-    radial-gradient(circle at center, rgba(255, 159, 67, 0.07), transparent 26%),
-    linear-gradient(180deg, var(--bg), var(--bg-2) 55%, #070c1a 100%);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-#starfield { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -3; pointer-events: none; }
-a { color: inherit; text-decoration: none; }
-button, input, textarea { font: inherit; }
-img { max-width: 100%; display: block; }
-.background-glow {
-  position: fixed; width: 420px; height: 420px; border-radius: 50%;
-  filter: blur(100px); opacity: 0.18; z-index: -2; pointer-events: none;
-}
-.glow-1 { background: var(--accent); top: -90px; left: -90px; }
-.glow-2 { background: var(--accent-2); bottom: -110px; right: -90px; }
-.site-header {
-  width: min(var(--max-width), calc(100% - 32px));
-  margin: 20px auto 0; padding: 16px 22px;
-  display: flex; align-items: center; justify-content: space-between; gap: 18px;
-  background: rgba(9, 12, 28, 0.7);
-  border: 1px solid var(--border); border-radius: 999px;
-  backdrop-filter: blur(18px); position: sticky; top: 16px; z-index: 1000;
-  box-shadow: var(--shadow);
-}
-.logo-wrap { display: flex; align-items: center; min-width: 0; }
-.site-logo {
-  height: 44px; width: auto; object-fit: contain;
-  filter: drop-shadow(0 0 10px rgba(124, 92, 255, 0.18)) drop-shadow(0 0 20px rgba(38, 208, 255, 0.08));
-}
-.nav { display: flex; align-items: center; gap: 24px; }
-.nav a { color: var(--muted); transition: color 0.2s ease, transform 0.2s ease; position: relative; }
-.nav a:hover { color: var(--text); transform: translateY(-1px); }
-.nav a::after {
-  content: ""; position: absolute; left: 0; bottom: -7px; width: 100%; height: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  transform: scaleX(0); transform-origin: center; transition: transform 0.2s ease; border-radius: 999px;
-}
-.nav a:hover::after { transform: scaleX(1); }
-.auth-area { display: flex; align-items: center; gap: 12px; }
-.welcome-user {
-  color: var(--muted); font-size: 0.95rem; max-width: 260px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.btn {
-  border: none; border-radius: 999px; padding: 12px 18px; cursor: pointer;
-  transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-  font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
-}
-.btn:hover { transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
-.btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: white; box-shadow: 0 10px 25px rgba(124, 92, 255, 0.22);
-}
-.btn-primary:hover { box-shadow: 0 14px 30px rgba(124, 92, 255, 0.28); }
-.btn-secondary, .btn-glass, .btn-card {
-  background: rgba(255, 255, 255, 0.08); color: var(--text);
-  border: 1px solid var(--border); backdrop-filter: blur(10px);
-}
-.btn-secondary:hover, .btn-glass:hover, .btn-card:hover { border-color: var(--border-strong); }
-.btn-card { width: fit-content; }
-.full-width { width: 100%; }
-main { width: min(var(--max-width), calc(100% - 32px)); margin: 40px auto 80px; }
-.hero {
-  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px;
-  align-items: center; min-height: 75vh; padding: 36px 0 22px;
-}
-.hero-content {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 42px; box-shadow: var(--shadow); backdrop-filter: blur(16px);
-}
-.eyebrow, .section-tag {
-  color: var(--accent-2); font-size: 0.82rem; letter-spacing: 0.16em;
-  text-transform: uppercase; margin-bottom: 14px; font-weight: 800;
-}
-.hero h1, .page-hero h1 { font-size: clamp(2.8rem, 6vw, 5.2rem); line-height: 0.96; margin-bottom: 18px; }
-.hero h1 span, .page-hero h1 span {
-  background: linear-gradient(135deg, #ffffff, #8ccfff, #b89cff, #ffca88);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-.hero-text, .page-hero p {
-  font-size: 1.08rem; line-height: 1.7; color: var(--muted); max-width: 640px; margin-bottom: 28px;
-}
-.hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
-.hero-image-card, .page-panel {
-  position: relative; border-radius: 30px; overflow: hidden; border: 1px solid var(--border);
-  background:
-    radial-gradient(circle at 50% 45%, rgba(124, 92, 255, 0.15), transparent 30%),
-    radial-gradient(circle at 60% 55%, rgba(255, 159, 67, 0.12), transparent 22%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow: var(--shadow); min-height: 520px;
-  display: flex; align-items: center; justify-content: center; isolation: isolate;
-}
-.hero-image-card::before, .page-panel::before {
-  content: ""; position: absolute; inset: auto 10% 7% 10%; height: 55px;
-  background: radial-gradient(circle, rgba(124, 92, 255, 0.28), transparent 68%);
-  filter: blur(24px); z-index: 0; pointer-events: none;
-}
-.hero-image {
-  position: relative; z-index: 1; width: 100%; max-width: 540px; height: auto;
-  object-fit: contain; min-height: 520px; padding: 24px;
-  filter: drop-shadow(0 0 20px rgba(124, 92, 255, 0.22)) drop-shadow(0 0 30px rgba(38, 208, 255, 0.08));
-}
-.section { margin-top: 52px; padding: 22px 0; }
-.section-header { margin-bottom: 28px; }
-.section-header h2 { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 12px; }
-.section-header p { color: var(--muted); max-width: 760px; line-height: 1.7; }
-.games-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
-.game-card, .info-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;
-  box-shadow: var(--shadow-soft); backdrop-filter: blur(14px);
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.game-card:hover, .info-card:hover {
-  transform: translateY(-4px); border-color: rgba(124, 92, 255, 0.55);
-  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
-}
-.game-card-top { display: flex; justify-content: space-between; margin-bottom: 18px; }
-.status-pill {
-  background: rgba(38, 208, 255, 0.12); color: #9deaff;
-  border: 1px solid rgba(38, 208, 255, 0.25); padding: 8px 12px;
-  border-radius: 999px; font-size: 0.82rem; font-weight: 700;
-}
-.game-card h3, .info-card h3 { font-size: 1.45rem; margin-bottom: 12px; }
-.game-card p, .info-card p { color: var(--muted); line-height: 1.7; margin-bottom: 20px; }
-.community-layout, .page-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 22px; }
-.comment-form-card, .comment-list-card, .about-section .section-header {
-  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-soft); backdrop-filter: blur(12px);
-}
-.comment-form-card h3, .comment-list-card h3 { margin-bottom: 16px; }
-#commentForm { display: flex; flex-direction: column; gap: 14px; }
-#commentText, .auth-form input {
-  width: 100%; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.06);
-  color: var(--text); border-radius: 16px; padding: 14px 16px; outline: none;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-#commentText:focus, .auth-form input:focus {
-  border-color: rgba(38, 208, 255, 0.42); background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 4px rgba(38, 208, 255, 0.08);
-}
-#commentText { min-height: 150px; resize: vertical; }
-#commentText::placeholder, .auth-form input::placeholder { color: #8790b7; }
-.auth-form { display: flex; flex-direction: column; gap: 14px; }
-.comment-list {
-  display: flex; flex-direction: column; gap: 14px;
-  max-height: 520px; overflow-y: auto; padding-right: 6px;
-}
-.comment-list::-webkit-scrollbar { width: 10px; }
-.comment-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
-.comment { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); border-radius: 18px; padding: 16px; }
-.comment-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
-.comment-user { font-weight: 700; }
-.comment-time { color: var(--muted); font-size: 0.9rem; }
-.comment-text { color: var(--text); line-height: 1.6; margin: 10px 0 14px; word-break: break-word; }
-.comment-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.like-btn {
-  border: 1px solid var(--border); background: rgba(255, 255, 255, 0.08); color: var(--text);
-  border-radius: 999px; padding: 8px 14px; cursor: pointer;
-  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
-}
-.like-btn:hover { transform: translateY(-1px); border-color: rgba(255, 159, 67, 0.34); background: rgba(255, 159, 67, 0.09); }
-.likes-count { color: var(--muted); font-size: 0.95rem; }
-.site-footer {
-  width: min(var(--max-width), calc(100% - 32px)); margin: 0 auto 32px; padding: 22px;
-  text-align: center; color: var(--muted); border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-.modal {
-  display: none; position: fixed; inset: 0; background: rgba(4, 8, 20, 0.7);
-  backdrop-filter: blur(8px); z-index: 2000; padding: 24px;
-}
-.modal-content {
-  width: min(440px, 100%); margin: 8vh auto 0;
-  background: linear-gradient(180deg, rgba(17, 23, 42, 0.98), rgba(11, 16, 32, 0.98));
-  border: 1px solid var(--border); border-radius: 24px; padding: 28px;
-  position: relative; box-shadow: var(--shadow);
-}
-.auth-modal-card { overflow: hidden; }
-.auth-modal-head { margin-bottom: 18px; position: relative; }
-.auth-modal-head h2 { margin-bottom: 8px; }
-.auth-modal-head p { color: var(--muted); line-height: 1.6; }
-.auth-orb {
-  width: 70px; height: 70px; border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 35%, rgba(38, 208, 255, 0.95), rgba(38, 208, 255, 0.15) 35%, transparent 55%),
-    radial-gradient(circle at 65% 60%, rgba(124, 92, 255, 0.95), rgba(124, 92, 255, 0.15) 35%, transparent 55%),
-    radial-gradient(circle at 50% 50%, rgba(255, 159, 67, 0.8), transparent 40%);
-  filter: blur(1px); margin-bottom: 14px; box-shadow: 0 0 35px rgba(124, 92, 255, 0.22);
-}
-.close-btn {
-  position: absolute; top: 14px; right: 16px; background: transparent; border: none;
-  color: var(--muted); font-size: 2rem; cursor: pointer; line-height: 1;
-}
-.close-btn:hover { color: var(--text); }
-.modal-switch { margin-top: 16px; color: var(--muted); }
-.text-btn { background: none; border: none; color: var(--accent-2); cursor: pointer; font-weight: 700; }
-.text-btn:hover { color: #8de7ff; }
-.auth-message { margin-top: 12px; font-size: 0.95rem; color: var(--muted); }
-.auth-message.error { color: var(--danger); }
-.auth-message.success { color: var(--success); }
-#logout-btn { display: none; }
-@media (max-width: 980px) {
-  .hero, .community-layout, .games-grid, .page-grid { grid-template-columns: 1fr; }
-  .hero, .page-hero { min-height: auto; }
-  .hero-image-card, .page-panel { min-height: 320px; }
-  .hero-image { min-height: 320px; max-width: 420px; padding: 20px; }
-  .site-header { flex-wrap: wrap; border-radius: 26px; gap: 14px; }
-  .nav { order: 3; width: 100%; justify-content: center; }
-  .auth-area { width: 100%; justify-content: center; flex-wrap: wrap; }
-}
-@media (max-width: 640px) {
-  .hero-content, .comment-form-card, .comment-list-card,
-  .about-section .section-header, .game-card, .page-panel, .info-card { padding: 20px; }
-  .hero h1, .page-hero h1 { font-size: 2.4rem; }
-  .site-header { padding: 16px; }
-  .site-logo { height: 36px; }
-  .nav { gap: 16px; flex-wrap: wrap; }
-  .welcome-user { max-width: 100%; text-align: center; }
-  .hero-image { min-height: 280px; padding: 16px; }
-}
-/* preview-only: stand-in for the missing logo image */
-.preview-art {
-  width: 100%; max-width: 460px; min-height: 380px; border-radius: 24px;
-  border: 1px dashed rgba(255,255,255,0.18);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--muted); text-align: center; padding: 24px; position: relative; z-index: 1;
-}
-  </style>
+  <title>eon games — browser games you can play right now</title>
+  <meta name="description" content="eon games builds multiplayer browser games you can play instantly — no installs, no launchers. Strategy, social deduction and arena shooters." />
+  <meta name="theme-color" content="#050816" />
+
+  <!-- Open Graph / social sharing -->
+  <meta property="og:title" content="eon games" />
+  <meta property="og:description" content="Multiplayer browser games you can play instantly. No installs, no launchers." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://eongames.co.uk/" />
+  <meta property="og:image" content="https://eongames.co.uk/eongames.png" />
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles-home.css" />
+  <noscript><style>.reveal{opacity:1 !important;transform:none !important;}</style></noscript>
 </head>
 <body>
-  <canvas id="starfield"></canvas>
+  <a class="skip-link" href="#games">Skip to games</a>
 
-  <div class="background-glow glow-1"></div>
-  <div class="background-glow glow-2"></div>
+  <canvas id="starfield" aria-hidden="true"></canvas>
+  <div class="background-glow glow-1" aria-hidden="true"></div>
+  <div class="background-glow glow-2" aria-hidden="true"></div>
 
   <header class="site-header">
     <a href="index.html" class="logo-wrap" aria-label="eon games home">
-      <strong style="font-size:1.3rem;letter-spacing:-0.02em;">eon games</strong>
+      <span class="wordmark">eon<span>games</span></span>
     </a>
 
-    <nav class="nav">
+    <nav class="nav" aria-label="Main">
       <a href="#games">Games</a>
       <a href="#community">Community</a>
       <a href="#about">About</a>
@@ -284,181 +38,331 @@ main { width: min(var(--max-width), calc(100% - 32px)); margin: 40px auto 80px; 
 
     <div class="auth-area">
       <span id="welcome-user" class="welcome-user"></span>
-      <button id="login-btn" class="btn btn-primary" type="button">Login</button>
+      <button id="login-btn" class="btn btn-primary" type="button" onclick="openModal()">Log in</button>
+      <button id="logout-btn" class="btn btn-secondary" type="button" onclick="logout()">Log out</button>
     </div>
   </header>
 
   <main>
+    <!-- ───────────────────────── HERO ───────────────────────── -->
     <section class="hero">
       <div class="hero-content">
-        <p class="eyebrow">NEXT-GEN INDIE WORLDS</p>
+        <p class="eyebrow">Playable in your browser</p>
         <h1>Build the future of play with <span>eon games</span></h1>
         <p class="hero-text">
-          Stylish worlds. Fast gameplay. Community-first design.
-          Explore our latest projects and join the players shaping what comes next.
+          Four games running live right now — strategy, social deduction and a 3D arena shooter.
+          No installs, no launchers, no accounts to play. Open a tab and go.
         </p>
 
         <div class="hero-actions">
-          <a href="#games" class="btn btn-primary">Explore Games</a>
-          <a href="#community" class="btn btn-glass">Join Community</a>
+          <a href="#games" class="btn btn-primary">Explore games</a>
+          <a href="#community" class="btn btn-glass">Join the community</a>
         </div>
+
+        <dl class="hero-stats">
+          <div><dt>Playable now</dt><dd>4</dd></div>
+          <div><dt>Multiplayer</dt><dd>Real time</dd></div>
+          <div><dt>Price</dt><dd>Free</dd></div>
+        </dl>
       </div>
 
       <div class="hero-image-card">
-        <a class="img" href="eongames.png"> png image</a>
+        <img class="hero-image" src="eongames.png" alt="eon games emblem"
+             onerror="this.hidden=true;var f=document.getElementById('heroFallback');if(f){f.removeAttribute('hidden');}" />
+
+        <!-- Shown only if eongames.png is missing, so the hero is never empty -->
+        <svg id="heroFallback" class="hero-fallback" hidden viewBox="0 0 420 420" role="img" aria-label="eon games orbital emblem">
+          <defs>
+            <radialGradient id="hf-core" cx="50%" cy="45%" r="55%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity=".95" />
+              <stop offset="35%" stop-color="#26d0ff" stop-opacity=".75" />
+              <stop offset="100%" stop-color="#7c5cff" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="hf-ring" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#26d0ff" />
+              <stop offset="55%" stop-color="#7c5cff" />
+              <stop offset="100%" stop-color="#ff9f43" />
+            </linearGradient>
+          </defs>
+          <circle cx="210" cy="210" r="120" fill="url(#hf-core)" />
+          <g fill="none" stroke="url(#hf-ring)" stroke-width="2.5" opacity=".9">
+            <ellipse cx="210" cy="210" rx="180" ry="62" />
+            <ellipse cx="210" cy="210" rx="180" ry="62" transform="rotate(58 210 210)" />
+            <ellipse cx="210" cy="210" rx="180" ry="62" transform="rotate(-58 210 210)" />
+          </g>
+          <circle cx="210" cy="210" r="34" fill="#eef2ff" opacity=".92" />
+          <circle cx="390" cy="210" r="6" fill="#ff9f43" />
+          <circle cx="115" cy="65" r="4" fill="#26d0ff" />
+          <circle cx="316" cy="352" r="5" fill="#7c5cff" />
+        </svg>
       </div>
     </section>
 
+    <!-- ───────────────────────── GAMES ───────────────────────── -->
     <section id="games" class="section">
       <div class="section-header">
-        <p class="section-tag">OUR GAMES</p>
+        <p class="section-tag">Our games</p>
         <h2>Featured titles</h2>
-        <p>Nine projects. Nine different experiences. More details coming soon.</p>
+        <p>Four are playable today. The rest are slots waiting for the next build.</p>
       </div>
 
       <div class="games-grid">
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
-          <h3>Neon Rift</h3>
-          <p>A sleek and immersive new experience from eon games. More details will be added later.</p>
-          <a href="game1.html" class="btn btn-card">View Game</a>
+
+        <!-- Saxons Strategy -->
+        <article class="game-card reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/saxons-strategy.jpg" alt="Saxons Strategy cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-live">Playable</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Saxons Strategy</h3>
+            <p>Raise a village, train troops and take the realm off your neighbours. A Tribal Wars-style empire builder that runs in real time while you're away.</p>
+            <ul class="tag-row"><li>Strategy</li><li>Multiplayer</li><li>Persistent world</li></ul>
+            <a href="Tribal2/realm.html" class="btn btn-card">Play now</a>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">In Development</span></div>
-          <h3>Saxons Strategy</h3>
-          <p>Build an empire and take rule the relm. Built with Claude, based on Tribalwars.</p>
-          <a href="Tribal2/realm.html" class="btn btn-card">View Game</a>
+        <!-- Who me? -->
+        <article class="game-card reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/who-me.jpg" alt="Who me? cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-live">Playable</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Who me?</h3>
+            <p>Finish your tasks before the impostor finishes you. Twelve rooms, live chat, emergency meetings and a vote that only goes one way if you argue well.</p>
+            <ul class="tag-row"><li>Social deduction</li><li>Live chat</li><li>Room codes</li></ul>
+            <a href="AmongUs/index.html" class="btn btn-card">Play now</a>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">AmongUs</span></div>
-          <h3>Who me?</h3>
-          <p>A new universe in progress. AmongUs style game</p>
-          <a href="AmongUs/index.html" class="btn btn-card">View Game</a>
+        <!-- Eon Arena -->
+        <article class="game-card reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/eon-arena.jpg" alt="Eon Arena cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-live">Playable</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Eon Arena</h3>
+            <p>A 3D deathmatch that loads in a tab. Drop into the shared realm, grab a spawn point and out-shoot everyone else — mouse and keyboard, or touch on a phone.</p>
+            <ul class="tag-row"><li>3D shooter</li><li>Deathmatch</li><li>Touch ready</li></ul>
+            <a href="EonArena/Arena.html" class="btn btn-card">Play now</a>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">In Progress</span></div>
-          <h3>Eon Arena</h3>
-          <p>Enter The Arena</p>
-          <a href="EonArena/Arena.html" class="btn btn-card">View Game</a>
+        <!-- Neon Rift -->
+        <article class="game-card reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/neon-rift.jpg" alt="Neon Rift cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill">In development</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Neon Rift</h3>
+            <p>A fast arcade run through a fracturing skyline. Still being built — the art direction is locked, the gameplay is not.</p>
+            <ul class="tag-row"><li>Arcade</li><li>Single player</li></ul>
+            <span class="btn btn-card is-disabled" aria-disabled="true">Not ready yet</span>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
-          <h3>Game Five</h3>
-          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
-          <a href="game5.html" class="btn btn-card">View Game</a>
+        <!-- Empty slots -->
+        <article class="game-card game-card-slot reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/game-five.jpg" alt="Game five cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-slot">Slot open</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Game five</h3>
+            <p>Nothing here yet. Next build drops into this slot.</p>
+            <span class="btn btn-card is-disabled" aria-disabled="true">Empty slot</span>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
-          <h3>Game Six</h3>
-          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
-          <a href="game6.html" class="btn btn-card">View Game</a>
+        <article class="game-card game-card-slot reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/game-six.jpg" alt="Game six cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-slot">Slot open</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Game six</h3>
+            <p>Nothing here yet. Next build drops into this slot.</p>
+            <span class="btn btn-card is-disabled" aria-disabled="true">Empty slot</span>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
-          <h3>Game Seven</h3>
-          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
-          <a href="game7.html" class="btn btn-card">View Game</a>
+        <article class="game-card game-card-slot reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/game-seven.jpg" alt="Game seven cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-slot">Slot open</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Game seven</h3>
+            <p>Nothing here yet. Next build drops into this slot.</p>
+            <span class="btn btn-card is-disabled" aria-disabled="true">Empty slot</span>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
-          <h3>Game Eight</h3>
-          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
-          <a href="game8.html" class="btn btn-card">View Game</a>
+        <article class="game-card game-card-slot reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/game-eight.jpg" alt="Game eight cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-slot">Slot open</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Game eight</h3>
+            <p>Nothing here yet. Next build drops into this slot.</p>
+            <span class="btn btn-card is-disabled" aria-disabled="true">Empty slot</span>
+          </div>
         </article>
 
-        <article class="game-card">
-          <div class="game-card-top"><span class="status-pill">Coming Soon</span></div>
-          <h3>Game Nine</h3>
-          <p>Placeholder slot for the next eon games project. Title, artwork and details to be added.</p>
-          <a href="game9.html" class="btn btn-card">View Game</a>
+        <article class="game-card game-card-slot reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="images/game-nine.jpg" alt="Game nine cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-slot">Slot open</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Game nine</h3>
+            <p>Nothing here yet. Next build drops into this slot.</p>
+            <span class="btn btn-card is-disabled" aria-disabled="true">Empty slot</span>
+          </div>
         </article>
+
       </div>
     </section>
 
+    <!-- ───────────────────────── COMMUNITY ───────────────────────── -->
     <section id="community" class="section">
       <div class="section-header">
-        <p class="section-tag">COMMUNITY</p>
+        <p class="section-tag">Community</p>
         <h2>Player comments</h2>
-        <p>Log in to post a comment and interact with the community.</p>
+        <p>Log in to post a comment, and give a thumbs up to the ones you like.</p>
       </div>
 
       <div class="community-layout">
         <div class="comment-form-card">
           <h3>Leave a comment</h3>
           <form id="commentForm">
-            <textarea id="commentText" placeholder="Share your thoughts..."></textarea>
-            <button type="button" class="btn btn-primary">Post Comment</button>
+            <label class="sr-only" for="commentText">Your comment</label>
+            <textarea id="commentText" placeholder="Which game should get built next?"></textarea>
+            <button type="submit" class="btn btn-primary full-width">Post comment</button>
           </form>
         </div>
 
         <div class="comment-list-card">
           <h3>Latest comments</h3>
-          <div id="commentList" class="comment-list">
-            <p class="comment-text" style="margin:0;color:#a7b0d6;">Comments load from Firebase on the live site.</p>
+          <div id="commentList" class="comment-list" aria-live="polite">
+            <p class="comment-text empty-note">Loading comments…</p>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- ───────────────────────── ABOUT ───────────────────────── -->
     <section id="about" class="section about-section">
       <div class="section-header">
-        <p class="section-tag">ABOUT</p>
+        <p class="section-tag">About</p>
         <h2>eon games</h2>
         <p>
-          We create modern game experiences with bold visuals, cosmic energy,
-          and a focus on fun. This site is ready for you to expand with your real games,
-          pages, media, and player content.
+          eon games is a one-person studio building multiplayer games that run entirely in a browser tab.
+          Every title here is hand-built with HTML, CSS and JavaScript, with Firebase keeping players in sync —
+          no engines, no downloads, no store pages.
         </p>
+        <div class="about-facts">
+          <div><strong>Built with</strong><span>HTML · CSS · JavaScript · Firebase</span></div>
+          <div><strong>Plays on</strong><span>Desktop, tablet and phone</span></div>
+          <div><strong>Costs</strong><span>Nothing, ever</span></div>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <p>© 2026 eon games. All rights reserved.</p>
+    <p>© <span id="year">2026</span> eon games. All rights reserved.</p>
   </footer>
 
+  <!-- ───────────────────────── AUTH MODALS ───────────────────────── -->
+  <div id="login-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <div class="modal-content auth-modal-card">
+      <button class="close-btn" type="button" onclick="closeModal()" aria-label="Close">&times;</button>
+      <div class="auth-modal-head">
+        <div class="auth-orb" aria-hidden="true"></div>
+        <h2 id="login-title">Welcome back</h2>
+        <p>Log in to post comments and keep your name on the board.</p>
+      </div>
+      <form id="login-form" class="auth-form">
+        <label class="sr-only" for="email">Email</label>
+        <input id="email" type="email" placeholder="Email" autocomplete="email" required />
+        <label class="sr-only" for="password">Password</label>
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+        <button type="submit" class="btn btn-primary full-width">Log in</button>
+      </form>
+      <p class="modal-switch">No account yet? <button class="text-btn" type="button" onclick="showSignup()">Create one</button></p>
+    </div>
+  </div>
+
+  <div id="signup-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="signup-title">
+    <div class="modal-content auth-modal-card">
+      <button class="close-btn" type="button" onclick="closeSignupModal()" aria-label="Close">&times;</button>
+      <div class="auth-modal-head">
+        <div class="auth-orb" aria-hidden="true"></div>
+        <h2 id="signup-title">Create an account</h2>
+        <p>One account covers comments across the whole site.</p>
+      </div>
+      <form id="signup-form" class="auth-form">
+        <label class="sr-only" for="signup-email">Email</label>
+        <input id="signup-email" type="email" placeholder="Email" autocomplete="email" required />
+        <label class="sr-only" for="signup-password">Password</label>
+        <input id="signup-password" type="password" placeholder="Password (6+ characters)" autocomplete="new-password" required />
+        <button type="submit" class="btn btn-primary full-width">Create account</button>
+      </form>
+      <p class="modal-switch">Already registered? <button class="text-btn" type="button" onclick="switchToLogin()">Log in</button></p>
+    </div>
+  </div>
+
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="script.js"></script>
+
   <script>
-  function initStarfield() {
-    const canvas = document.getElementById("starfield");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    let width = 0, height = 0, stars = [];
-    function resizeCanvas() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      const starCount = Math.max(80, Math.floor((width * height) / 12000));
-      stars = Array.from({ length: starCount }, () => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        speed: Math.random() * 0.45 + 0.12,
-        radius: Math.random() * 1.6 + 0.2,
-        alpha: Math.random() * 0.75 + 0.2
-      }));
-    }
-    function drawFrame() {
-      ctx.clearRect(0, 0, width, height);
-      for (const star of stars) {
-        star.y += star.speed;
-        if (star.y > height + 2) { star.y = -2; star.x = Math.random() * width; }
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(220, 230, 255, ${star.alpha})`;
-        ctx.fill();
+    // Footer year
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    // Close modals with Escape
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (typeof closeModal === "function") closeModal();
+      if (typeof closeSignupModal === "function") closeSignupModal();
+    });
+
+    // Reveal cards on scroll (skipped if the visitor prefers reduced motion)
+    (function () {
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var items = document.querySelectorAll(".reveal");
+      if (reduce || !("IntersectionObserver" in window)) {
+        items.forEach(function (el) { el.classList.add("is-visible"); });
+        return;
       }
-      requestAnimationFrame(drawFrame);
-    }
-    resizeCanvas();
-    drawFrame();
-    window.addEventListener("resize", resizeCanvas);
-  }
-  initStarfield();
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          io.unobserve(entry.target);
+        });
+      }, { rootMargin: "0px 0px -40px 0px", threshold: 0.1 });
+      items.forEach(function (el, i) {
+        el.style.transitionDelay = Math.min(i, 5) * 60 + "ms";
+        io.observe(el);
+      });
+    })();
   </script>
 </body>
 </html>
