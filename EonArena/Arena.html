@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,6 +143,19 @@
   #score{position:absolute; left:26px; top:182px; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
   #score b{color:var(--amber); font-weight:400}
 
+  #hitdir{position:absolute; left:50%; top:50%; width:0; height:0; opacity:0; transition:opacity .3s}
+  #hitdir::before{
+    content:""; position:absolute; left:-16px; top:-132px;
+    border-left:16px solid transparent; border-right:16px solid transparent;
+    border-bottom:26px solid var(--hostile); opacity:.85;
+  }
+  #hitdir.on{opacity:1; transition:none}
+  #shield{
+    position:absolute; left:50%; top:calc(50% + 40px); transform:translateX(-50%);
+    font-size:10px; letter-spacing:.24em; text-transform:uppercase; color:var(--teal);
+    border:1px solid var(--teal); padding:4px 10px; border-radius:2px; visibility:hidden;
+  }
+  #shield.on{visibility:visible}
   #vignette{position:absolute; inset:0; opacity:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(255,84,112,.55) 100%); transition:opacity .25s}
 
   /* ---------- overlays ---------- */
@@ -232,6 +246,8 @@
     <div id="wlist"></div>
     <div id="reloading">Reloading</div>
   </div>
+  <div id="hitdir"></div>
+  <div id="shield">Spawn shield</div>
   <div id="vignette"></div>
 </div>
 
@@ -410,7 +426,7 @@ const Audio2 = (() => {
   let muted = localStorage.getItem('eonarena.mute') === '1';
 
   function boot(){
-    if (ctx) return;
+    if (ctx){ if (ctx.state === 'suspended') ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
@@ -705,7 +721,7 @@ function buildAvatar(colorHex, name){
   tag.position.y = 2.25;
   g.add(tag);
 
-  return { group:g, tag, bodyHit, headHit, legL, legR, armL, armR };
+  return { group:g, tag, bodyHit, headHit, legL, legR, armL, armR, head, gun, visor };
 }
 
 /* ===================== EFFECTS ===================== */
@@ -800,7 +816,7 @@ const me = {
   onGround:false, sprinting:false,
   weapon:0, ammo:[30,6,4], reloading:false, reloadEnd:0, nextShot:0,
   ads:false, recoil:0, bob:0, shake:0, lastStep:0,
-  respawnAt:0, killedBy:'', ping:0
+  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0
 };
 const keys = Object.create(null);
 let mouseDown = false, pointerLocked = false, chatting = false;
@@ -1127,7 +1143,8 @@ const tmpDir = new THREE.Vector3();
 function currentWeapon(){ return WEAPONS[me.weapon]; }
 
 function swapWeapon(i){
-  if (i === me.weapon || me.reloading || !me.alive) return;
+  if (i === me.weapon || !me.alive) return;
+  if (me.reloading){ me.reloading = false; $('reloading').classList.remove('on'); }
   me.weapon = i;
   Audio2.play('swap');
   for (const k in viewParts) viewParts[k].visible = false;
@@ -1157,6 +1174,7 @@ function tryFire(){
   if (me.ammo[me.weapon] <= 0){ me.nextShot = now + 0.28; Audio2.play('dry'); return; }
 
   me.nextShot = now + w.rate;
+  me.spawnSafeUntil = 0;
   me.ammo[me.weapon]--;
   Audio2.play(w.id);
   me.recoil += w.recoil * 0.022 * (me.ads ? 0.6 : 1);
@@ -1207,7 +1225,7 @@ function castShot(origin, dir, w){
 
   // players
   eachTarget(t => {
-    if (!t.alive) return;
+    if (!t.alive || t.stale) return;
     const objs = [t.avatar.headHit, t.avatar.bodyHit];
     const hs = ray.intersectObjects(objs, false);
     if (hs.length && (!best || hs[0].distance < best.dist)){
@@ -1259,14 +1277,25 @@ function dealDamage(uid, dmg, head){
   });
 }
 
-function takeDamage(dmg, byName, head){
+function takeDamage(dmg, byName, head, fromPos){
   if (!me.alive) return;
+  if (performance.now() < me.spawnSafeUntil) return;   // spawn shield
+  if (fromPos) showHitDir(fromPos);
   me.hp -= dmg;
   me.shake = Math.min(0.06, me.shake + 0.02);
   flashVignette();
   Audio2.play('hurt');
   if (me.hp <= 0){ die(byName, head); }
   updateHud();
+}
+let dirTimer = null;
+function showHitDir(fromPos){
+  const rel = Math.atan2(fromPos.x - me.pos.x, fromPos.z - me.pos.z) - (me.yaw + Math.PI);
+  const el = $('hitdir');
+  el.style.transform = 'rotate(' + (-rel) + 'rad)';
+  el.classList.add('on');
+  clearTimeout(dirTimer);
+  dirTimer = setTimeout(() => el.classList.remove('on'), 1100);
 }
 let vigTimer = null;
 function flashVignette(){
@@ -1304,6 +1333,7 @@ function respawn(){
   me.pitch = 0;
   me.ammo = WEAPONS.map(w => w.mag);
   me.reloading = false;
+  me.spawnSafeUntil = performance.now() + 1600;
   $('reloading').classList.remove('on');
   $('dead').classList.remove('on');
   $('vignette').style.opacity = 0;
@@ -1401,7 +1431,8 @@ async function joinOnline(room){
     snap.ref.remove();
     if (!me.alive) return;
     net.lastAttacker = v.by;
-    takeDamage(v.dmg || 0, v.byName || 'someone', v.head);
+    const src = remotes.get(v.by);
+    takeDamage(v.dmg || 0, v.byName || 'someone', v.head, src ? src.pos : null);
   });
 
   // feed + chat
@@ -1422,8 +1453,9 @@ async function joinOnline(room){
       net.matchOver = true;
       $('bannerText').textContent = v.winner === me.name ? 'You take the realm' : (v.winner + ' takes the realm');
       $('banner').classList.add('on');
+      showBoard(true);
       Audio2.play(v.winner === me.name ? 'win' : 'lose');
-      setTimeout(() => { $('banner').classList.remove('on'); net.matchOver = false; }, 8000);
+      setTimeout(() => { $('banner').classList.remove('on'); showBoard(false); net.matchOver = false; }, 8000);
     }
   });
 
@@ -1434,6 +1466,7 @@ async function joinOnline(room){
 }
 
 function syncSelfScore(v){
+  if (v.ts) me.ping = clamp(Math.round(net.now() - v.ts), 0, 999);
   if (typeof v.kills === 'number' && v.kills !== me.kills){
     if (v.kills > me.kills) Audio2.play('frag');
     me.kills = v.kills;
@@ -1503,7 +1536,7 @@ function addRemote(uid, v){
     kills: v.kills || 0, deaths: v.deaths || 0,
     pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
     target: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
-    ry: v.ry || 0, targetRy: v.ry || 0, mv: 0, ts: v.ts || 0, walk: 0
+    ry: v.ry || 0, targetRy: v.ry || 0, rx: 0, targetRx: 0, mv: 0, ts: v.ts || 0, walk: 0
   });
   updateBoard();
 }
@@ -1512,6 +1545,7 @@ function updateRemote(uid, v){
   if (!r){ addRemote(uid, v); return; }
   r.target.set(v.x || 0, v.y || 0, v.z || 0);
   r.targetRy = v.ry || 0;
+  r.targetRx = clamp(v.rx || 0, -1.1, 1.1);
   r.alive = v.alive !== false;
   r.hp = v.hp == null ? r.hp : v.hp;
   r.kills = v.kills || 0;
@@ -1535,6 +1569,10 @@ function stepRemotes(dt){
   remotes.forEach(r => {
     r.pos.lerp(r.target, k);
     r.ry = angLerp(r.ry, r.targetRy, k);
+    r.rx = lerp(r.rx, r.targetRx, k);
+    r.avatar.head.rotation.x = r.rx;
+    r.avatar.visor.rotation.x = r.rx;
+    r.avatar.gun.rotation.x = r.rx * 0.8;
     const g = r.avatar.group;
     g.position.copy(r.pos);
     g.rotation.y = r.ry;
@@ -1547,6 +1585,8 @@ function stepRemotes(dt){
       r.avatar.legL.rotation.x = lerp(r.avatar.legL.rotation.x, 0, k);
       r.avatar.legR.rotation.x = lerp(r.avatar.legR.rotation.x, 0, k);
     }
+    r.stale = r.ts > 0 && (net.now() - r.ts) > 20000;
+    if (r.stale) r.avatar.group.visible = false;
     r.avatar.tag.material.opacity = clamp(1 - (r.pos.distanceTo(me.pos) - 45)/20, 0.15, 1);
   });
 }
@@ -1616,7 +1656,7 @@ function stepBots(dt){
     const toMe = new THREE.Vector3().subVectors(me.pos, b.pos);
     const d = toMe.length();
     if (d < 42 && me.alive){
-      b.ry = angLerp(b.ry, Math.atan2(-toMe.x, -toMe.z) + Math.PI, clamp(dt*4,0,1));
+      b.ry = angLerp(b.ry, Math.atan2(-toMe.x, -toMe.z), clamp(dt*6,0,1));
       b.cool -= dt;
       if (b.cool <= 0){
         b.cool = rand(0.9, 2.1);
@@ -1627,11 +1667,11 @@ function stepBots(dt){
         if (!blockHits.length || blockHits[0].distance > d - 1){
           tracer(from, camera.position.clone());
           Audio2.play('pulse');
-          if (Math.random() < 0.42) takeDamage(Math.round(rand(6,13)), b.name, false);
+          if (Math.random() < 0.42) takeDamage(Math.round(rand(6,13)), b.name, false, b.pos);
         }
       }
     } else {
-      b.ry = angLerp(b.ry, Math.atan2(-toGoal.x, -toGoal.z) + Math.PI, clamp(dt*4,0,1));
+      b.ry = angLerp(b.ry, Math.atan2(-toGoal.x, -toGoal.z), clamp(dt*4,0,1));
     }
 
     b.pos.y = lerp(b.pos.y, groundAt(b.pos.x, b.pos.z), clamp(dt*10,0,1));
@@ -1729,7 +1769,7 @@ function sendChat(){
 function showBoard(on){ $('board').classList.toggle('on', on); if (on) updateBoard(); }
 function updateBoard(){
   const rows = [{ name:me.name, color:hex(COLORS[me.colorIdx].hex), kills:me.kills, deaths:me.deaths, ping:me.ping, me:true }];
-  remotes.forEach(r => rows.push({ name:r.name, color:hex(r.color), kills:r.kills, deaths:r.deaths, ping:Math.max(0, Math.round(net.now() - (r.ts||net.now()))) }));
+  remotes.forEach(r => { if (r.stale) return; rows.push({ name:r.name, color:hex(r.color), kills:r.kills, deaths:r.deaths, ping:Math.max(0, Math.round(net.now() - (r.ts||net.now()))) }); });
   bots.forEach(b => rows.push({ name:b.name, color:hex(b.color), kills:b.kills, deaths:b.deaths, ping:0 }));
   rows.sort((a,b) => b.kills - a.kills || a.deaths - b.deaths);
   $('boardRoom').textContent = mode === 'solo' ? 'practice' : net.room;
@@ -1938,6 +1978,12 @@ function frame(){
       else if (!me.heldTrigger) { me.heldTrigger = true; tryFire(); }
     }
     if (!mouseDown) me.heldTrigger = false;
+
+    const w = currentWeapon();
+    const bloomAmt = 1 + (w.spread * (me.ads ? 0.35 : 1) * (me.onGround ? 1 : 1.7)) * 14
+                       + Math.min(0.5, Math.hypot(me.vel.x, me.vel.z) * 0.045);
+    $('cross').style.transform = 'translate(-50%,-50%) scale(' + bloomAmt.toFixed(2) + ')';
+    $('shield').classList.toggle('on', me.alive && performance.now() < me.spawnSafeUntil);
 
     stepPickups(dt, now);
     writeState(dt);
