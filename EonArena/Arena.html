@@ -673,6 +673,11 @@ const PIT = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:4.5,y:2.0},{id:'p1',x:-20,z:0,y:0},{id:'p2',x:20,z:0,y:0},
             {id:'p3',x:0,z:-20,y:0},{id:'p4',x:0,z:20,y:0} ],
+  // stair routes onto the centre platform, so drones can reach height
+  climbs:[ {base:{x:0,z:10.5},  top:{x:0,z:4},  y:2.0},
+           {base:{x:0,z:-10.5}, top:{x:0,z:-4}, y:2.0},
+           {base:{x:10.5,z:0},  top:{x:4,z:0},  y:2.0},
+           {base:{x:-10.5,z:0}, top:{x:-4,z:0}, y:2.0} ],
   build(){
     const S = 62, H = 8, h = S/2;
     flat(new THREE.PlaneGeometry(S,S), MAT.floor, 0, 0, 0);
@@ -737,6 +742,8 @@ const STACKS = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
             {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0} ],
+  climbs:[ {base:{x:16.4,z:0},  top:{x:6,z:0},  y:3.8},
+           {base:{x:-16.4,z:0}, top:{x:-6,z:0}, y:3.8} ],
   build(){
     const S = 44, H = 7, h = S/2;
     flat(new THREE.PlaneGeometry(S,S), MAT.floor2, 0, 0, 0);
@@ -767,14 +774,14 @@ const STACKS = {
     box(0, 3.8, -9.2, 19.2, 0.8, 0.8, MAT.crateB);
     box(0, 3.8,  9.2, 19.2, 0.8, 0.8, MAT.crateB);
     [-1,1].forEach(sx => {
-      box(sx*9.2, 3.8, -5.5, 0.8, 0.8, 7.4, MAT.crateB);   // gap at z≈0 where the stairs land
-      box(sx*9.2, 3.8,  5.5, 0.8, 0.8, 7.4, MAT.crateB);
+      box(sx*9.2, 3.8, -6.1, 0.8, 0.8, 6.2, MAT.crateB);   // gap at z≈0 where the stairs land
+      box(sx*9.2, 3.8,  6.1, 0.8, 0.8, 6.2, MAT.crateB);
     });
 
     // external stairs to the roof on the east and west faces
     [-1,1].forEach(sx => {
       for (let i = 0; i < 6; i++){
-        box(sx*(13.9 - i*0.9), 0, 0, 0.9, 0.6 + i*0.6, 3.0, i%2 ? MAT.crateA : MAT.crateB);
+        box(sx*(9.95 + (5-i)*1.1), 0, 0, 1.1, 0.55 + i*0.55, 4.6, i%2 ? MAT.crateA : MAT.crateB);
       }
     });
 
@@ -1571,7 +1578,7 @@ function stepPickups(dt, now){
     mesh.position.y = p.y + 0.7 + Math.sin(now/450 + p.x)*0.09;
     if (!me.alive || me.hp >= CFG.maxHp) return;
     const d = Math.hypot(me.pos.x - p.x, me.pos.z - p.z);
-    if (d < 1.1 && Math.abs(me.pos.y - p.y) < 2.2){
+    if (d < 1.1 && Math.abs(me.pos.y - p.y) < 1.2){
       me.hp = Math.min(CFG.maxHp, me.hp + PICKUP_HEAL);
       pickupTaken[p.id] = net.now();
       Audio2.play('pickup');
@@ -2238,7 +2245,7 @@ function hasLOS(from, to){
 function blockedAt(x, z, feetY){
   for (const b of colliders){
     if (x + 0.42 > b.min.x && x - 0.42 < b.max.x && z + 0.42 > b.min.z && z - 0.42 < b.max.z){
-      if (b.max.y > feetY + CFG.stepHeight && b.min.y < feetY + 1.7) return true;
+      if (b.max.y > feetY + CFG.stepHeight + 0.06 && b.min.y < feetY + 1.7) return true;
     }
   }
   return false;
@@ -2250,7 +2257,17 @@ function steerMove(ai, dirX, dirZ, speed, dt){
   const len = Math.hypot(dirX, dirZ);
   if (len < 0.001){ ai.mv = 0; return false; }
   dirX /= len; dirZ /= len;
-  const deflect = [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4];
+  /*
+    Plain deflection steering pins itself against wide obstacles: it turns aside, moves
+    one frame, then the direct line pulls it straight back into the wall. So once a
+    detour is chosen, commit to that side for a moment and follow the obstacle round.
+  */
+  ai.avoidT = (ai.avoidT || 0) - dt;
+  const committed = ai.avoidT > 0 && ai.avoidSign;
+  const deflect = committed
+    ? [ai.avoidSign*0.6, ai.avoidSign*1.1, ai.avoidSign*1.7, ai.avoidSign*2.4, 0, -ai.avoidSign*1.1]
+    : [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4];
+
   for (let i = 0; i < deflect.length; i++){
     const c = Math.cos(deflect[i]), sn = Math.sin(deflect[i]);
     const dx = dirX*c - dirZ*sn, dz = dirX*sn + dirZ*c;
@@ -2259,9 +2276,14 @@ function steerMove(ai, dirX, dirZ, speed, dt){
       const lim = (currentMap().id === 'stacks' ? 22 : 31) - 2;
       ai.pos.x = clamp(nx, -lim, lim);
       ai.pos.z = clamp(nz, -lim, lim);
-      ai.pos.y = lerp(ai.pos.y, groundAt(ai.pos.x, ai.pos.z, ai.pos.y), clamp(dt*10, 0, 1));
+      const g = groundAt(ai.pos.x, ai.pos.z, ai.pos.y);
+      ai.pos.y = g > ai.pos.y ? g : lerp(ai.pos.y, g, clamp(dt*10, 0, 1));
       ai.moveDir = Math.atan2(-dx, -dz);
       ai.mv = 1;
+      if (!committed){
+        if (deflect[i] === 0){ ai.avoidSign = 0; ai.avoidT = 0; }
+        else { ai.avoidSign = deflect[i] > 0 ? 1 : -1; ai.avoidT = 1.2; }
+      }
       return true;
     }
   }
@@ -2277,6 +2299,43 @@ function nearestCanister(pos){
     if (d < bestD){ bestD = d; best = pk; }
   }
   return best;
+}
+
+/*
+  Drones steer in 2D, so a goal that sits above them (roof canister, a player on the
+  platform) would just make them stand underneath it. Route via the map's stairways:
+  head for the foot of the nearest one, then along it, then on to the real goal.
+*/
+const routePt = { x:0, z:0 };
+function routeTo(ai, tx, tz, ty){
+  routePt.x = tx; routePt.z = tz;
+  const climbs = currentMap().climbs;
+  if (!climbs || !climbs.length) return routePt;
+  if (ty - ai.pos.y <= 1.2) return routePt;          // same level, go direct
+
+  // stick with one stairway once committed, or a drone between two will dither
+  let best = ai.onRamp ? ai.climbPick : null;
+  let bd = best ? Math.hypot(ai.pos.x - best.base.x, ai.pos.z - best.base.z) : 1e9;
+  if (!best){
+    for (let i = 0; i < climbs.length; i++){
+      const c = climbs[i];
+      const d = Math.hypot(ai.pos.x - c.base.x, ai.pos.z - c.base.z);
+      if (d < bd){ bd = d; best = c; }
+    }
+    ai.climbPick = best;
+  }
+  if (!best) return routePt;
+
+  // Latch the decision. Switching on distance alone makes a drone flip between
+  // "walk to the stairs" and "walk up them" a few metres out, and oscillate there.
+  // Commit once it is actually on a tread (or standing on the bottom one), and only
+  // let go once it is back on the floor and well clear.
+  if (ai.pos.y > 0.35 || bd < 1.2) ai.onRamp = true;
+  else if (ai.pos.y < 0.15 && bd > 3.5) ai.onRamp = false;
+
+  routePt.x = ai.onRamp ? best.top.x : best.base.x;
+  routePt.z = ai.onRamp ? best.top.z : best.base.z;
+  return routePt;
 }
 
 function patrolPoint(){
@@ -2349,11 +2408,16 @@ function droneThink(ai, dt, targets, hooks){
     const to = dA.copy(seen.pos).sub(ai.pos); to.y = 0;
     const d = to.length() || 1;
     to.divideScalar(d);
-    const strafeX = -to.z * ai.strafeDir, strafeZ = to.x * ai.strafeDir;
-    let mx = strafeX * D.strafe, mz = strafeZ * D.strafe;
-    if (d > ai.hold + 3){ mx += to.x; mz += to.z; }            // close the gap
-    else if (d < ai.hold - 3){ mx -= to.x; mz -= to.z; }       // back off, don't hug
-    steerMove(ai, mx, mz, D.speed, dt);
+    if (seen.pos.y - ai.pos.y > 1.2){
+      const rp = routeTo(ai, seen.pos.x, seen.pos.z, seen.pos.y);   // they're above us: take the stairs
+      steerMove(ai, rp.x - ai.pos.x, rp.z - ai.pos.z, D.speed, dt);
+    } else {
+      const strafeX = -to.z * ai.strafeDir, strafeZ = to.x * ai.strafeDir;
+      let mx = strafeX * D.strafe, mz = strafeZ * D.strafe;
+      if (d > ai.hold + 3){ mx += to.x; mz += to.z; }          // close the gap
+      else if (d < ai.hold - 3){ mx -= to.x; mz -= to.z; }     // back off, don't hug
+      steerMove(ai, mx, mz, D.speed, dt);
+    }
     ai.ry = angLerp(ai.ry, Math.atan2(-to.x, -to.z), clamp(dt * D.track, 0, 1));
 
     if (now > ai.acquired && ai.cool <= 0 && !net.matchOver){
@@ -2371,7 +2435,8 @@ function droneThink(ai, dt, targets, hooks){
   } else if (mode === 'hunt'){
     const aim = (now - ai.threatAt < 4000 && now - ai.seenAt > 1200) ? ai.threat : ai.lastSeen;
     if (aim){
-      const to = dA.copy(aim).sub(ai.pos); to.y = 0;
+      const rp = routeTo(ai, aim.x, aim.z, aim.y);
+      const to = dA.set(rp.x - ai.pos.x, 0, rp.z - ai.pos.z);
       if (to.length() < 2.5){ ai.seenAt = -1e9; ai.threatAt = -1e9; }
       else {
         steerMove(ai, to.x, to.z, D.speed * 0.95, dt);
@@ -2379,8 +2444,9 @@ function droneThink(ai, dt, targets, hooks){
       }
     }
   } else if (mode === 'heal'){
-    const to = dA.set(can.x - ai.pos.x, 0, can.z - ai.pos.z);
-    if (to.length() < 1.3 && Math.abs(ai.pos.y - can.y) < 2.2){
+    const rp = routeTo(ai, can.x, can.z, can.y);
+    const to = dA.set(rp.x - ai.pos.x, 0, rp.z - ai.pos.z);
+    if (Math.hypot(can.x - ai.pos.x, can.z - ai.pos.z) < 1.3 && Math.abs(ai.pos.y - can.y) < 1.2){
       ai.hp = Math.min(CFG.maxHp, ai.hp + PICKUP_HEAL);
       hooks.heal(ai, can.id);
     } else {
