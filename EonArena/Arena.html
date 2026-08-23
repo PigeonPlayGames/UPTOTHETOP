@@ -358,6 +358,16 @@
     </div>
 
     <div class="field">
+      <label>Drone difficulty</label>
+      <div class="modes" id="diffs">
+        <button class="mode" data-diff="0">Recruit</button>
+        <button class="mode" data-diff="1" aria-pressed="true">Regular</button>
+        <button class="mode" data-diff="2">Veteran</button>
+      </div>
+      <small style="display:block;margin-top:6px;color:var(--dim);font-size:11px" id="diffNote"></small>
+    </div>
+
+    <div class="field">
       <label>Suit colour</label>
       <div class="swatches" id="swatches"></div>
     </div>
@@ -1348,6 +1358,7 @@ function dealDamage(uid, dmg, head){
     const b = bots.get(uid);
     if (!b || !b.alive) return;
     b.hp -= dmg;
+    alertDrone(b, me.pos);
     updateTag(b.avatar.tag, b.hp);
     if (b.hp <= 0){ killBot(b, head); }
     return;
@@ -1527,7 +1538,7 @@ function renderRealms(v){
   });
 }
 
-async function joinOnline(room, wantMode){
+async function joinOnline(room, wantMode, wantDiff){
   if (!configLooksReal()) throw new Error('Firebase config missing. Open this file and paste your project config near the top, then reload.');
   if (typeof firebase === 'undefined') throw new Error('Firebase SDK did not load. A privacy extension or offline connection can block www.gstatic.com — allow it and reload.');
 
@@ -1548,11 +1559,12 @@ async function joinOnline(room, wantMode){
   const cfg = cfgSnap.val() || {};
   if (!cfg.mode){
     net.gameMode = wantMode || 'ffa';
-    await net.ref.child('config/mode').set(net.gameMode);
+    diffIdx = clamp(wantDiff == null ? diffIdx : wantDiff, 0, 2);
+    await net.ref.child('config').update({ mode: net.gameMode, diff: diffIdx });
   } else {
     net.gameMode = cfg.mode;
+    if (cfg.diff != null) diffIdx = clamp(cfg.diff, 0, 2);   // the realm's setting wins
   }
-  net.ref.child('lobby').off();
 
   // uids keep identity honest, but a room of three "Operator"s is unreadable
   const roster = await net.ref.child('players').once('value');
@@ -1953,7 +1965,7 @@ function standDown(){
 function adoptBot(id, v){
   if (net.botAI.has(id)) return;
   net.botAI.set(id, {
-    id, name: v.name || id, color: v.color || 0x8892A6, team: v.team || 0,
+    id, name: v.name || id, color: v.color || 0x8892A6, team: v.team || 0, goal: null, mv: 0, moveDir: 0,
     pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
     goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
     ry: v.ry || 0, hp: v.hp == null ? 100 : v.hp, alive: v.alive !== false,
@@ -1975,7 +1987,7 @@ function spawnBot(i){
   const sp = isTeam() ? teamSpawn(team) : pick(SPAWNS);
   const ai = {
     id, team, name: BOT_NAMES[i-1] || ('DRONE-' + i),
-    color: isTeam() ? CFG.teamColors[team] : 0x8892A6,
+    color: isTeam() ? CFG.teamColors[team] : 0x8892A6, goal: null, mv: 0, moveDir: 0,
     pos: new THREE.Vector3(sp.x, 0, sp.z), goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
     ry: 0, hp: 100, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
   };
@@ -2007,6 +2019,8 @@ function onBotHit(snap){
   const ai = net.botAI.get(v.bot);
   if (!ai || !ai.alive) return;
   ai.hp -= (v.dmg || 0);
+  const src = v.by === me.uid ? me.pos : ((remotes.get(v.by) || {}).pos);
+  if (src) alertDrone(ai, src);
   if (ai.hp <= 0){
     ai.alive = false;
     ai.hp = 0;
@@ -2023,76 +2037,44 @@ function onBotHit(snap){
   }
 }
 
+const netHooks = {
+  shoot(ai, target, dmg, head){
+    if (dmg <= 0) return;                       // misses are presentation only
+    net.ref.child('players/' + target.id + '/inbox').push({
+      by: ai.id, byName: ai.name, bot: true,
+      dmg, head: !!head, w: 'Pulse',
+      t: firebase.database.ServerValue.TIMESTAMP
+    });
+  },
+  heal(ai, id){
+    pickupTaken[id] = net.now();
+    net.ref.child('pickups/' + id).set(firebase.database.ServerValue.TIMESTAMP);
+  }
+};
+
 function stepNetBots(dt){
   if (!net.isKeeper || !net.ref) return;
   ensureBotCount();
   const now = performance.now();
 
-  // gather live humans as targets: everyone else, plus this client
-  const humans = [];
-  remotes.forEach(r => { if (!r.isBot && r.alive && !r.stale) humans.push({ id:r.uid, pos:r.pos, team:r.team || 0 }); });
-  if (me.alive) humans.push({ id:me.uid, pos:me.pos, team:me.team, self:true });
+  const targets = [];
+  remotes.forEach(r => {
+    if (!r.isBot && r.alive && !r.stale) targets.push({ id:r.uid, pos:r.pos, team:r.team || 0, moving: !!r.mv });
+  });
+  if (me.alive) targets.push({ id:me.uid, pos:me.pos, team:me.team, moving: Math.hypot(me.vel.x, me.vel.z) > 1 });
 
   net.botAI.forEach(ai => {
     if (!ai.alive){
       if (now > ai.respawnAt){
         const sp = isTeam() ? teamSpawn(ai.team) : pick(SPAWNS);
-        ai.pos.set(sp.x, 0, sp.z); ai.hp = 100; ai.alive = true;
+        ai.pos.set(sp.x, 0, sp.z);
+        ai.hp = 100; ai.alive = true;
+        ai.goal = null; ai.seenAt = -1e9; ai.threatAt = -1e9;
         net.ref.child('bots/' + ai.id).update({ hp:100, alive:true, x:sp.x, y:0, z:sp.z });
       }
       return;
     }
-
-    // wander
-    if (ai.pos.distanceTo(ai.goal) < 2){
-      const sp = pick(SPAWNS);
-      ai.goal.set(sp.x + rand(-6,6), 0, sp.z + rand(-6,6));
-    }
-    const dir = ai.goal.clone().sub(ai.pos); dir.y = 0;
-    const dist = dir.length();
-    if (dist > 0.1) dir.divideScalar(dist);
-    const nx = ai.pos.x + dir.x*3.4*dt, nz = ai.pos.z + dir.z*3.4*dt;
-    let blocked = false;
-    for (const c of colliders){
-      if (nx+0.4 > c.min.x && nx-0.4 < c.max.x && nz+0.4 > c.min.z && nz-0.4 < c.max.z && c.min.y < 1.4){ blocked = true; break; }
-    }
-    if (blocked){ const sp = pick(SPAWNS); ai.goal.set(sp.x, 0, sp.z); ai.mv = 0; }
-    else { ai.pos.x = clamp(nx,-29,29); ai.pos.z = clamp(nz,-29,29); ai.mv = 1; }
-    ai.pos.y = lerp(ai.pos.y, groundAt(ai.pos.x, ai.pos.z), clamp(dt*10,0,1));
-
-    // nearest human
-    let best = null, bestD = 1e9;
-    for (const h of humans){
-      if (isTeam() && h.team === ai.team) continue;      // no friendly fire from drones
-      const d = ai.pos.distanceTo(h.pos);
-      if (d < bestD){ bestD = d; best = h; }
-    }
-    if (best && bestD < 42){
-      const to = best.pos.clone().sub(ai.pos);
-      ai.ry = angLerp(ai.ry, Math.atan2(-to.x, -to.z), clamp(dt*6,0,1));
-      ai.cool -= dt;
-      if (ai.cool <= 0 && !net.matchOver){
-        ai.cool = rand(0.9, 2.1);
-        const from = ai.pos.clone().add(new THREE.Vector3(0,1.3,0));
-        const aim = best.pos.clone().add(new THREE.Vector3(0,1.2,0));
-        const d = from.distanceTo(aim);
-        ray.set(from, aim.clone().sub(from).normalize());
-        ray.far = d;
-        const wall = ray.intersectObjects(solids, false);
-        if (!wall.length || wall[0].distance > d - 1){
-          ai.firingUntil = now + 200;
-          if (Math.random() < 0.4){
-            net.ref.child('players/' + best.id + '/inbox').push({
-              by: ai.id, byName: ai.name, bot: true,
-              dmg: Math.round(rand(6,13)), head: false, w: 'Pulse',
-              t: firebase.database.ServerValue.TIMESTAMP
-            });
-          }
-        }
-      }
-    } else {
-      ai.ry = angLerp(ai.ry, Math.atan2(-dir.x, -dir.z), clamp(dt*4,0,1));
-    }
+    droneThink(ai, dt, targets, netHooks);
   });
 
   // write drone state on the same throttle as players, deltas only
@@ -2106,16 +2088,221 @@ function stepNetBots(dt){
     if (!sent){ sent = {}; net.botSent.set(ai.id, sent); }
     const upd = {};
     const x = +ai.pos.x.toFixed(2), y = +ai.pos.y.toFixed(2), z = +ai.pos.z.toFixed(2), ry = +ai.ry.toFixed(2);
+    const hp = Math.round(ai.hp);
     if (x !== sent.x){ upd.x = x; sent.x = x; }
     if (y !== sent.y){ upd.y = y; sent.y = y; }
     if (z !== sent.z){ upd.z = z; sent.z = z; }
     if (ry !== sent.ry){ upd.ry = ry; sent.ry = ry; }
     if (ai.mv !== sent.mv){ upd.mv = ai.mv; sent.mv = ai.mv; }
+    if (hp !== sent.hp){ upd.hp = hp; sent.hp = hp; }
     const fr = performance.now() < (ai.firingUntil || 0) ? 1 : 0;
     if (fr !== sent.fr){ upd.fr = fr; sent.fr = fr; }
     if (nowMs - (sent.tsAt || 0) > 1000){ upd.ts = firebase.database.ServerValue.TIMESTAMP; sent.tsAt = nowMs; }
     if (Object.keys(upd).length) net.ref.child('bots/' + ai.id).update(upd);
   });
+}
+
+/* ===================== DRONE BRAIN (shared by practice and online) ===================== */
+const DIFF = [
+  { id:'recruit', name:'Recruit', sight:36, react:0.55, aim:0.36, rate:[1.4,2.4], dmg:[6,11],  head:0.00, flee:26, speed:3.1, strafe:0.5,  track:3.8, hold:[7,20] },
+  { id:'regular', name:'Regular', sight:44, react:0.32, aim:0.46, rate:[1.0,1.9], dmg:[7,13],  head:0.06, flee:34, speed:3.7, strafe:0.95, track:5.0, hold:[7,18] },
+  { id:'veteran', name:'Veteran', sight:58, react:0.16, aim:0.64, rate:[0.7,1.3], dmg:[9,16],  head:0.15, flee:44, speed:4.4, strafe:1.35, track:7.5, hold:[6,15] }
+];
+let diffIdx = 1;
+function diff(){ return DIFF[diffIdx] || DIFF[1]; }
+
+const dA = new THREE.Vector3(), dB = new THREE.Vector3(), dC = new THREE.Vector3();
+
+function hasLOS(from, to){
+  dC.copy(to).sub(from);
+  const d = dC.length();
+  if (d < 0.001) return true;
+  ray.set(from, dC.divideScalar(d));
+  ray.far = d - 0.5;
+  return ray.intersectObjects(solids, false).length === 0;
+}
+
+// true if a waist-high obstruction sits at this spot that the drone can't step over
+function blockedAt(x, z, feetY){
+  for (const b of colliders){
+    if (x + 0.42 > b.min.x && x - 0.42 < b.max.x && z + 0.42 > b.min.z && z - 0.42 < b.max.z){
+      if (b.max.y > feetY + CFG.stepHeight && b.min.y < feetY + 1.7) return true;
+    }
+  }
+  return false;
+}
+
+// try the desired heading, then progressively wider deflections — drones slide along
+// walls and round crates instead of stalling and picking a new waypoint
+function steerMove(ai, dirX, dirZ, speed, dt){
+  const len = Math.hypot(dirX, dirZ);
+  if (len < 0.001){ ai.mv = 0; return false; }
+  dirX /= len; dirZ /= len;
+  const deflect = [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4];
+  for (let i = 0; i < deflect.length; i++){
+    const c = Math.cos(deflect[i]), sn = Math.sin(deflect[i]);
+    const dx = dirX*c - dirZ*sn, dz = dirX*sn + dirZ*c;
+    const nx = ai.pos.x + dx*speed*dt, nz = ai.pos.z + dz*speed*dt;
+    if (!blockedAt(nx, nz, ai.pos.y)){
+      ai.pos.x = clamp(nx, -29, 29);
+      ai.pos.z = clamp(nz, -29, 29);
+      ai.pos.y = lerp(ai.pos.y, groundAt(ai.pos.x, ai.pos.z), clamp(dt*10, 0, 1));
+      ai.moveDir = Math.atan2(-dx, -dz);
+      ai.mv = 1;
+      return true;
+    }
+  }
+  ai.mv = 0;
+  return false;
+}
+
+function nearestCanister(pos){
+  let best = null, bestD = 1e9;
+  for (const pk of PICKUPS){
+    if ((net.now() - (pickupTaken[pk.id] || 0)) < PICKUP_COOLDOWN) continue;
+    const d = Math.hypot(pos.x - pk.x, pos.z - pk.z);
+    if (d < bestD){ bestD = d; best = pk; }
+  }
+  return best;
+}
+
+function patrolPoint(){
+  const sp = pick(SPAWNS);
+  return new THREE.Vector3(sp.x + rand(-5,5), 0, sp.z + rand(-5,5));
+}
+
+/*
+  One think step for a drone. Mutates ai (position, facing, health, state) and calls
+  hooks.shoot / hooks.heal so practice and online can present the result differently.
+  targets: [{ id, pos, team, moving }]
+*/
+function droneThink(ai, dt, targets, hooks){
+  const D = diff();
+  const now = performance.now();
+
+  if (ai.strafeT == null){ ai.strafeT = 0; ai.strafeDir = 1; ai.perceptT = 0; ai.seenAt = -1e9; ai.threatAt = -1e9; ai.lastSeen = new THREE.Vector3(); ai.acquired = 0; ai.hold = rand(D.hold[0], D.hold[1]); }
+  ai.strafeT -= dt;
+  if (ai.strafeT <= 0){ ai.strafeT = rand(0.7, 1.7); ai.strafeDir = Math.random() < 0.5 ? -1 : 1; ai.hold = rand(D.hold[0], D.hold[1]); }
+  ai.cool -= dt;
+
+  // ---- perception, throttled: a raycast per target every ~8 frames is plenty ----
+  ai.perceptT -= dt;
+  if (ai.perceptT <= 0){
+    ai.perceptT = 0.12;
+    dA.copy(ai.pos); dA.y += 1.35;
+    let seen = null, seenD = 1e9;
+    for (let i = 0; i < targets.length; i++){
+      const t = targets[i];
+      if (isTeam() && t.team === ai.team) continue;
+      const d = ai.pos.distanceTo(t.pos);
+      if (d > D.sight || d >= seenD) continue;
+      dB.copy(t.pos); dB.y += 1.2;
+      if (!hasLOS(dA, dB)) continue;
+      seenD = d; seen = t;
+    }
+    // track by id: the caller rebuilds the target list every frame, so holding
+    // a reference to the object itself would go stale immediately
+    ai.seenId = seen ? seen.id : null;
+    if (seen){
+      ai.lastSeen.copy(seen.pos);
+      ai.seenAt = now;
+      if (!ai.acquired) ai.acquired = now + D.react * 1000;   // reaction time before the first shot
+    } else {
+      ai.acquired = 0;
+    }
+  }
+
+  let seen = null;
+  if (ai.seenId){
+    for (let i = 0; i < targets.length; i++){
+      if (targets[i].id === ai.seenId){ seen = targets[i]; break; }
+    }
+    if (!seen) ai.seenId = null;
+  }
+  const seenD = seen ? ai.pos.distanceTo(seen.pos) : 1e9;
+
+  // ---- pick a behaviour ----
+  let mode = 'patrol';
+  if (seen) mode = 'engage';
+  else if (now - ai.seenAt < 6000) mode = 'hunt';
+  else if (now - ai.threatAt < 4000) mode = 'hunt';
+
+  const hurt = ai.hp < D.flee;
+  const can = hurt ? nearestCanister(ai.pos) : null;
+  if (can && (!seen || seenD > 13)) mode = 'heal';
+
+  // ---- act ----
+  if (mode === 'engage'){
+    const to = dA.copy(seen.pos).sub(ai.pos); to.y = 0;
+    const d = to.length() || 1;
+    to.divideScalar(d);
+    const strafeX = -to.z * ai.strafeDir, strafeZ = to.x * ai.strafeDir;
+    let mx = strafeX * D.strafe, mz = strafeZ * D.strafe;
+    if (d > ai.hold + 3){ mx += to.x; mz += to.z; }            // close the gap
+    else if (d < ai.hold - 3){ mx -= to.x; mz -= to.z; }       // back off, don't hug
+    steerMove(ai, mx, mz, D.speed, dt);
+    ai.ry = angLerp(ai.ry, Math.atan2(-to.x, -to.z), clamp(dt * D.track, 0, 1));
+
+    if (now > ai.acquired && ai.cool <= 0 && !net.matchOver){
+      ai.cool = rand(D.rate[0], D.rate[1]);
+      ai.firingUntil = now + 200;
+      let p = D.aim * clamp(1 - (seenD / D.sight) * 0.55, 0.35, 1) * (seen.moving ? 0.82 : 1);
+      if (Math.random() < p){
+        const head = Math.random() < D.head;
+        const dmg = Math.round(rand(D.dmg[0], D.dmg[1])) * (head ? 2 : 1);
+        hooks.shoot(ai, seen, dmg, head);
+      } else {
+        hooks.shoot(ai, seen, 0, false);   // a miss still cracks and draws a tracer
+      }
+    }
+  } else if (mode === 'hunt'){
+    const aim = (now - ai.threatAt < 4000 && now - ai.seenAt > 1200) ? ai.threat : ai.lastSeen;
+    if (aim){
+      const to = dA.copy(aim).sub(ai.pos); to.y = 0;
+      if (to.length() < 2.5){ ai.seenAt = -1e9; ai.threatAt = -1e9; }
+      else {
+        steerMove(ai, to.x, to.z, D.speed * 0.95, dt);
+        ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
+      }
+    }
+  } else if (mode === 'heal'){
+    const to = dA.set(can.x - ai.pos.x, 0, can.z - ai.pos.z);
+    if (to.length() < 1.3 && Math.abs(ai.pos.y - can.y) < 2.2){
+      ai.hp = Math.min(CFG.maxHp, ai.hp + PICKUP_HEAL);
+      hooks.heal(ai, can.id);
+    } else {
+      steerMove(ai, to.x, to.z, D.speed * 1.05, dt);
+      ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*5, 0, 1));
+    }
+  } else {
+    if (!ai.goal || ai.pos.distanceTo(ai.goal) < 2.2) ai.goal = patrolPoint();
+    const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
+    if (!steerMove(ai, to.x, to.z, D.speed * 0.8, dt)) ai.goal = patrolPoint();
+    ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
+  }
+
+  // last resort: a drone wedged inside geometry can never steer out, so ease it
+  // toward open ground rather than leaving it standing there for the whole match
+  if (ai.mv === 0){
+    ai.stuckT = (ai.stuckT || 0) + dt;
+    if (ai.stuckT > 1.2){
+      ai.stuckT = 0;
+      const r = Math.hypot(ai.pos.x, ai.pos.z) || 1;
+      ai.pos.x -= (ai.pos.x / r) * 0.7;
+      ai.pos.z -= (ai.pos.z / r) * 0.7;
+      ai.pos.y = groundAt(ai.pos.x, ai.pos.z);
+      ai.goal = null;
+    }
+  } else {
+    ai.stuckT = 0;
+  }
+}
+
+// being shot from out of view makes a drone turn and hunt
+function alertDrone(ai, fromPos){
+  if (!ai) return;
+  ai.threat = fromPos.clone ? fromPos.clone() : new THREE.Vector3(fromPos.x, fromPos.y, fromPos.z);
+  ai.threatAt = performance.now();
 }
 
 /* ===================== PRACTICE BOTS ===================== */
@@ -2127,9 +2314,9 @@ function spawnBots(n){
     scene.add(av.group);
     const s = SPAWNS[(i*2) % SPAWNS.length];
     bots.set('bot'+i, {
-      uid:'bot'+i, name, color:c, avatar:av, alive:true, hp:100, kills:0, deaths:0,
-      pos:new THREE.Vector3(s.x, 0, s.z), goal:new THREE.Vector3(s.x, 0, s.z),
-      ry:0, cool:rand(0.6,2), respawn:0, walk:0, hurtCd:0
+      uid:'bot'+i, name, color:c, team:0, avatar:av, alive:true, hp:100, kills:0, deaths:0,
+      pos:new THREE.Vector3(s.x, 0, s.z), goal:null,
+      ry:0, cool:rand(0.6,2), respawn:0, walk:0, mv:0, moveDir:0
     });
   }
   updateBoard();
@@ -2150,65 +2337,46 @@ function killBot(b, head){
     setTimeout(() => { $('banner').classList.remove('on'); me.kills = 0; updateHud(); updateBoard(); }, 6000);
   }
 }
+const soloHooks = {
+  shoot(ai, target, dmg, head){
+    const from = ai.pos.clone(); from.y += 1.3;
+    tracer(from, camera.position.clone());
+    ai.avatar.flash.visible = true;
+    ai.flashUntil = performance.now() + 55;
+    const a = audioBearing(ai.pos);
+    Audio2.playAt('pulse', a.gain, a.pan);
+    if (dmg > 0) takeDamage(dmg, ai.name, head, ai.pos);
+  },
+  heal(ai, id){ pickupTaken[id] = net.now(); }
+};
+
 function stepBots(dt){
   const now = performance.now();
+  const targets = me.alive
+    ? [{ id: me.uid, pos: me.pos, team: me.team, moving: Math.hypot(me.vel.x, me.vel.z) > 1 }]
+    : [];
+
   bots.forEach(b => {
     if (!b.alive){
       if (now > b.respawn){
-        const s = pick(SPAWNS);
-        b.pos.set(s.x, 0, s.z); b.hp = 100; b.alive = true;
+        const sp = pick(SPAWNS);
+        b.pos.set(sp.x, 0, sp.z);
+        b.hp = 100; b.alive = true;
+        b.goal = null; b.seenAt = -1e9; b.threatAt = -1e9;
         b.avatar.group.visible = true;
         updateTag(b.avatar.tag, 100);
       }
       return;
     }
-    // wander
-    if (b.pos.distanceTo(b.goal) < 2){
-      const s = pick(SPAWNS);
-      b.goal.set(s.x + rand(-6,6), 0, s.z + rand(-6,6));
-    }
-    const toGoal = b.goal.clone().sub(b.pos); toGoal.y = 0;
-    const dist = toGoal.length();
-    if (dist > 0.1) toGoal.divideScalar(dist);
-    const step = toGoal.multiplyScalar(3.4*dt);
-    const nx = b.pos.x + step.x, nz = b.pos.z + step.z;
-    let blocked = false;
-    for (const c of colliders){
-      if (nx + 0.4 > c.min.x && nx - 0.4 < c.max.x && nz + 0.4 > c.min.z && nz - 0.4 < c.max.z && c.min.y < 1.4){ blocked = true; break; }
-    }
-    if (blocked){ const s = pick(SPAWNS); b.goal.set(s.x, 0, s.z); }
-    else { b.pos.x = clamp(nx, -29, 29); b.pos.z = clamp(nz, -29, 29); }
 
-    // face + shoot the player
-    const toMe = new THREE.Vector3().subVectors(me.pos, b.pos);
-    const d = toMe.length();
-    if (d < 42 && me.alive){
-      b.ry = angLerp(b.ry, Math.atan2(-toMe.x, -toMe.z), clamp(dt*6,0,1));
-      b.cool -= dt;
-      if (b.cool <= 0){
-        b.cool = rand(0.9, 2.1);
-        const from = b.pos.clone().add(new THREE.Vector3(0,1.3,0));
-        const dir = new THREE.Vector3().subVectors(camera.position, from).normalize();
-        ray.set(from, dir); ray.far = d;
-        const blockHits = ray.intersectObjects(solids, false);
-        if (!blockHits.length || blockHits[0].distance > d - 1){
-          tracer(from, camera.position.clone());
-          b.avatar.flash.visible = true;
-          b.flashUntil = performance.now() + 55;
-          const ab = audioBearing(b.pos);
-          Audio2.playAt('pulse', ab.gain, ab.pan);
-          if (Math.random() < 0.42) takeDamage(Math.round(rand(6,13)), b.name, false, b.pos);
-        }
-      }
-    } else {
-      b.ry = angLerp(b.ry, Math.atan2(-toGoal.x, -toGoal.z), clamp(dt*4,0,1));
-    }
+    droneThink(b, dt, targets, soloHooks);
+    updateTag(b.avatar.tag, b.hp);
 
-    if (b.avatar.flash.visible && performance.now() > (b.flashUntil || 0)) b.avatar.flash.visible = false;
-    b.pos.y = lerp(b.pos.y, groundAt(b.pos.x, b.pos.z), clamp(dt*10,0,1));
-    b.walk += dt*8;
-    const s2 = Math.sin(b.walk)*0.5;
-    b.avatar.legL.rotation.x = s2; b.avatar.legR.rotation.x = -s2;
+    if (b.avatar.flash.visible && now > (b.flashUntil || 0)) b.avatar.flash.visible = false;
+    if (b.mv) b.walk += dt * 8;
+    const sw = b.mv ? Math.sin(b.walk) * 0.5 : lerp(b.avatar.legL.rotation.x, 0, clamp(dt*8,0,1));
+    b.avatar.legL.rotation.x = sw;
+    b.avatar.legR.rotation.x = -sw;
     b.avatar.group.position.copy(b.pos);
     b.avatar.group.rotation.y = b.ry;
   });
@@ -2464,6 +2632,22 @@ function initMenu(){
   });
   paintModes();
 
+  const DIFF_NOTE = [
+    'Short sight, slow to react, forgiving aim.',
+    'Flanks, strafes, and breaks off to heal when hurt.',
+    'Spots you across the pit, reacts fast, takes headshots.'
+  ];
+  diffIdx = clamp(parseInt(localStorage.getItem('eonarena.diff'), 10) || 1, 0, 2);
+  const diffEls = $('diffs').children;
+  function paintDiff(){
+    [].forEach.call(diffEls, b => b.setAttribute('aria-pressed', (+b.dataset.diff === diffIdx) ? 'true' : 'false'));
+    $('diffNote').textContent = DIFF_NOTE[diffIdx];
+  }
+  [].forEach.call(diffEls, b => {
+    b.onclick = () => { diffIdx = +b.dataset.diff; localStorage.setItem('eonarena.diff', diffIdx); paintDiff(); };
+  });
+  paintDiff();
+
   const touchIn = $('touchIn');
   const stored = localStorage.getItem('eonarena.touch');
   setTouchMode(stored === null ? touchAvailable() : stored === '1');
@@ -2493,14 +2677,17 @@ function initMenu(){
     $('btnJoin').disabled = true; $('btnSolo').disabled = true;
     try {
       Audio2.boot();
-      await joinOnline(rm, wantMode);
+      await joinOnline(rm, wantMode, diffIdx);
       startGame('online');
       if (net.gameMode !== wantMode){
         addFeed('This realm is already running ' + (net.gameMode === 'team' ? 'Teams' : 'Free-for-all'), true);
       }
     } catch (err){
       console.error(err);
-      setStatus((err && err.message) ? err.message : 'Could not reach Firebase.', 'bad');
+      const msg = (err && err.message) ? err.message : 'Could not reach Firebase.';
+      setStatus(/permission|denied/i.test(msg)
+        ? 'Database rules rejected the write. Publish the rules block from the setup guide — it needs entries for config, bots, botHits and lobby.'
+        : msg, 'bad');
       refreshGate();
     }
   };
@@ -2539,6 +2726,7 @@ function startGame(kind){
   $('chat').classList.add('on');
   swapWeaponInitial();
   updateHud(); updateBoard();
+  addFeed('Drones: ' + diff().name, true);
   if (isTeam()){
     addFeed('Realm ' + net.room + ' — teams, first side to ' + CFG.killTarget + ' combined', true);
     addFeed('You are ' + CFG.teamNames[me.team], true);
