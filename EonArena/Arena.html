@@ -358,6 +358,15 @@
     </div>
 
     <div class="field">
+      <label>Arena</label>
+      <div class="modes" id="maps">
+        <button class="mode" data-map="pit" aria-pressed="true">The Pit</button>
+        <button class="mode" data-map="stacks">The Stacks</button>
+      </div>
+      <small style="display:block;margin-top:6px;color:var(--dim);font-size:11px" id="mapNote"></small>
+    </div>
+
+    <div class="field">
       <label>Drone difficulty</label>
       <div class="modes" id="diffs">
         <button class="mode" data-diff="0">Recruit</button>
@@ -432,7 +441,6 @@ const CFG = {
   maxBots: 3,
   teamNames: ['AMBER','TEAL'],
   teamColors: [0xE8B04B, 0x4FD6C8],
-  teamSpawns: [[0,1,4,6],[2,3,5,7]],   // opposite halves of the pit
   maxHp: 100,
   gravity: 22,
   jumpVel: 8.0,
@@ -614,20 +622,31 @@ function initRender(){
 /* ===================== WORLD ===================== */
 const MAT = {
   floor:   new THREE.MeshLambertMaterial({ color:0x1A2030 }),
+  floor2:  new THREE.MeshLambertMaterial({ color:0x191E2B }),
   grid:    new THREE.MeshLambertMaterial({ color:0x232C40 }),
   wall:    new THREE.MeshLambertMaterial({ color:0x2A3348 }),
   wallB:   new THREE.MeshLambertMaterial({ color:0x1F2739 }),
   crateA:  new THREE.MeshLambertMaterial({ color:0x394358 }),
   crateB:  new THREE.MeshLambertMaterial({ color:0x2E3648 }),
+  rust:    new THREE.MeshLambertMaterial({ color:0x4A3B34 }),
   accent:  new THREE.MeshBasicMaterial({ color:0xE8B04B }),
   accent2: new THREE.MeshBasicMaterial({ color:0x4FD6C8 })
 };
+
+let worldGroup = null;
+let mapId = 'pit';
+let SPAWNS = [];
+let PICKUPS = [];
+const pickupMeshes = {};
+const pickupTaken = {};
+const PICKUP_COOLDOWN = 22000;
+const PICKUP_HEAL = 40;
 
 function box(x,y,z, w,h,d, mat, noCollide){
   const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
   m.position.set(x, y + h/2, z);
   m.castShadow = true; m.receiveShadow = true;
-  scene.add(m);
+  worldGroup.add(m);
   solids.push(m);
   if (!noCollide) colliders.push({
     min:{ x:x-w/2, y:y, z:z-d/2 },
@@ -635,91 +654,155 @@ function box(x,y,z, w,h,d, mat, noCollide){
   });
   return m;
 }
+function flat(geo, mat, x, y, z){
+  const m = new THREE.Mesh(geo, mat);
+  m.rotation.x = -Math.PI/2;
+  m.position.set(x, y, z);
+  m.receiveShadow = true;
+  worldGroup.add(m);
+  return m;
+}
 
-const SPAWNS = [
-  {x:-24,z:-24},{x:24,z:-24},{x:-24,z:24},{x:24,z:24},
-  {x:0,z:-27},{x:0,z:27},{x:-27,z:0},{x:27,z:0}
-];
-const PICKUPS = [
-  {id:'p0', x:0,   z:4.5, y:2.0},
-  {id:'p1', x:-20, z:0,   y:0},
-  {id:'p2', x:20,  z:0,   y:0},
-  {id:'p3', x:0,   z:-20, y:0},
-  {id:'p4', x:0,   z:20,  y:0}
-];
-const pickupMeshes = {};
-const pickupTaken = {};   // id -> ms timestamp taken
-const PICKUP_COOLDOWN = 22000;
-const PICKUP_HEAL = 40;
+/* ---------------- MAP 1 — THE PIT: wide open, long sightlines ---------------- */
+const PIT = {
+  id:'pit', name:'The Pit',
+  blurb:'Open bowl, long sightlines. The Rail owns this one.',
+  fog:[40,130], sun:[28,42,18],
+  spawns:[ {x:-24,z:-24},{x:24,z:-24},{x:-24,z:24},{x:24,z:24},
+           {x:0,z:-27},{x:0,z:27},{x:-27,z:0},{x:27,z:0} ],
+  teamSpawns:[[0,1,4,6],[2,3,5,7]],
+  pickups:[ {id:'p0',x:0,z:4.5,y:2.0},{id:'p1',x:-20,z:0,y:0},{id:'p2',x:20,z:0,y:0},
+            {id:'p3',x:0,z:-20,y:0},{id:'p4',x:0,z:20,y:0} ],
+  build(){
+    const S = 62, H = 8, h = S/2;
+    flat(new THREE.PlaneGeometry(S,S), MAT.floor, 0, 0, 0);
+    solids.push(worldGroup.children[worldGroup.children.length-1]);
+    for (let i = -3; i <= 3; i++){
+      flat(new THREE.PlaneGeometry(S, 0.08), MAT.grid, 0, 0.01, i*9);
+      flat(new THREE.PlaneGeometry(0.08, S), MAT.grid, i*9, 0.01, 0);
+    }
+    const ring = flat(new THREE.RingGeometry(13.6, 13.9, 64), MAT.accent, 0, 0.02, 0);
+    ring.receiveShadow = false;
 
-function buildArena(){
-  const S = 62, H = 8;
+    box(0, 0,  h, S+2, H, 1, MAT.wall);
+    box(0, 0, -h, S+2, H, 1, MAT.wall);
+    box( h, 0, 0, 1, H, S+2, MAT.wall);
+    box(-h, 0, 0, 1, H, S+2, MAT.wall);
 
-  // floor
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(S, S), MAT.floor);
-  floor.rotation.x = -Math.PI/2;
-  floor.receiveShadow = true;
-  scene.add(floor); solids.push(floor);
+    box(0, 0, 0, 13, 2, 13, MAT.wallB);
+    const treads = [[0.60, 9.4, 1.6], [1.20, 8.0, 1.4], [1.75, 6.9, 1.2]];
+    treads.forEach(t => {
+      const [hh, dist, dep] = t;
+      box(0, 0,  dist, 5, hh, dep, MAT.crateA);
+      box(0, 0, -dist, 5, hh, dep, MAT.crateA);
+      box( dist, 0, 0, dep, hh, 5, MAT.crateA);
+      box(-dist, 0, 0, dep, hh, 5, MAT.crateA);
+    });
+    box(0, 2, 0, 3, 4, 3, MAT.wallB);
+    const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 1.2), MAT.accent);
+    beacon.position.set(0, 6.2, 0); worldGroup.add(beacon);
 
-  // painted floor grid (non-colliding, flat)
-  for (let i = -3; i <= 3; i++){
-    const line = new THREE.Mesh(new THREE.PlaneGeometry(S, 0.08), MAT.grid);
-    line.rotation.x = -Math.PI/2; line.position.set(0, 0.01, i*9);
-    scene.add(line);
-    const line2 = new THREE.Mesh(new THREE.PlaneGeometry(0.08, S), MAT.grid);
-    line2.rotation.x = -Math.PI/2; line2.position.set(i*9, 0.01, 0);
-    scene.add(line2);
+    [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
+      box(x, 0, z, 6, 4.5, 6, MAT.wallB);
+      const sx = x > 0 ? -1 : 1, sz = z > 0 ? -1 : 1;
+      box(x + sx*4.4, 0, z,          2.4, 1.15, 2.4, MAT.crateA);
+      box(x + sx*3.4, 0, z + sz*1.2, 2.2, 2.25, 2.2, MAT.crateB);
+      box(x + sx*2.6, 0, z + sz*2.4, 2.2, 3.35, 2.2, MAT.crateA);
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
+      lamp.position.set(x, 4.7, z); worldGroup.add(lamp);
+    });
+
+    const cover = [
+      [-11,-22, 3,1.35,3], [11,-22, 3,1.35,3], [-11,22, 3,1.35,3], [11,22, 3,1.35,3],
+      [-22,-11, 3,1.35,3], [-22,11, 3,1.35,3], [22,-11, 3,1.35,3], [22,11, 3,1.35,3],
+      [-14,0, 2.4,2.6,6], [14,0, 2.4,2.6,6], [0,-14, 6,2.6,2.4], [0,14, 6,2.6,2.4],
+      [-26,-26, 2,3.2,2], [26,-26, 2,3.2,2], [-26,26, 2,3.2,2], [26,26, 2,3.2,2],
+      [-6,-24, 1.4,1.1,1.4], [6,-24, 1.4,1.1,1.4], [-6,24, 1.4,1.1,1.4], [6,24, 1.4,1.1,1.4],
+      [-24,-6, 1.4,1.1,1.4], [-24,6, 1.4,1.1,1.4], [24,-6, 1.4,1.1,1.4], [24,6, 1.4,1.1,1.4]
+    ];
+    cover.forEach((c,i) => box(c[0], 0, c[1], c[2], c[3], c[4], i%2 ? MAT.crateA : MAT.crateB));
   }
-  // centre marking
-  const ring = new THREE.Mesh(new THREE.RingGeometry(13.6, 13.9, 64), MAT.accent);
-  ring.rotation.x = -Math.PI/2; ring.position.y = 0.02; scene.add(ring);
+};
 
-  // perimeter
-  const h = S/2;
-  box(0, 0,  h, S+2, H, 1, MAT.wall);
-  box(0, 0, -h, S+2, H, 1, MAT.wall);
-  box( h, 0, 0, 1, H, S+2, MAT.wall);
-  box(-h, 0, 0, 1, H, S+2, MAT.wall);
+/* ---------------- MAP 2 — THE STACKS: tight, roofed, close quarters ----------------
+   Half the footprint of the Pit and built around a walled depot with a roof you can
+   fight on. Doorways break every long line, so the Rail rarely gets its shot and the
+   Scatter comes into its own.                                                        */
+const STACKS = {
+  id:'stacks', name:'The Stacks',
+  blurb:'Roofed depot, corners everywhere. Close-quarters fighting.',
+  fog:[26,90], sun:[20,34,-14],
+  spawns:[ {x:-15,z:-15},{x:15,z:-15},{x:-15,z:15},{x:15,z:15},
+           {x:0,z:-18},{x:0,z:18},{x:-18,z:0},{x:18,z:0} ],
+  teamSpawns:[[0,1,4,6],[2,3,5,7]],
+  pickups:[ {id:'p0',x:0,z:6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
+            {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0} ],
+  build(){
+    const S = 44, H = 7, h = S/2;
+    flat(new THREE.PlaneGeometry(S,S), MAT.floor2, 0, 0, 0);
+    solids.push(worldGroup.children[worldGroup.children.length-1]);
+    for (let i = -2; i <= 2; i++){
+      flat(new THREE.PlaneGeometry(S, 0.07), MAT.grid, 0, 0.01, i*8);
+      flat(new THREE.PlaneGeometry(0.07, S), MAT.grid, i*8, 0.01, 0);
+    }
 
-  // central platform (2 high) with step-up crates on all four sides
-  box(0, 0, 0, 13, 2, 13, MAT.wallB);
-  // four staircases: every tread is inside the step-up height, so you walk up without jumping
-  const treads = [[0.60, 9.4, 1.6], [1.20, 8.0, 1.4], [1.75, 6.9, 1.2]]; // [top height, distance from centre, depth]
-  treads.forEach(t => {
-    const [hh, dist, dep] = t;
-    box(0,  0,  dist, 5, hh, dep, MAT.crateA);
-    box(0,  0, -dist, 5, hh, dep, MAT.crateA);
-    box( dist, 0, 0, dep, hh, 5, MAT.crateA);
-    box(-dist, 0, 0, dep, hh, 5, MAT.crateA);
-  });
-  // pylon on the platform for cover
-  box(0, 2, 0, 3, 4, 3, MAT.wallB);
-  const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 1.2), MAT.accent);
-  beacon.position.set(0, 6.2, 0); scene.add(beacon);
+    box(0, 0,  h, S+2, H, 1, MAT.wall);
+    box(0, 0, -h, S+2, H, 1, MAT.wall);
+    box( h, 0, 0, 1, H, S+2, MAT.wall);
+    box(-h, 0, 0, 1, H, S+2, MAT.wall);
 
-  // corner towers, each with a stack you can climb
-  [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
-    box(x, 0, z, 6, 4.5, 6, MAT.wallB);
-    const sx = x > 0 ? -1 : 1, sz = z > 0 ? -1 : 1;
-    box(x + sx*4.4, 0, z,            2.4, 1.15, 2.4, MAT.crateA);
-    box(x + sx*3.4, 0, z + sz*1.2,   2.2, 2.25, 2.2, MAT.crateB);
-    box(x + sx*2.6, 0, z + sz*2.4,   2.2, 3.35, 2.2, MAT.crateA);
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
-    lamp.position.set(x, 4.7, z); scene.add(lamp);
-  });
+    // depot walls with a doorway centred on each side
+    const WH = 3.4, T = 0.8, seg = 7.4, off = 5.3;
+    box(-off, 0, -9, seg, WH, T, MAT.wallB);
+    box( off, 0, -9, seg, WH, T, MAT.wallB);
+    box(-off, 0,  9, seg, WH, T, MAT.wallB);
+    box( off, 0,  9, seg, WH, T, MAT.wallB);
+    box(-9, 0, -off, T, WH, seg, MAT.wallB);
+    box(-9, 0,  off, T, WH, seg, MAT.wallB);
+    box( 9, 0, -off, T, WH, seg, MAT.wallB);
+    box( 9, 0,  off, T, WH, seg, MAT.wallB);
 
-  // scattered cover
-  const cover = [
-    [-11,-22, 3,1.35,3], [11,-22, 3,1.35,3], [-11,22, 3,1.35,3], [11,22, 3,1.35,3],
-    [-22,-11, 3,1.35,3], [-22,11, 3,1.35,3], [22,-11, 3,1.35,3], [22,11, 3,1.35,3],
-    [-14,0, 2.4,2.6,6], [14,0, 2.4,2.6,6], [0,-14, 6,2.6,2.4], [0,14, 6,2.6,2.4],
-    [-26,-26, 2,3.2,2], [26,-26, 2,3.2,2], [-26,26, 2,3.2,2], [26,26, 2,3.2,2],
-    [-6,-24, 1.4,1.1,1.4], [6,-24, 1.4,1.1,1.4], [-6,24, 1.4,1.1,1.4], [6,24, 1.4,1.1,1.4],
-    [-24,-6, 1.4,1.1,1.4], [-24,6, 1.4,1.1,1.4], [24,-6, 1.4,1.1,1.4], [24,6, 1.4,1.1,1.4]
-  ];
-  cover.forEach((c,i) => box(c[0], 0, c[1], c[2], c[3], c[4], i%2 ? MAT.crateA : MAT.crateB));
+    // roof you can fight on
+    box(0, WH, 0, 18.8, 0.4, 18.8, MAT.wall);
+    box(0, 3.8, -9.2, 19.2, 0.8, 0.8, MAT.crateB);
+    box(0, 3.8,  9.2, 19.2, 0.8, 0.8, MAT.crateB);
+    [-1,1].forEach(sx => {
+      box(sx*9.2, 3.8, -5.5, 0.8, 0.8, 7.4, MAT.crateB);   // gap at z≈0 where the stairs land
+      box(sx*9.2, 3.8,  5.5, 0.8, 0.8, 7.4, MAT.crateB);
+    });
 
-  // health canisters
+    // external stairs to the roof on the east and west faces
+    [-1,1].forEach(sx => {
+      for (let i = 0; i < 6; i++){
+        box(sx*(13.9 - i*0.9), 0, 0, 0.9, 0.6 + i*0.6, 3.0, i%2 ? MAT.crateA : MAT.crateB);
+      }
+    });
+
+    // interior: solid core plus two low crates to break the room up
+    box(0, 0, 0, 4, WH, 4, MAT.wallB);
+    box(-5.5, 0, -5.5, 2, 1.2, 2, MAT.rust);
+    box( 5.5, 0,  5.5, 2, 1.2, 2, MAT.rust);
+
+    // container stacks in the corners
+    [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
+      box(x, 0, z, 3, 2.6, 3, MAT.rust);
+      const sx = x > 0 ? -1 : 1;
+      box(x + sx*2.6, 0, z, 2.2, 1.25, 2.2, MAT.crateA);
+    });
+
+    // waist-high cover along the outer lanes
+    [[-15,-7],[15,-7],[-15,7],[15,7],[-7,-15],[7,-15],[-7,15],[7,15]]
+      .forEach((c,i) => box(c[0], 0, c[1], 2.4, 1.2, 2.4, i%2 ? MAT.crateA : MAT.rust));
+
+    const beacon = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
+    beacon.position.set(0, 4.0, 0); worldGroup.add(beacon);
+  }
+};
+
+const MAPS = { pit: PIT, stacks: STACKS };
+function currentMap(){ return MAPS[mapId] || PIT; }
+
+function buildPickupMeshes(){
   PICKUPS.forEach(p => {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.55, 12), new THREE.MeshLambertMaterial({ color:0x4FD6C8 }));
@@ -729,9 +812,30 @@ function buildArena(){
     const cap2 = cap.clone(); cap2.rotation.y = Math.PI/2;
     g.add(body, cap, cap2);
     g.position.set(p.x, p.y + 0.7, p.z);
-    scene.add(g);
+    worldGroup.add(g);
     pickupMeshes[p.id] = g;
   });
+}
+
+function loadMap(id){
+  if (worldGroup){
+    worldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    scene.remove(worldGroup);
+  }
+  worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+  solids.length = 0;
+  colliders.length = 0;
+  for (const k in pickupMeshes) delete pickupMeshes[k];
+
+  mapId = MAPS[id] ? id : 'pit';
+  const m = currentMap();
+  SPAWNS = m.spawns;
+  PICKUPS = m.pickups;
+  m.build();
+  buildPickupMeshes();
+  scene.fog = new THREE.Fog(0x090C13, m.fog[0], m.fog[1]);
+  if (sun) sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
 }
 
 /* ===================== AVATARS ===================== */
@@ -1097,12 +1201,15 @@ function lockPointer(){
 }
 
 /* ===================== MOVEMENT + COLLISION ===================== */
-function groundAt(x, z, r){
-  const R = r == null ? CFG.playerRadius : r;
+// highest surface at or below the entity's feet (plus a step) — must be height aware,
+// or anything standing under a roof gets lifted onto it
+function groundAt(x, z, fromY){
+  const R = CFG.playerRadius;
+  const ceiling = (fromY == null ? 1e9 : fromY + CFG.stepHeight);
   let top = 0;
   for (const b of colliders){
     if (x + R > b.min.x && x - R < b.max.x && z + R > b.min.z && z - R < b.max.z){
-      if (b.max.y > top && b.max.y < 5) top = b.max.y;
+      if (b.max.y <= ceiling && b.max.y > top) top = b.max.y;
     }
   }
   return top;
@@ -1178,7 +1285,8 @@ function movePlayer(dt){
   if (wasAir && me.onGround && me.vel.y === 0) Audio2.play('land');
 
   // keep inside the pit even if something goes wrong
-  p.x = clamp(p.x, -30, 30); p.z = clamp(p.z, -30, 30);
+  const lim = (currentMap().id === 'stacks' ? 22 : 31) - 1.2;
+  p.x = clamp(p.x, -lim, lim); p.z = clamp(p.z, -lim, lim);
 
   // footsteps + head bob
   const planar = Math.hypot(me.vel.x, me.vel.z);
@@ -1487,7 +1595,8 @@ function isTeam(){ return mode === 'online' && net.gameMode === 'team'; }
 function myColor(){ return isTeam() ? CFG.teamColors[me.team] : COLORS[me.colorIdx].hex; }
 function isFriendly(r){ return isTeam() && r && !r.self && r.team === me.team; }
 function teamSpawn(team){
-  const idx = CFG.teamSpawns[team] || CFG.teamSpawns[0];
+  const ts = currentMap().teamSpawns;
+  const idx = ts[team] || ts[0];
   return SPAWNS[idx[(Math.random()*idx.length)|0]];
 }
 
@@ -1520,7 +1629,7 @@ function renderRealms(v){
   for (const room in v){
     const entry = v[room] || {};
     const n = Object.keys(entry.p || {}).length;
-    if (n > 0) rows.push({ room, n, m: entry.m || 'ffa' });
+    if (n > 0) rows.push({ room, n, m: entry.m || 'ffa', mp: entry.mp || 'pit' });
   }
   rows.sort((a,b) => b.n - a.n || a.room.localeCompare(b.room));
   const el = $('realms');
@@ -1531,6 +1640,7 @@ function renderRealms(v){
   el.innerHTML = rows.slice(0,8).map(r =>
     '<button class="rl" data-room="' + esc(r.room) + '"><b>' + esc(r.room) + '</b>' +
     '<i>' + (r.m === 'team' ? 'Teams' : 'FFA') + '</i>' +
+    '<i>' + ((MAPS[r.mp] || PIT).name) + '</i>' +
     '<span>' + r.n + (r.n === 1 ? ' player' : ' players') + '</span></button>'
   ).join('');
   [].forEach.call(el.children, b => {
@@ -1538,7 +1648,7 @@ function renderRealms(v){
   });
 }
 
-async function joinOnline(room, wantMode, wantDiff){
+async function joinOnline(room, wantMode, wantDiff, wantMap){
   if (!configLooksReal()) throw new Error('Firebase config missing. Open this file and paste your project config near the top, then reload.');
   if (typeof firebase === 'undefined') throw new Error('Firebase SDK did not load. A privacy extension or offline connection can block www.gstatic.com — allow it and reload.');
 
@@ -1560,10 +1670,12 @@ async function joinOnline(room, wantMode, wantDiff){
   if (!cfg.mode){
     net.gameMode = wantMode || 'ffa';
     diffIdx = clamp(wantDiff == null ? diffIdx : wantDiff, 0, 2);
-    await net.ref.child('config').update({ mode: net.gameMode, diff: diffIdx });
+    if (wantMap && MAPS[wantMap] && wantMap !== mapId) loadMap(wantMap);
+    await net.ref.child('config').update({ mode: net.gameMode, diff: diffIdx, map: mapId });
   } else {
     net.gameMode = cfg.mode;
-    if (cfg.diff != null) diffIdx = clamp(cfg.diff, 0, 2);   // the realm's setting wins
+    if (cfg.diff != null) diffIdx = clamp(cfg.diff, 0, 2);   // the realm's settings win
+    if (cfg.map && MAPS[cfg.map] && cfg.map !== mapId) loadMap(cfg.map);
   }
 
   // uids keep identity honest, but a room of three "Operator"s is unreadable
@@ -1654,7 +1766,7 @@ async function joinOnline(room, wantMode, wantDiff){
   });
 
   // advertise this realm on the menu list (no uid exposed)
-  net.db.ref('lobby/' + room + '/m').set(net.gameMode);
+  net.db.ref('lobby/' + room).update({ m: net.gameMode, mp: mapId });
   const lobbyRef = net.db.ref('lobby/' + room + '/p').push(1);
   net.lobbyKey = lobbyRef;
   lobbyRef.onDisconnect().remove();
@@ -2144,9 +2256,10 @@ function steerMove(ai, dirX, dirZ, speed, dt){
     const dx = dirX*c - dirZ*sn, dz = dirX*sn + dirZ*c;
     const nx = ai.pos.x + dx*speed*dt, nz = ai.pos.z + dz*speed*dt;
     if (!blockedAt(nx, nz, ai.pos.y)){
-      ai.pos.x = clamp(nx, -29, 29);
-      ai.pos.z = clamp(nz, -29, 29);
-      ai.pos.y = lerp(ai.pos.y, groundAt(ai.pos.x, ai.pos.z), clamp(dt*10, 0, 1));
+      const lim = (currentMap().id === 'stacks' ? 22 : 31) - 2;
+      ai.pos.x = clamp(nx, -lim, lim);
+      ai.pos.z = clamp(nz, -lim, lim);
+      ai.pos.y = lerp(ai.pos.y, groundAt(ai.pos.x, ai.pos.z, ai.pos.y), clamp(dt*10, 0, 1));
       ai.moveDir = Math.atan2(-dx, -dz);
       ai.mv = 1;
       return true;
@@ -2290,7 +2403,7 @@ function droneThink(ai, dt, targets, hooks){
       const r = Math.hypot(ai.pos.x, ai.pos.z) || 1;
       ai.pos.x -= (ai.pos.x / r) * 0.7;
       ai.pos.z -= (ai.pos.z / r) * 0.7;
-      ai.pos.y = groundAt(ai.pos.x, ai.pos.z);
+      ai.pos.y = groundAt(ai.pos.x, ai.pos.z, ai.pos.y);
       ai.goal = null;
     }
   } else {
@@ -2536,7 +2649,7 @@ function updateTagVisibility(){
 /* minimap */
 const miniCtx = $('miniC').getContext('2d');
 function drawMini(){
-  const c = miniCtx, S = 300, half = 31, k = S/(half*2);
+  const c = miniCtx, S = 300, half = currentMap().id === 'stacks' ? 22 : 31, k = S/(half*2);
   c.clearRect(0,0,S,S);
   c.fillStyle = 'rgba(10,14,23,.55)'; c.fillRect(0,0,S,S);
   c.fillStyle = '#232C40';
@@ -2632,6 +2745,22 @@ function initMenu(){
   });
   paintModes();
 
+  let wantMap = localStorage.getItem('eonarena.map') || 'pit';
+  const mapEls = $('maps').children;
+  function paintMap(){
+    [].forEach.call(mapEls, b => b.setAttribute('aria-pressed', b.dataset.map === wantMap ? 'true' : 'false'));
+    $('mapNote').textContent = (MAPS[wantMap] || PIT).blurb;
+  }
+  [].forEach.call(mapEls, b => {
+    b.onclick = () => {
+      wantMap = b.dataset.map;
+      localStorage.setItem('eonarena.map', wantMap);
+      paintMap();
+      if (mode === 'menu') loadMap(wantMap);      // preview it behind the menu
+    };
+  });
+  paintMap();
+
   const DIFF_NOTE = [
     'Short sight, slow to react, forgiving aim.',
     'Flanks, strafes, and breaks off to heal when hurt.',
@@ -2677,7 +2806,7 @@ function initMenu(){
     $('btnJoin').disabled = true; $('btnSolo').disabled = true;
     try {
       Audio2.boot();
-      await joinOnline(rm, wantMode, diffIdx);
+      await joinOnline(rm, wantMode, diffIdx, wantMap);
       startGame('online');
       if (net.gameMode !== wantMode){
         addFeed('This realm is already running ' + (net.gameMode === 'team' ? 'Teams' : 'Free-for-all'), true);
@@ -2694,6 +2823,7 @@ function initMenu(){
 
   $('btnSolo').onclick = () => {
     if (!nameOk()){ nameIn.focus(); setStatus('Enter a callsign first.', 'bad'); return; }
+    if (wantMap !== mapId) loadMap(wantMap);
     me.name = cleanName(nameIn.value).slice(0,14);
     localStorage.setItem('eonarena.name', me.name);
     Audio2.boot();
@@ -2726,7 +2856,7 @@ function startGame(kind){
   $('chat').classList.add('on');
   swapWeaponInitial();
   updateHud(); updateBoard();
-  addFeed('Drones: ' + diff().name, true);
+  addFeed(currentMap().name + ' — drones: ' + diff().name, true);
   if (isTeam()){
     addFeed('Realm ' + net.room + ' — teams, first side to ' + CFG.killTarget + ' combined', true);
     addFeed('You are ' + CFG.teamNames[me.team], true);
@@ -2838,7 +2968,7 @@ function frame(){
     return;
   }
   initRender();
-  buildArena();
+  loadMap(localStorage.getItem('eonarena.map') || 'pit');
   buildViewmodel();
   buildHudBits();
   initInput();
