@@ -404,7 +404,7 @@
       <div class="modes" id="modes">
         <button class="mode" data-mode="ffa" aria-pressed="true">Free-for-all</button>
         <button class="mode" data-mode="team" aria-pressed="false">Teams</button>
-        <button class="mode" data-mode="koth" aria-pressed="false">Hill</button>
+        <button class="mode" data-mode="waves" aria-pressed="false">Waves</button>
       </div>
       <small style="display:block;margin-top:6px;color:var(--dim);font-size:11px" id="modeNote">First to 25 frags wins.</small>
     </div>
@@ -500,7 +500,7 @@ const firebaseConfig = {
    louder on the menu than in a match. Leave it as-is if you have no file —
    the game just hides the music controls.
    --------------------------------------------------------------------- */
-const MUSIC_FILE = 'EonArena1.mp3';
+const MUSIC_FILE = 'EonArena.mp3';
 
 /* ===================== TUNABLES ===================== */
 const CFG = {
@@ -509,7 +509,9 @@ const CFG = {
   netRate: 0.067,         // seconds between position writes (15Hz, interpolated)
   botFill: 4,             // keep this many combatants in a realm by adding drones
   maxBots: 3,
-  hillTarget: 90,         // seconds of uncontested hold to win King of the Hill
+  waveBreak: 9,           // seconds of quiet between waves
+  waveLives: 3,           // shared respawns for the squad
+  waveMaxDrones: 8,
   teamNames: ['AMBER','TEAL'],
   teamColors: [0xE8B04B, 0x4FD6C8],
   maxHp: 100,
@@ -798,7 +800,6 @@ const PIT = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:4.5,y:2.0},{id:'p1',x:-20,z:0,y:0},{id:'p2',x:20,z:0,y:0},
             {id:'p3',x:0,z:-20,y:0},{id:'p4',x:0,z:20,y:0} ],
-  hill:{ name:'The Platform', x:0, z:0, r:6.6, yMin:1.6, yMax:7 },
   // stair routes onto the centre platform, so drones can reach height
   climbs:[ {base:{x:0,z:10.5},  top:{x:0,z:4},  y:2.0, w:5},
            {base:{x:0,z:-10.5}, top:{x:0,z:-4}, y:2.0, w:5},
@@ -868,7 +869,6 @@ const STACKS = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
             {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0} ],
-  hill:{ name:'The Roof', x:0, z:0, hx:9.4, hz:9.4, yMin:3.5, yMax:9 },
   climbs:[ {base:{x:17.6,z:0},  top:{x:6,z:0},  y:3.8, w:13},
            {base:{x:-17.6,z:0}, top:{x:-6,z:0}, y:3.8, w:13} ],
   build(){
@@ -941,60 +941,6 @@ const STACKS = {
 const MAPS = { pit: PIT, stacks: STACKS };
 function currentMap(){ return MAPS[mapId] || PIT; }
 
-let hillMarker = null;
-const HILL_MAT = new THREE.MeshBasicMaterial({ color:0x8892A6, transparent:true, opacity:0.55, side:2 });
-function inHill(pos){
-  const h = currentMap().hill;
-  if (!h || !pos) return false;
-  if (pos.y < h.yMin || pos.y > h.yMax) return false;
-  if (h.r) return (pos.x-h.x)*(pos.x-h.x) + (pos.z-h.z)*(pos.z-h.z) < h.r*h.r;
-  return Math.abs(pos.x-h.x) < h.hx && Math.abs(pos.z-h.z) < h.hz;
-}
-function buildHillMarker(){
-  const h = currentMap().hill;
-  hillMarker = null;
-  if (!h) return;
-  const g = new THREE.Group();
-  const y = h.yMin + 0.42;
-  // upright posts: a line painted on the floor is invisible from anywhere but on top of it
-  const postGeo = new THREE.BoxGeometry(0.22, 3.2, 0.22);
-  const posts = [];
-  if (h.r){
-    for (let i = 0; i < 8; i++){
-      const a = (i/8) * Math.PI * 2;
-      posts.push([h.x + Math.cos(a)*h.r, h.z + Math.sin(a)*h.r]);
-    }
-  } else {
-    [[-1,-1],[1,-1],[-1,1],[1,1],[0,-1],[0,1],[-1,0],[1,0]].forEach(([sx,sz]) =>
-      posts.push([h.x + sx*h.hx, h.z + sz*h.hz]));
-  }
-  posts.forEach(([px,pz]) => {
-    const m = new THREE.Mesh(postGeo, HILL_MAT);
-    m.position.set(px, y + 1.6, pz);
-    g.add(m);
-  });
-  if (h.r){
-    const ring = new THREE.Mesh(new THREE.RingGeometry(h.r - 0.35, h.r, 64), HILL_MAT);
-    ring.rotation.x = -Math.PI/2; ring.position.y = y;
-    g.add(ring);
-  } else {
-    const t = 0.35;
-    [[0, -h.hz], [0, h.hz]].forEach(([x,z]) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(h.hx*2, t), HILL_MAT);
-      m.rotation.x = -Math.PI/2; m.position.set(h.x + x, y, h.z + z);
-      g.add(m);
-    });
-    [[-h.hx, 0], [h.hx, 0]].forEach(([x,z]) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(t, h.hz*2), HILL_MAT);
-      m.rotation.x = -Math.PI/2; m.position.set(h.x + x, y, h.z + z);
-      g.add(m);
-    });
-  }
-  g.visible = false;
-  worldGroup.add(g);
-  hillMarker = g;
-}
-
 function buildPickupMeshes(){
   PICKUPS.forEach(p => {
     const g = new THREE.Group();
@@ -1027,7 +973,6 @@ function loadMap(id){
   PICKUPS = m.pickups;
   m.build();
   buildPickupMeshes();
-  buildHillMarker();
   scene.fog = new THREE.Fog(0x090C13, m.fog[0], m.fog[1]);
   if (sun) sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
 }
@@ -1052,14 +997,16 @@ function makeTag(text, colorHex){
   spr.userData = { canvas:c, ctx:g, tex, text, colorHex, hp:100 };
   return spr;
 }
-function updateTag(spr, hp){
+function updateTag(spr, hp, hpMax){
   const u = spr.userData;
-  if (u.hp === hp) return;
+  if (u.hp === hp && u.hpMax === hpMax) return;
   u.hp = hp;
+  u.hpMax = hpMax;
   const g = u.ctx;
   g.clearRect(0, 40, 256, 32);
   g.fillStyle = 'rgba(0,0,0,.7)'; g.fillRect(48, 48, 160, 12);
-  const f = clamp(hp,0,CFG.maxHp)/CFG.maxHp;
+  const cap = hpMax || CFG.maxHp;
+  const f = clamp(hp, 0, cap) / cap;
   g.fillStyle = f > 0.5 ? '#4FD6C8' : (f > 0.22 ? '#E8B04B' : '#FF5470');
   g.fillRect(50, 50, 156*f, 8);
   u.tex.needsUpdate = true;
@@ -1202,7 +1149,7 @@ const me = {
   onGround:false, sprinting:false,
   weapon:0, ammo:[30,6,4], reloading:false, reloadEnd:0, nextShot:0,
   ads:false, recoil:0, bob:0, shake:0, lastStep:0,
-  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0
+  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0, hadLife:true
 };
 const keys = Object.create(null);
 let mouseDown = false, pointerLocked = false, chatting = false;
@@ -1732,6 +1679,9 @@ function flashVignette(){
 }
 
 function die(byName, head){
+  // snapshot now: the keeper deducts the squad life immediately, so reading it at
+  // respawn time would rob you of the very life your death just spent
+  me.hadLife = !isWaves() || net.wave.lives > 0;
   me.alive = false;
   me.hp = 0;
   me.deaths++;
@@ -1804,14 +1754,16 @@ const net = {
   offset:0, joinedAt:0, lastWrite:0, lastAttacker:null, attackerIsBot:false, matchOver:false,
   lobbyKey:null, isKeeper:false, peers:new Set(), humanCount:1, electAcc:0,
   gameMode:'ffa', teamScore:[0,0], winAcc:0,
-  hill:[0,0], hillOwner:-1, hillAcc:0, hillWrite:0,
+  wave:{ n:0, state:'idle', left:0, lives:CFG.waveLives, until:0, best:0 },
+  waveAcc:0, wavePrevAlive:null,
   botAI:new Map(), botSent:new Map(), botAcc:0, sent:{},
   now(){ return Date.now() + this.offset; }
 };
 
-function isTeam(){ return mode === 'online' && (net.gameMode === 'team' || net.gameMode === 'koth'); }
-function isKoth(){ return mode === 'online' && net.gameMode === 'koth'; }
-function myColor(){ return isTeam() ? CFG.teamColors[me.team] : COLORS[me.colorIdx].hex; }
+function isTeam(){ return mode === 'online' && (net.gameMode === 'team' || net.gameMode === 'waves'); }
+function isWaves(){ return mode === 'online' && net.gameMode === 'waves'; }
+// in waves everyone human is one squad, so keep personal colours and let the drones be the enemy
+function myColor(){ return (isTeam() && !isWaves()) ? CFG.teamColors[me.team] : COLORS[me.colorIdx].hex; }
 function isFriendly(r){ return isTeam() && r && !r.self && r.team === me.team; }
 /*
   Spawn points were picked at random, so landing inside somebody already standing
@@ -1898,7 +1850,7 @@ function renderRealms(v){
   }
   el.innerHTML = rows.slice(0,8).map(r =>
     '<button class="rl" data-room="' + esc(r.room) + '"><b>' + esc(r.room) + '</b>' +
-    '<i>' + (r.m === 'team' ? 'Teams' : r.m === 'koth' ? 'Hill' : 'FFA') + '</i>' +
+    '<i>' + (r.m === 'team' ? 'Teams' : r.m === 'waves' ? 'Waves' : 'FFA') + '</i>' +
     '<i>' + ((MAPS[r.mp] || PIT).name) + '</i>' +
     '<span>' + r.n + (r.n === 1 ? ' player' : ' players') + '</span></button>'
   ).join('');
@@ -1935,7 +1887,14 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
     net.gameMode = cfg.mode;
     if (cfg.diff != null) diffIdx = clamp(cfg.diff, 0, 2);   // the realm's settings win
     if (cfg.map && MAPS[cfg.map] && cfg.map !== mapId) loadMap(cfg.map);
-    if (cfg.hill){ net.hill[0] = cfg.hill.a || 0; net.hill[1] = cfg.hill.b || 0; }
+    if (cfg.wave){
+      net.wave.n = cfg.wave.n || 0;
+      net.wave.state = cfg.wave.state || 'idle';
+      net.wave.left = cfg.wave.left || 0;
+      net.wave.lives = cfg.wave.lives == null ? CFG.waveLives : cfg.wave.lives;
+      net.wave.until = cfg.wave.until || 0;
+      net.wave.best = cfg.wave.best || 0;
+    }
   }
 
   // uids keep identity honest, but a room of three "Operator"s is unreadable
@@ -2010,11 +1969,20 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
     for (const k in v) pickupTaken[k] = v[k];
   });
 
-  net.ref.child('config/hill').on('value', snap => {
+  net.ref.child('config/wave').on('value', snap => {
     const v = snap.val();
-    if (!v || net.isKeeper) return;         // the keeper's own figures are authoritative
-    net.hill[0] = v.a || 0;
-    net.hill[1] = v.b || 0;
+    if (!v || net.isKeeper) return;         // the keeper's own state is authoritative
+    const wasState = net.wave.state;
+    net.wave.n = v.n || 0;
+    net.wave.state = v.state || 'idle';
+    if (wasState !== 'active' && net.wave.state === 'active' && !me.alive){
+      me.hadLife = true;                        // a new wave brings everyone back up
+      me.respawnAt = performance.now();
+    }
+    net.wave.left = v.left || 0;
+    net.wave.lives = v.lives == null ? CFG.waveLives : v.lives;
+    net.wave.until = v.until || 0;
+    net.wave.best = v.best || 0;
   });
 
   net.ref.child('matchOver').on('value', snap => {
@@ -2024,9 +1992,9 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
       const mine = v.team >= 0 ? (v.team === me.team) : (v.by === me.uid);
       if (v.team >= 0){
         $('bannerText').textContent = (mine ? 'Your team takes it' : v.winner + ' takes it');
-        if (isKoth()){
-          $('bannerSub').textContent = CFG.teamNames[0] + ' ' + Math.floor(net.hill[0]) + 's  ·  ' +
-                                       CFG.teamNames[1] + ' ' + Math.floor(net.hill[1]) + 's held';
+        if (isWaves()){
+          $('bannerText').textContent = 'Overrun on wave ' + (v.wave || net.wave.n);
+          $('bannerSub').textContent = 'Best in this realm: wave ' + Math.max(net.wave.best, v.wave || 0);
         } else {
           const t = teamTotals();
           $('bannerSub').textContent = CFG.teamNames[0] + ' ' + t[0] + '  ·  ' + CFG.teamNames[1] + ' ' + t[1];
@@ -2108,49 +2076,120 @@ function teamTotals(){
 }
 
 /*
-  Hill scoring. Occupancy is judged by the keeper so there is one clock, not one per
-  client: a side banks time only while it holds the zone with nobody from the other
-  side standing in it. Totals ride on config/hill, which is already writable, so this
-  needs no new database rule.
+  Wave survival. The keeper runs the state machine — spawn a wave, wait for it to be
+  cleared, breathe, spawn a harder one — and publishes it on config/wave, which is
+  already writable so this needs no new database rule. Everyone else just renders it.
 */
-function stepHill(dt){
-  if (!isKoth() || !net.ref) return;
+function waveCount(n){ return Math.min(CFG.waveMaxDrones, 2 + Math.ceil(n * 0.8)); }
+function waveHpMul(n){ return Math.min(2.5, 1 + 0.15 * (n - 1)); }
+function waveDmgMul(n){ return 1 + 0.05 * (n - 1); }
+function waveTier(n){ return clamp(diffIdx + Math.floor((n - 1) / 4), 0, DIFF.length - 1); }
 
-  // everyone works out occupancy locally for instant HUD feedback
-  const present = [false, false];
-  if (me.alive && inHill(me.pos)) present[me.team] = true;
-  remotes.forEach(r => { if (r.alive && !r.stale && inHill(r.pos)) present[r.team || 0] = true; });
-  net.hillOwner = (present[0] && present[1]) ? 2 : (present[0] ? 0 : (present[1] ? 1 : -1));
+function humansAlive(){
+  let n = 0;
+  if (me.alive) n++;
+  remotes.forEach(r => { if (!r.isBot && r.alive && !r.stale) n++; });
+  return n;
+}
+function humanIds(){
+  const ids = [];
+  if (me.alive) ids.push(me.uid);
+  remotes.forEach(r => { if (!r.isBot && r.alive && !r.stale) ids.push(r.uid); });
+  return ids;
+}
 
-  if (hillMarker){
-    hillMarker.visible = true;
-    HILL_MAT.color.setHex(
-      net.hillOwner === 0 ? CFG.teamColors[0] :
-      net.hillOwner === 1 ? CFG.teamColors[1] :
-      net.hillOwner === 2 ? 0xFF5470 : 0x8892A6
-    );
-    HILL_MAT.opacity = net.hillOwner === 2
-      ? 0.4 + 0.35*Math.abs(Math.sin(performance.now()/220))
-      : (net.hillOwner >= 0 ? 0.7 : 0.45);
+function publishWave(){
+  if (!net.ref) return;
+  net.ref.child('config/wave').set({
+    n: net.wave.n, state: net.wave.state, left: net.wave.left,
+    lives: net.wave.lives, until: net.wave.until, best: net.wave.best
+  });
+}
+
+function startWave(n){
+  net.wave.n = n;
+  net.wave.state = 'active';
+  if (net.wave.lives < 1) net.wave.lives = 1;   // always one shot at the new wave
+  net.wave.left = waveCount(n);
+  // clear anything left over, then field the new wave
+  Array.from(net.botAI.keys()).forEach(id => despawnBot(id));
+  for (let i = 1; i <= net.wave.left; i++) spawnBot(i);
+  publishWave();
+}
+
+function stepWaves(dt){
+  if (!isWaves() || !net.ref) return;
+  if (!net.isKeeper) return;                       // one machine, run by the keeper
+
+  const now = net.now();
+  const w = net.wave;
+
+  if (w.state === 'idle'){
+    w.lives = CFG.waveLives;
+    w.state = 'break';
+    w.until = now + 6000;
+    w.n = 0;
+    publishWave();
+    return;
   }
 
-  if (!net.isKeeper || net.matchOver) return;
-  if (net.hillOwner === 0 || net.hillOwner === 1) net.hill[net.hillOwner] += dt;
-
-  net.hillWrite += dt;
-  if (net.hillWrite >= 0.5){
-    net.hillWrite = 0;
-    net.ref.child('config/hill').set({
-      a: Math.round(net.hill[0]), b: Math.round(net.hill[1]), own: net.hillOwner
+  // squad deaths cost a shared life; a downed player waits for the next wave
+  const alive = humanIds();
+  if (net.wavePrevAlive){
+    net.wavePrevAlive.forEach(uid => {
+      if (alive.indexOf(uid) === -1 && w.state === 'active' && w.lives > 0){
+        w.lives--;
+        publishWave();
+      }
     });
   }
-  const w = net.hill[0] >= CFG.hillTarget ? 0 : (net.hill[1] >= CFG.hillTarget ? 1 : -1);
-  if (w >= 0) declareWin(CFG.teamNames[w], w, null);
+  net.wavePrevAlive = alive;
+
+  if (w.state === 'break'){
+    if (now >= w.until){
+      startWave(w.n + 1);
+      if (w.n > w.best){ w.best = w.n; publishWave(); }
+    }
+    return;
+  }
+
+  if (w.state === 'over'){
+    if (now >= w.until){
+      w.state = 'idle';
+      net.matchOver = false;
+      publishWave();
+    }
+    return;
+  }
+
+  // active
+  let left = 0;
+  net.botAI.forEach(b => { if (b.alive) left++; });
+  if (left !== w.left){ w.left = left; publishWave(); }
+
+  if (humansAlive() === 0 && w.lives <= 0){
+    w.state = 'over';
+    w.until = now + 11000;
+    Array.from(net.botAI.keys()).forEach(id => despawnBot(id));
+    publishWave();
+    net.ref.child('matchOver').set({
+      winner: 'The drones', team: -1, by: null, wave: w.n,
+      at: firebase.database.ServerValue.TIMESTAMP
+    });
+    return;
+  }
+
+  if (left === 0){
+    w.state = 'break';
+    w.until = now + CFG.waveBreak * 1000;
+    if (w.lives < CFG.waveLives && w.n % 3 === 0) w.lives++;   // a life back every third wave
+    publishWave();
+  }
 }
 
 // only the keeper watches the combined score, so a win is declared exactly once
 function checkTeamWin(dt){
-  if (!isTeam() || isKoth() || !net.isKeeper || net.matchOver) return;
+  if (!isTeam() || isWaves() || !net.isKeeper || net.matchOver) return;
   net.winAcc += dt;
   if (net.winAcc < 0.8) return;
   net.winAcc = 0;
@@ -2180,8 +2219,10 @@ function declareWin(winnerName, teamIdx, winnerUid){
       for (const k in v){ upd[k + '/kills'] = 0; upd[k + '/deaths'] = 0; }
       if (Object.keys(upd).length) net.ref.child('bots').update(upd);
     });
-    net.hill = [0,0];
-    net.ref.child('config/hill').set({ a:0, b:0, own:-1 });
+    if (isWaves()){
+      net.wave.state = 'idle';
+      publishWave();
+    }
   }, 8200);
 }
 
@@ -2248,7 +2289,7 @@ function addEntity(id, v, isBot){
   scene.add(av.group);
   remotes.set(id, {
     uid:id, isBot: !!isBot,
-    name: v.name || 'Operator', color: v.color || 0x4FA8FF, team: v.team || 0,
+    name: v.name || 'Operator', color: v.color || 0x4FA8FF, team: v.team || 0, hpMax: v.hpMax || CFG.maxHp,
     avatar: av, alive: v.alive !== false, hp: v.hp == null ? 100 : v.hp,
     kills: v.kills || 0, deaths: v.deaths || 0,
     pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
@@ -2278,7 +2319,8 @@ function updateEntity(id, v, isBot){
   if (v.ts) r.ts = v.ts;
   if (v.name) r.name = v.name;
   if (v.team != null) r.team = v.team;
-  updateTag(r.avatar.tag, r.hp);
+  if (v.hpMax != null) r.hpMax = v.hpMax;
+  updateTag(r.avatar.tag, r.hp, r.hpMax);
   r.avatar.group.visible = r.alive && !r.stale;
   updateBoard();
 }
@@ -2406,6 +2448,7 @@ function adoptBot(id, v){
   });
 }
 function botTeam(){
+  if (isWaves()) return 1;                     // every drone is hostile
   // put the drone on whichever side is short-handed
   const n = [0,0];
   if (isTeam()) n[me.team]++;
@@ -2416,26 +2459,48 @@ function botTeam(){
 function spawnBot(i){
   const id = 'd' + i;
   const team = isTeam() ? botTeam() : 0;
-  const sp = pickSpawnPoint(team, false);
+  const sp = isWaves() ? farSpawn() : pickSpawnPoint(team, false);
+  const hpMax = isWaves() ? Math.round(CFG.maxHp * waveHpMul(net.wave.n || 1)) : CFG.maxHp;
   const ai = {
-    id, team, name: BOT_NAMES[i-1] || ('DRONE-' + i),
-    color: isTeam() ? CFG.teamColors[team] : 0x8892A6, goal: null, mv: 0, moveDir: 0,
+    id, team, name: (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
+    color: isWaves() ? 0xFF5470 : (isTeam() ? CFG.teamColors[team] : 0x8892A6),
+    hpMax, goal: null, mv: 0, moveDir: 0,
     pos: new THREE.Vector3(sp.x, 0, sp.z), goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
-    ry: 0, hp: 100, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
+    ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
   };
   net.botAI.set(id, ai);
   net.ref.child('bots/' + id).set({
-    name: ai.name, color: ai.color, team: ai.team, bot: true,
-    x: sp.x, y: 0, z: sp.z, ry: 0, hp: 100, alive: true, kills: 0, deaths: 0, mv: 0,
+    name: ai.name, color: ai.color, team: ai.team, bot: true, hpMax,
+    x: sp.x, y: 0, z: sp.z, ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, mv: 0,
     ts: firebase.database.ServerValue.TIMESTAMP
   });
 }
+// waves should arrive from somewhere else, not materialise on top of the squad
+function farSpawn(){
+  const humans = [];
+  if (me.alive) humans.push(me.pos);
+  remotes.forEach(r => { if (!r.isBot && r.alive && !r.stale) humans.push(r.pos); });
+  let best = SPAWNS[0], bestD = -1;
+  for (let i = 0; i < SPAWNS.length; i++){
+    const sp = SPAWNS[i];
+    let d = 1e9;
+    for (let k = 0; k < humans.length; k++){
+      const dd = Math.hypot(sp.x - humans[k].x, sp.z - humans[k].z);
+      if (dd < d) d = dd;
+    }
+    if (humans.length === 0) d = Math.random() * 30;
+    if (d > bestD){ bestD = d; best = sp; }
+  }
+  return { x: best.x + rand(-2.5, 2.5), z: best.z + rand(-2.5, 2.5) };
+}
+
 function despawnBot(id){
   net.botAI.delete(id);
   net.botSent.delete(id);
   net.ref.child('bots/' + id).remove();
 }
 function ensureBotCount(){
+  if (isWaves()) return;                       // the wave machine owns the roster
   const want = clamp(CFG.botFill - (net.humanCount || 1), 0, CFG.maxBots);
   const have = net.botAI.size;
   if (have < want){ for (let i = have+1; i <= want; i++) if (!net.botAI.has('d'+i)) spawnBot(i); }
@@ -2497,6 +2562,7 @@ function stepNetBots(dt){
 
   net.botAI.forEach(ai => {
     if (!ai.alive){
+      if (isWaves()) return;                   // no respawns: clearing the wave is the point
       if (now > ai.respawnAt){
         const sp = pickSpawnPoint(ai.team, false);
         ai.pos.set(sp.x, 0, sp.z);
@@ -2541,7 +2607,23 @@ const DIFF = [
   { id:'veteran', name:'Veteran', sight:58, react:0.16, aim:0.64, rate:[0.7,1.3], dmg:[9,16],  head:0.15, flee:44, speed:4.4, strafe:1.35, track:7.5, hold:[6,15] }
 ];
 let diffIdx = 1;
-function diff(){ return DIFF[diffIdx] || DIFF[1]; }
+const scaledDiff = {};
+/*
+  In waves the tier climbs every four rounds and the drones get tougher and hit harder
+  on top of that, so wave 12 is a different animal from wave 1 on the same setting.
+*/
+function diff(){
+  if (!isWaves() || net.wave.n < 1) return DIFF[diffIdx] || DIFF[1];
+  const n = net.wave.n;
+  const base = DIFF[waveTier(n)] || DIFF[1];
+  if (scaledDiff.__n === n && scaledDiff.__b === base.id) return scaledDiff;
+  const dm = waveDmgMul(n);
+  Object.keys(base).forEach(k => { scaledDiff[k] = base[k]; });
+  scaledDiff.dmg = [base.dmg[0]*dm, base.dmg[1]*dm];
+  scaledDiff.__n = n;
+  scaledDiff.__b = base.id;
+  return scaledDiff;
+}
 
 const dA = new THREE.Vector3(), dB = new THREE.Vector3(), dC = new THREE.Vector3();
 
@@ -2799,20 +2881,22 @@ function droneThink(ai, dt, targets, hooks){
   } else {
     // With a hill in play, idle drones go and stand on it instead of wandering —
     // otherwise a human just walks up and caps uncontested.
-    const hl = isKoth() ? currentMap().hill : null;
-    if (hl && !ai.hillOff) ai.hillOff = { x: rand(-3.5, 3.5), z: rand(-3.5, 3.5) };
-
-    if (hl && !inHill(ai.pos)){
-      const rp = routeTo(ai, hl.x + ai.hillOff.x, hl.z + ai.hillOff.z, hl.yMin + 0.4);
+    // in waves a drone with nobody in sight still walks toward the nearest human:
+    // they are hunting the squad, not patrolling the map
+    let stalk = null;
+    if (isWaves()){
+      let bd = 1e9;
+      for (let i = 0; i < targets.length; i++){
+        const t2 = targets[i];
+        if (t2.team === ai.team) continue;
+        const d2 = ai.pos.distanceTo(t2.pos);
+        if (d2 < bd){ bd = d2; stalk = t2; }
+      }
+    }
+    if (stalk){
+      const rp = routeTo(ai, stalk.pos.x, stalk.pos.z, stalk.pos.y);
       steerMove(ai, rp.x - ai.pos.x, rp.z - ai.pos.z, D.speed * 0.95, dt);
       ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
-    } else if (hl){
-      if (!ai.goal || ai.pos.distanceTo(ai.goal) < 1.6){
-        ai.goal = new THREE.Vector3(hl.x + rand(-4,4), ai.pos.y, hl.z + rand(-4,4));
-      }
-      const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
-      if (!steerMove(ai, to.x, to.z, D.speed * 0.55, dt)) ai.goal = null;
-      ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*3, 0, 1));
     } else {
       if (!ai.goal || ai.pos.distanceTo(ai.goal) < 2.2) ai.goal = patrolPoint();
       const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
@@ -2951,21 +3035,13 @@ function updateHud(){
   const rows = $('wlist').children;
   for (let i=0;i<rows.length;i++) rows[i].className = (i === me.weapon ? 'sel' : '');
 
-  if (isKoth()){
-    const h = currentMap().hill;
-    const pct = t2 => Math.min(100, (net.hill[t2] / CFG.hillTarget) * 100);
-    const state =
-      net.hillOwner === 2 ? '<span style="color:var(--hostile)">CONTESTED</span>' :
-      net.hillOwner === me.team ? '<span style="color:' + hex(CFG.teamColors[me.team]) + '">YOU HOLD IT</span>' :
-      net.hillOwner >= 0 ? '<span style="color:' + hex(CFG.teamColors[net.hillOwner]) + '">' + CFG.teamNames[net.hillOwner] + ' HOLDS IT</span>' :
-      '<span style="color:var(--dim)">' + ((h && h.name) || 'The hill').toUpperCase() + ' — OPEN</span>';
+  if (isWaves()){
+    const w = net.wave;
+    const lives = '<span style="color:' + (w.lives > 1 ? 'var(--teal)' : 'var(--hostile)') + '">' + Math.max(0, w.lives) + '</span>';
     $('score').innerHTML =
-      state +
-      '<div style="margin-top:6px;width:170px;height:6px;background:#1B2233">' +
-        '<div style="height:100%;width:' + pct(0).toFixed(0) + '%;background:' + hex(CFG.teamColors[0]) + '"></div></div>' +
-      '<div style="margin-top:3px;width:170px;height:6px;background:#1B2233">' +
-        '<div style="height:100%;width:' + pct(1).toFixed(0) + '%;background:' + hex(CFG.teamColors[1]) + '"></div></div>' +
-      '<div style="margin-top:5px;color:var(--dim)">' + Math.floor(net.hill[0]) + 's · ' + Math.floor(net.hill[1]) + 's / ' + CFG.hillTarget + 's</div>';
+      '<span style="color:var(--amber);font-size:13px;letter-spacing:.24em">WAVE ' + Math.max(1, w.n) + '</span>' +
+      '<div style="margin-top:5px">Drones left <b>' + w.left + '</b></div>' +
+      '<div style="margin-top:3px">Squad lives ' + lives + '</div>';
   } else if (isTeam()){
     const t = net.teamScore;
     $('score').innerHTML = '<b style="color:' + hex(CFG.teamColors[0]) + '">' + CFG.teamNames[0] + ' ' + t[0] +
@@ -3054,15 +3130,13 @@ function updateBoard(){
     '</td><td class="n">'+r.kills+'</td><td class="n">'+r.deaths+'</td>'+
     '<td class="n" style="color:var(--dim)">'+(r.ping?Math.min(999,r.ping)+'ms':'—')+'</td></tr>';
 
-  if (!isTeam()){
+  if (!isTeam() || isWaves()){
     $('boardBody').innerHTML = rows.map(line).join('');
     return;
   }
   let html = '';
   [0,1].forEach(t => {
-    const head = isKoth()
-      ? Math.floor(net.hill[t]) + 's / ' + CFG.hillTarget + 's held'
-      : net.teamScore[t] + ' / ' + CFG.killTarget;
+    const head = net.teamScore[t] + ' / ' + CFG.killTarget;
     html += '<tr><td colspan="4" style="padding-top:14px;border:0">' +
             '<span style="color:'+hex(CFG.teamColors[t])+';letter-spacing:.2em;font-size:11px">' +
             CFG.teamNames[t] + '</span> <span style="color:var(--dim);font-size:11px">— ' +
@@ -3080,47 +3154,41 @@ function updateBoard(){
 */
 function updateObjective(){
   const el = $('obj'), arrow = $('objArrow'), edge = $('objEdge');
-  if (!isKoth() || mode === 'menu'){
+  arrow.style.display = 'none';
+  if (!isWaves() || mode === 'menu'){
     el.style.display = 'none';
-    arrow.style.display = 'none';
     edge.style.opacity = 0;
     return;
   }
-  const h = currentMap().hill;
-  const name = (h && h.name ? h.name : 'the hill').toUpperCase();
-  const inside = me.alive && inHill(me.pos);
-  const dist = h ? Math.hypot(me.pos.x - h.x, me.pos.z - h.z) : 0;
-
-  let text, col;
-  if (net.hillOwner === 2){
-    text = 'CONTESTED — CLEAR THEM OFF'; col = 'var(--hostile)';
-  } else if (net.hillOwner === me.team){
-    text = (inside ? 'HOLDING ' : 'YOUR TEAM HOLDS ') + name; col = hex(CFG.teamColors[me.team]);
-  } else if (net.hillOwner >= 0){
-    text = CFG.teamNames[net.hillOwner] + ' HOLDS ' + name; col = hex(CFG.teamColors[net.hillOwner]);
-  } else {
-    text = name + ' IS OPEN'; col = 'var(--ink)';
-  }
-  if (!inside) text += '  ·  ' + Math.round(dist) + 'm';
-
+  const w = net.wave;
   el.style.display = 'block';
-  el.classList.toggle('contested', net.hillOwner === 2);
-  $('objText').innerHTML = text + '<div id="objSub">' +
-    Math.floor(net.hill[me.team]) + 's held  ·  ' + CFG.hillTarget + 's to win</div>';
+  el.classList.remove('contested');
+
+  let text, col, sub, frac = 0;
+  if (w.state === 'break'){
+    const left = Math.max(0, Math.ceil((w.until - net.now()) / 1000));
+    text = 'WAVE ' + (w.n + 1) + ' INCOMING';
+    sub = left + 's — regroup and reload';
+    col = 'var(--teal)';
+    frac = 1 - clamp(left / CFG.waveBreak, 0, 1);
+  } else if (w.state === 'over'){
+    text = 'OVERRUN ON WAVE ' + w.n;
+    sub = 'restarting shortly';
+    col = 'var(--hostile)';
+  } else {
+    text = 'WAVE ' + Math.max(1, w.n);
+    sub = w.left + (w.left === 1 ? ' drone left' : ' drones left') +
+          '  ·  ' + Math.max(0, w.lives) + ' squad ' + (w.lives === 1 ? 'life' : 'lives');
+    col = w.left <= 2 ? 'var(--amber)' : 'var(--ink)';
+    const total = waveCount(Math.max(1, w.n));
+    frac = clamp(1 - w.left / total, 0, 1);
+  }
+  $('objText').innerHTML = text + '<div id="objSub">' + sub + '</div>';
   $('objText').style.color = col;
   const bar = $('objBar').firstElementChild;
-  bar.style.width = Math.min(100, (net.hill[me.team] / CFG.hillTarget) * 100).toFixed(0) + '%';
-  bar.style.background = hex(CFG.teamColors[me.team]);
-
-  edge.style.opacity = inside && net.hillOwner !== 2 ? 1 : 0;
-
-  if (inside || !h || !me.alive){
-    arrow.style.display = 'none';
-  } else {
-    const rel = Math.atan2(h.x - me.pos.x, h.z - me.pos.z) - (me.yaw + Math.PI);
-    arrow.style.display = 'block';
-    arrow.style.transform = 'rotate(' + (-rel) + 'rad)';
-  }
+  bar.style.width = (frac * 100).toFixed(0) + '%';
+  bar.style.background = w.state === 'break' ? '#4FD6C8' : '#E8B04B';
+  edge.style.opacity = 0;
 }
 
 /*
@@ -3205,18 +3273,6 @@ function drawMini(){
     c.fillStyle = '#4FD6C8';
     c.fillRect((p.x+half)*k - 2, (p.z+half)*k - 2, 4, 4);
   });
-  // the hill
-  const hl = currentMap().hill;
-  if (hl && isKoth()){
-    c.strokeStyle = net.hillOwner === 2 ? '#FF5470'
-      : net.hillOwner >= 0 ? hex(CFG.teamColors[net.hillOwner]) : '#8892A6';
-    c.lineWidth = 3;
-    c.beginPath();
-    if (hl.r) c.arc((hl.x+half)*k, (hl.z+half)*k, hl.r*k, 0, 7);
-    else c.rect((hl.x-hl.hx+half)*k, (hl.z-hl.hz+half)*k, hl.hx*2*k, hl.hz*2*k);
-    c.stroke();
-  }
-
   // me + facing cone
   const mx = (me.pos.x+half)*k, mz = (me.pos.z+half)*k;
   c.save(); c.translate(mx, mz); c.rotate(-me.yaw);
@@ -3286,7 +3342,7 @@ function initMenu(){
     [].forEach.call(modeEls, b => b.setAttribute('aria-pressed', b.dataset.mode === wantMode ? 'true' : 'false'));
     $('modeNote').textContent =
       wantMode === 'team' ? 'Two sides. First side to ' + CFG.killTarget + ' combined frags wins. No friendly fire.' :
-      wantMode === 'koth' ? 'Two sides fight over one high ground. Hold it uncontested for ' + CFG.hillTarget + ' seconds to win.' :
+      wantMode === 'waves' ? 'Survive escalating waves of drones together. They get tougher every round; the squad shares ' + CFG.waveLives + ' respawns.' :
       'First to ' + CFG.killTarget + ' frags wins.';
   }
   [].forEach.call(modeEls, b => {
@@ -3441,11 +3497,9 @@ function startGame(kind){
   swapWeaponInitial();
   updateHud(); updateBoard();
   addFeed(currentMap().name + ' — drones: ' + diff().name, true);
-  if (isKoth()){
-    const h = currentMap().hill;
-    addFeed('King of the Hill — stand on ' + ((h && h.name) || 'the hill') + ' to bank time', true);
-    addFeed('Your clock only runs while no enemy is up there', true);
-    addFeed('You are ' + CFG.teamNames[me.team], true);
+  if (isWaves()){
+    addFeed('Wave survival — clear every drone to finish the wave', true);
+    addFeed('The squad shares ' + CFG.waveLives + ' respawns, with one back every third wave', true);
   } else if (isTeam()){
     addFeed('Realm ' + net.room + ' — teams, first side to ' + CFG.killTarget + ' combined', true);
     addFeed('You are ' + CFG.teamNames[me.team], true);
@@ -3512,8 +3566,15 @@ function frame(){
     if (me.reloading && now > me.reloadEnd) finishReload();
     if (!me.alive){
       const left = Math.max(0, (me.respawnAt - now)/1000);
-      $('deadCount').textContent = Math.ceil(left);
-      if (left <= 0) respawn();
+      // in waves a death costs the squad a shared life; with none left you sit out
+      // until the wave is cleared and the next one begins
+      if (isWaves() && !me.hadLife && net.wave.state === 'active'){
+        $('deadCount').textContent = '—';
+        $('deadBy').textContent = 'Squad out of lives — wait for the wave to be cleared';
+      } else {
+        $('deadCount').textContent = Math.ceil(left);
+        if (left <= 0) respawn();
+      }
     }
     movePlayer(dt);
     if (mouseDown && me.alive && !chatting){
@@ -3530,7 +3591,7 @@ function frame(){
 
     stepPickups(dt, now);
     writeState(dt);
-    if (mode === 'online'){ stepNetBots(dt); checkTeamWin(dt); stepHill(dt); }
+    if (mode === 'online'){ stepNetBots(dt); checkTeamWin(dt); stepWaves(dt); }
     if (mode === 'solo') stepBots(dt);
   }
 
@@ -3544,7 +3605,7 @@ function frame(){
   if (mode !== 'menu'){ updateAimAssist(); updateObjective(); }
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
-  if (isKoth()){
+  if (isWaves()){
     hudAcc += dt;
     if (hudAcc > 0.25){ hudAcc = 0; updateHud(); }
   }
