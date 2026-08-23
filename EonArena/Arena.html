@@ -374,6 +374,7 @@
       <div class="modes" id="modes">
         <button class="mode" data-mode="ffa" aria-pressed="true">Free-for-all</button>
         <button class="mode" data-mode="team" aria-pressed="false">Teams</button>
+        <button class="mode" data-mode="koth" aria-pressed="false">Hill</button>
       </div>
       <small style="display:block;margin-top:6px;color:var(--dim);font-size:11px" id="modeNote">First to 25 frags wins.</small>
     </div>
@@ -468,6 +469,7 @@ const CFG = {
   netRate: 0.067,         // seconds between position writes (15Hz, interpolated)
   botFill: 4,             // keep this many combatants in a realm by adding drones
   maxBots: 3,
+  hillTarget: 90,         // seconds of uncontested hold to win King of the Hill
   teamNames: ['AMBER','TEAL'],
   teamColors: [0xE8B04B, 0x4FD6C8],
   maxHp: 100,
@@ -702,6 +704,7 @@ const PIT = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:4.5,y:2.0},{id:'p1',x:-20,z:0,y:0},{id:'p2',x:20,z:0,y:0},
             {id:'p3',x:0,z:-20,y:0},{id:'p4',x:0,z:20,y:0} ],
+  hill:{ name:'The Platform', x:0, z:0, r:6.6, yMin:1.6, yMax:7 },
   // stair routes onto the centre platform, so drones can reach height
   climbs:[ {base:{x:0,z:10.5},  top:{x:0,z:4},  y:2.0, w:5},
            {base:{x:0,z:-10.5}, top:{x:0,z:-4}, y:2.0, w:5},
@@ -771,6 +774,7 @@ const STACKS = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
             {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0} ],
+  hill:{ name:'The Roof', x:0, z:0, hx:9.4, hz:9.4, yMin:3.5, yMax:9 },
   climbs:[ {base:{x:17.6,z:0},  top:{x:6,z:0},  y:3.8, w:13},
            {base:{x:-17.6,z:0}, top:{x:-6,z:0}, y:3.8, w:13} ],
   build(){
@@ -843,6 +847,43 @@ const STACKS = {
 const MAPS = { pit: PIT, stacks: STACKS };
 function currentMap(){ return MAPS[mapId] || PIT; }
 
+let hillMarker = null;
+const HILL_MAT = new THREE.MeshBasicMaterial({ color:0x8892A6, transparent:true, opacity:0.55, side:2 });
+function inHill(pos){
+  const h = currentMap().hill;
+  if (!h || !pos) return false;
+  if (pos.y < h.yMin || pos.y > h.yMax) return false;
+  if (h.r) return (pos.x-h.x)*(pos.x-h.x) + (pos.z-h.z)*(pos.z-h.z) < h.r*h.r;
+  return Math.abs(pos.x-h.x) < h.hx && Math.abs(pos.z-h.z) < h.hz;
+}
+function buildHillMarker(){
+  const h = currentMap().hill;
+  hillMarker = null;
+  if (!h) return;
+  const g = new THREE.Group();
+  const y = h.yMin + 0.42;
+  if (h.r){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(h.r - 0.35, h.r, 64), HILL_MAT);
+    ring.rotation.x = -Math.PI/2; ring.position.y = y;
+    g.add(ring);
+  } else {
+    const t = 0.35;
+    [[0, -h.hz], [0, h.hz]].forEach(([x,z]) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(h.hx*2, t), HILL_MAT);
+      m.rotation.x = -Math.PI/2; m.position.set(h.x + x, y, h.z + z);
+      g.add(m);
+    });
+    [[-h.hx, 0], [h.hx, 0]].forEach(([x,z]) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(t, h.hz*2), HILL_MAT);
+      m.rotation.x = -Math.PI/2; m.position.set(h.x + x, y, h.z + z);
+      g.add(m);
+    });
+  }
+  g.visible = false;
+  worldGroup.add(g);
+  hillMarker = g;
+}
+
 function buildPickupMeshes(){
   PICKUPS.forEach(p => {
     const g = new THREE.Group();
@@ -875,6 +916,7 @@ function loadMap(id){
   PICKUPS = m.pickups;
   m.build();
   buildPickupMeshes();
+  buildHillMarker();
   scene.fog = new THREE.Fog(0x090C13, m.fog[0], m.fog[1]);
   if (sun) sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
 }
@@ -1651,11 +1693,13 @@ const net = {
   offset:0, joinedAt:0, lastWrite:0, lastAttacker:null, attackerIsBot:false, matchOver:false,
   lobbyKey:null, isKeeper:false, peers:new Set(), humanCount:1, electAcc:0,
   gameMode:'ffa', teamScore:[0,0], winAcc:0,
+  hill:[0,0], hillOwner:-1, hillAcc:0, hillWrite:0,
   botAI:new Map(), botSent:new Map(), botAcc:0, sent:{},
   now(){ return Date.now() + this.offset; }
 };
 
-function isTeam(){ return mode === 'online' && net.gameMode === 'team'; }
+function isTeam(){ return mode === 'online' && (net.gameMode === 'team' || net.gameMode === 'koth'); }
+function isKoth(){ return mode === 'online' && net.gameMode === 'koth'; }
 function myColor(){ return isTeam() ? CFG.teamColors[me.team] : COLORS[me.colorIdx].hex; }
 function isFriendly(r){ return isTeam() && r && !r.self && r.team === me.team; }
 function teamSpawn(team){
@@ -1703,7 +1747,7 @@ function renderRealms(v){
   }
   el.innerHTML = rows.slice(0,8).map(r =>
     '<button class="rl" data-room="' + esc(r.room) + '"><b>' + esc(r.room) + '</b>' +
-    '<i>' + (r.m === 'team' ? 'Teams' : 'FFA') + '</i>' +
+    '<i>' + (r.m === 'team' ? 'Teams' : r.m === 'koth' ? 'Hill' : 'FFA') + '</i>' +
     '<i>' + ((MAPS[r.mp] || PIT).name) + '</i>' +
     '<span>' + r.n + (r.n === 1 ? ' player' : ' players') + '</span></button>'
   ).join('');
@@ -1740,6 +1784,7 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
     net.gameMode = cfg.mode;
     if (cfg.diff != null) diffIdx = clamp(cfg.diff, 0, 2);   // the realm's settings win
     if (cfg.map && MAPS[cfg.map] && cfg.map !== mapId) loadMap(cfg.map);
+    if (cfg.hill){ net.hill[0] = cfg.hill.a || 0; net.hill[1] = cfg.hill.b || 0; }
   }
 
   // uids keep identity honest, but a room of three "Operator"s is unreadable
@@ -1809,15 +1854,27 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
     for (const k in v) pickupTaken[k] = v[k];
   });
 
+  net.ref.child('config/hill').on('value', snap => {
+    const v = snap.val();
+    if (!v || net.isKeeper) return;         // the keeper's own figures are authoritative
+    net.hill[0] = v.a || 0;
+    net.hill[1] = v.b || 0;
+  });
+
   net.ref.child('matchOver').on('value', snap => {
     const v = snap.val();
     if (v && v.at && net.now() - v.at < 12000){
       net.matchOver = true;
       const mine = v.team >= 0 ? (v.team === me.team) : (v.by === me.uid);
       if (v.team >= 0){
-        const t = teamTotals();
         $('bannerText').textContent = (mine ? 'Your team takes it' : v.winner + ' takes it');
-        $('bannerSub').textContent = CFG.teamNames[0] + ' ' + t[0] + '  ·  ' + CFG.teamNames[1] + ' ' + t[1];
+        if (isKoth()){
+          $('bannerSub').textContent = CFG.teamNames[0] + ' ' + Math.floor(net.hill[0]) + 's  ·  ' +
+                                       CFG.teamNames[1] + ' ' + Math.floor(net.hill[1]) + 's held';
+        } else {
+          const t = teamTotals();
+          $('bannerSub').textContent = CFG.teamNames[0] + ' ' + t[0] + '  ·  ' + CFG.teamNames[1] + ' ' + t[1];
+        }
       } else {
         $('bannerText').textContent = mine ? 'You take the realm' : (v.winner + ' takes the realm');
         $('bannerSub').textContent = 'Next match starts shortly';
@@ -1894,9 +1951,47 @@ function teamTotals(){
   return t;
 }
 
+/*
+  Hill scoring. Occupancy is judged by the keeper so there is one clock, not one per
+  client: a side banks time only while it holds the zone with nobody from the other
+  side standing in it. Totals ride on config/hill, which is already writable, so this
+  needs no new database rule.
+*/
+function stepHill(dt){
+  if (!isKoth() || !net.ref) return;
+
+  // everyone works out occupancy locally for instant HUD feedback
+  const present = [false, false];
+  if (me.alive && inHill(me.pos)) present[me.team] = true;
+  remotes.forEach(r => { if (r.alive && !r.stale && inHill(r.pos)) present[r.team || 0] = true; });
+  net.hillOwner = (present[0] && present[1]) ? 2 : (present[0] ? 0 : (present[1] ? 1 : -1));
+
+  if (hillMarker){
+    hillMarker.visible = true;
+    HILL_MAT.color.setHex(
+      net.hillOwner === 0 ? CFG.teamColors[0] :
+      net.hillOwner === 1 ? CFG.teamColors[1] :
+      net.hillOwner === 2 ? 0xFF5470 : 0x8892A6
+    );
+  }
+
+  if (!net.isKeeper || net.matchOver) return;
+  if (net.hillOwner === 0 || net.hillOwner === 1) net.hill[net.hillOwner] += dt;
+
+  net.hillWrite += dt;
+  if (net.hillWrite >= 0.5){
+    net.hillWrite = 0;
+    net.ref.child('config/hill').set({
+      a: Math.round(net.hill[0]), b: Math.round(net.hill[1]), own: net.hillOwner
+    });
+  }
+  const w = net.hill[0] >= CFG.hillTarget ? 0 : (net.hill[1] >= CFG.hillTarget ? 1 : -1);
+  if (w >= 0) declareWin(CFG.teamNames[w], w, null);
+}
+
 // only the keeper watches the combined score, so a win is declared exactly once
 function checkTeamWin(dt){
-  if (!isTeam() || !net.isKeeper || net.matchOver) return;
+  if (!isTeam() || isKoth() || !net.isKeeper || net.matchOver) return;
   net.winAcc += dt;
   if (net.winAcc < 0.8) return;
   net.winAcc = 0;
@@ -1926,6 +2021,8 @@ function declareWin(winnerName, teamIdx, winnerUid){
       for (const k in v){ upd[k + '/kills'] = 0; upd[k + '/deaths'] = 0; }
       if (Object.keys(upd).length) net.ref.child('bots').update(upd);
     });
+    net.hill = [0,0];
+    net.ref.child('config/hill').set({ a:0, b:0, own:-1 });
   }, 8200);
 }
 
@@ -2541,10 +2638,28 @@ function droneThink(ai, dt, targets, hooks){
       ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*5, 0, 1));
     }
   } else {
-    if (!ai.goal || ai.pos.distanceTo(ai.goal) < 2.2) ai.goal = patrolPoint();
-    const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
-    if (!steerMove(ai, to.x, to.z, D.speed * 0.8, dt)) ai.goal = patrolPoint();
-    ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
+    // With a hill in play, idle drones go and stand on it instead of wandering —
+    // otherwise a human just walks up and caps uncontested.
+    const hl = isKoth() ? currentMap().hill : null;
+    if (hl && !ai.hillOff) ai.hillOff = { x: rand(-3.5, 3.5), z: rand(-3.5, 3.5) };
+
+    if (hl && !inHill(ai.pos)){
+      const rp = routeTo(ai, hl.x + ai.hillOff.x, hl.z + ai.hillOff.z, hl.yMin + 0.4);
+      steerMove(ai, rp.x - ai.pos.x, rp.z - ai.pos.z, D.speed * 0.95, dt);
+      ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
+    } else if (hl){
+      if (!ai.goal || ai.pos.distanceTo(ai.goal) < 1.6){
+        ai.goal = new THREE.Vector3(hl.x + rand(-4,4), ai.pos.y, hl.z + rand(-4,4));
+      }
+      const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
+      if (!steerMove(ai, to.x, to.z, D.speed * 0.55, dt)) ai.goal = null;
+      ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*3, 0, 1));
+    } else {
+      if (!ai.goal || ai.pos.distanceTo(ai.goal) < 2.2) ai.goal = patrolPoint();
+      const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
+      if (!steerMove(ai, to.x, to.z, D.speed * 0.8, dt)) ai.goal = patrolPoint();
+      ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
+    }
   }
 
   // last resort: a drone wedged inside geometry can never steer out, so ease it
@@ -2677,7 +2792,22 @@ function updateHud(){
   const rows = $('wlist').children;
   for (let i=0;i<rows.length;i++) rows[i].className = (i === me.weapon ? 'sel' : '');
 
-  if (isTeam()){
+  if (isKoth()){
+    const h = currentMap().hill;
+    const pct = t2 => Math.min(100, (net.hill[t2] / CFG.hillTarget) * 100);
+    const state =
+      net.hillOwner === 2 ? '<span style="color:var(--hostile)">CONTESTED</span>' :
+      net.hillOwner === me.team ? '<span style="color:' + hex(CFG.teamColors[me.team]) + '">YOU HOLD IT</span>' :
+      net.hillOwner >= 0 ? '<span style="color:' + hex(CFG.teamColors[net.hillOwner]) + '">' + CFG.teamNames[net.hillOwner] + ' HOLDS IT</span>' :
+      '<span style="color:var(--dim)">' + ((h && h.name) || 'The hill').toUpperCase() + ' — OPEN</span>';
+    $('score').innerHTML =
+      state +
+      '<div style="margin-top:6px;width:170px;height:6px;background:#1B2233">' +
+        '<div style="height:100%;width:' + pct(0).toFixed(0) + '%;background:' + hex(CFG.teamColors[0]) + '"></div></div>' +
+      '<div style="margin-top:3px;width:170px;height:6px;background:#1B2233">' +
+        '<div style="height:100%;width:' + pct(1).toFixed(0) + '%;background:' + hex(CFG.teamColors[1]) + '"></div></div>' +
+      '<div style="margin-top:5px;color:var(--dim)">' + Math.floor(net.hill[0]) + 's · ' + Math.floor(net.hill[1]) + 's / ' + CFG.hillTarget + 's</div>';
+  } else if (isTeam()){
     const t = net.teamScore;
     $('score').innerHTML = '<b style="color:' + hex(CFG.teamColors[0]) + '">' + CFG.teamNames[0] + ' ' + t[0] +
       '</b> &nbsp;·&nbsp; <b style="color:' + hex(CFG.teamColors[1]) + '">' + CFG.teamNames[1] + ' ' + t[1] +
@@ -2771,10 +2901,13 @@ function updateBoard(){
   }
   let html = '';
   [0,1].forEach(t => {
+    const head = isKoth()
+      ? Math.floor(net.hill[t]) + 's / ' + CFG.hillTarget + 's held'
+      : net.teamScore[t] + ' / ' + CFG.killTarget;
     html += '<tr><td colspan="4" style="padding-top:14px;border:0">' +
             '<span style="color:'+hex(CFG.teamColors[t])+';letter-spacing:.2em;font-size:11px">' +
             CFG.teamNames[t] + '</span> <span style="color:var(--dim);font-size:11px">— ' +
-            net.teamScore[t] + ' / ' + CFG.killTarget + '</span></td></tr>';
+            head + '</span></td></tr>';
     const side = rows.filter(r => r.team === t);
     html += side.length ? side.map(line).join('') : '<tr><td colspan="4" style="color:var(--dim)">—</td></tr>';
   });
@@ -2863,6 +2996,18 @@ function drawMini(){
     c.fillStyle = '#4FD6C8';
     c.fillRect((p.x+half)*k - 2, (p.z+half)*k - 2, 4, 4);
   });
+  // the hill
+  const hl = currentMap().hill;
+  if (hl && isKoth()){
+    c.strokeStyle = net.hillOwner === 2 ? '#FF5470'
+      : net.hillOwner >= 0 ? hex(CFG.teamColors[net.hillOwner]) : '#8892A6';
+    c.lineWidth = 3;
+    c.beginPath();
+    if (hl.r) c.arc((hl.x+half)*k, (hl.z+half)*k, hl.r*k, 0, 7);
+    else c.rect((hl.x-hl.hx+half)*k, (hl.z-hl.hz+half)*k, hl.hx*2*k, hl.hz*2*k);
+    c.stroke();
+  }
+
   // me + facing cone
   const mx = (me.pos.x+half)*k, mz = (me.pos.z+half)*k;
   c.save(); c.translate(mx, mz); c.rotate(-me.yaw);
@@ -2930,9 +3075,10 @@ function initMenu(){
   const modeEls = $('modes').children;
   function paintModes(){
     [].forEach.call(modeEls, b => b.setAttribute('aria-pressed', b.dataset.mode === wantMode ? 'true' : 'false'));
-    $('modeNote').textContent = wantMode === 'team'
-      ? 'Two sides. First side to ' + CFG.killTarget + ' combined frags wins. No friendly fire.'
-      : 'First to ' + CFG.killTarget + ' frags wins.';
+    $('modeNote').textContent =
+      wantMode === 'team' ? 'Two sides. First side to ' + CFG.killTarget + ' combined frags wins. No friendly fire.' :
+      wantMode === 'koth' ? 'Two sides fight over one high ground. Hold it uncontested for ' + CFG.hillTarget + ' seconds to win.' :
+      'First to ' + CFG.killTarget + ' frags wins.';
   }
   [].forEach.call(modeEls, b => {
     b.onclick = () => { wantMode = b.dataset.mode; localStorage.setItem('eonarena.mode', wantMode); paintModes(); };
@@ -3067,7 +3213,11 @@ function startGame(kind){
   swapWeaponInitial();
   updateHud(); updateBoard();
   addFeed(currentMap().name + ' — drones: ' + diff().name, true);
-  if (isTeam()){
+  if (isKoth()){
+    const h = currentMap().hill;
+    addFeed('King of the Hill — hold ' + ((h && h.name) || 'the hill') + ' for ' + CFG.hillTarget + 's', true);
+    addFeed('You are ' + CFG.teamNames[me.team], true);
+  } else if (isTeam()){
     addFeed('Realm ' + net.room + ' — teams, first side to ' + CFG.killTarget + ' combined', true);
     addFeed('You are ' + CFG.teamNames[me.team], true);
   } else {
@@ -3114,7 +3264,7 @@ function leaveArena(){
 }
 
 /* ===================== MAIN LOOP ===================== */
-let last = performance.now(), miniAcc = 0, boardAcc = 0, orbit = 0;
+let last = performance.now(), miniAcc = 0, boardAcc = 0, hudAcc = 0, orbit = 0;
 function frame(){
   requestAnimationFrame(frame);
   const now = performance.now();
@@ -3151,7 +3301,7 @@ function frame(){
 
     stepPickups(dt, now);
     writeState(dt);
-    if (mode === 'online'){ stepNetBots(dt); checkTeamWin(dt); }
+    if (mode === 'online'){ stepNetBots(dt); checkTeamWin(dt); stepHill(dt); }
     if (mode === 'solo') stepBots(dt);
   }
 
@@ -3164,6 +3314,10 @@ function frame(){
   if (mode !== 'menu') updateAimAssist();
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
+  if (isKoth()){
+    hudAcc += dt;
+    if (hudAcc > 0.25){ hudAcc = 0; updateHud(); }
+  }
   if (mode === 'online'){
     net.electAcc += dt;
     if (net.electAcc > 3){ net.electAcc = 0; electKeeper(); }
