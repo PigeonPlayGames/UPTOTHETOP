@@ -178,6 +178,30 @@
   #score{position:absolute; left:26px; top:182px; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
   #score b{color:var(--amber); font-weight:400}
 
+  #obj{
+    position:absolute; left:50%; top:calc(16px + env(safe-area-inset-top)); transform:translateX(-50%);
+    text-align:center; display:none; min-width:230px;
+  }
+  #objText{
+    font-size:12px; letter-spacing:.2em; text-transform:uppercase;
+    text-shadow:0 2px 6px #000; white-space:nowrap;
+  }
+  #objBar{margin:7px auto 0; width:230px; height:7px; background:rgba(10,14,23,.85); border:1px solid var(--line)}
+  #objBar i{display:block; height:100%; width:0%; background:var(--amber); transition:width .25s linear}
+  #objSub{font-size:10px; letter-spacing:.18em; color:var(--dim); margin-top:5px}
+  #obj.contested #objText{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+  /* pointer to the hill, orbiting the crosshair, shown while you are outside it */
+  #objArrow{position:absolute; left:50%; top:50%; width:0; height:0; display:none}
+  #objArrow::before{
+    content:""; position:absolute; left:-9px; top:-104px;
+    border-left:9px solid transparent; border-right:9px solid transparent;
+    border-bottom:15px solid var(--teal); opacity:.9;
+  }
+  /* a soft border while you are actually standing in the zone */
+  #objEdge{position:absolute; inset:0; opacity:0; transition:opacity .2s; box-shadow:inset 0 0 90px rgba(79,214,200,.35)}
+
   #hitdir{position:absolute; left:50%; top:50%; width:0; height:0; opacity:0; transition:opacity .3s}
   #hitdir::before{
     content:""; position:absolute; left:-16px; top:-132px;
@@ -281,6 +305,12 @@
     <div id="wlist"></div>
     <div id="reloading">Reloading</div>
   </div>
+  <div id="obj">
+    <div id="objText">—</div>
+    <div id="objBar"><i></i></div>
+  </div>
+  <div id="objArrow"></div>
+  <div id="objEdge"></div>
   <div id="hitdir"></div>
   <div id="shield">Spawn shield</div>
   <div id="vignette"></div>
@@ -862,6 +892,23 @@ function buildHillMarker(){
   if (!h) return;
   const g = new THREE.Group();
   const y = h.yMin + 0.42;
+  // upright posts: a line painted on the floor is invisible from anywhere but on top of it
+  const postGeo = new THREE.BoxGeometry(0.22, 3.2, 0.22);
+  const posts = [];
+  if (h.r){
+    for (let i = 0; i < 8; i++){
+      const a = (i/8) * Math.PI * 2;
+      posts.push([h.x + Math.cos(a)*h.r, h.z + Math.sin(a)*h.r]);
+    }
+  } else {
+    [[-1,-1],[1,-1],[-1,1],[1,1],[0,-1],[0,1],[-1,0],[1,0]].forEach(([sx,sz]) =>
+      posts.push([h.x + sx*h.hx, h.z + sz*h.hz]));
+  }
+  posts.forEach(([px,pz]) => {
+    const m = new THREE.Mesh(postGeo, HILL_MAT);
+    m.position.set(px, y + 1.6, pz);
+    g.add(m);
+  });
   if (h.r){
     const ring = new THREE.Mesh(new THREE.RingGeometry(h.r - 0.35, h.r, 64), HILL_MAT);
     ring.rotation.x = -Math.PI/2; ring.position.y = y;
@@ -1644,7 +1691,7 @@ function die(byName, head){
 }
 
 function respawn(){
-  const s = isTeam() ? teamSpawn(me.team) : pick(SPAWNS);
+  const s = pickSpawnPoint(me.team, true);
   me.pos.set(s.x, 0.2, s.z);
   me.vel.set(0,0,0);
   me.hp = CFG.maxHp;
@@ -1702,6 +1749,46 @@ function isTeam(){ return mode === 'online' && (net.gameMode === 'team' || net.g
 function isKoth(){ return mode === 'online' && net.gameMode === 'koth'; }
 function myColor(){ return isTeam() ? CFG.teamColors[me.team] : COLORS[me.colorIdx].hex; }
 function isFriendly(r){ return isTeam() && r && !r.self && r.team === me.team; }
+/*
+  Spawn points were picked at random, so landing inside somebody already standing
+  there was only a matter of time with eight points and up to six combatants. Pick the
+  emptiest one instead: take the first with real clearance, else the roomiest going.
+*/
+function spawnList(team){
+  const m = currentMap();
+  const teamy = (net.gameMode === 'team' || net.gameMode === 'koth') && m.teamSpawns;
+  if (!teamy) return SPAWNS;
+  const idx = m.teamSpawns[team] || m.teamSpawns[0];
+  return idx.map(i => SPAWNS[i]);
+}
+function pickSpawnPoint(team, ignoreSelf, extra){
+  const list = spawnList(team);
+  if (!list || !list.length) return SPAWNS[0];
+  const occupied = extra ? extra.slice() : [];
+  remotes.forEach(r => { if (r.alive && !r.stale) occupied.push(r.pos); });
+  bots.forEach(b => { if (b.alive) occupied.push(b.pos); });
+  if (!ignoreSelf && me.alive) occupied.push(me.pos);
+
+  const order = list.slice();
+  for (let i = order.length - 1; i > 0; i--){
+    const j = (Math.random() * (i+1)) | 0;
+    const t = order[i]; order[i] = order[j]; order[j] = t;
+  }
+  let best = order[0], bestD = -1;
+  for (let i = 0; i < order.length; i++){
+    const sp = order[i];
+    let d = 1e9;
+    for (let k = 0; k < occupied.length; k++){
+      const o = occupied[k];
+      const dd = Math.hypot(sp.x - o.x, sp.z - o.z);
+      if (dd < d) d = dd;
+    }
+    if (d > 7) return sp;
+    if (d > bestD){ bestD = d; best = sp; }
+  }
+  return best;
+}
+
 function teamSpawn(team){
   const ts = currentMap().teamSpawns;
   const idx = ts[team] || ts[0];
@@ -1804,7 +1891,12 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
     me.team = (((tx.snapshot && tx.snapshot.val()) || 1) - 1) % 2;   // alternating slots
   }
 
-  const s = net.gameMode === 'team' ? teamSpawn(me.team) : pick(SPAWNS);
+  const occupiedNow = [];
+  roster.forEach(c => {
+    const v = c.val() || {};
+    if (v.alive !== false && v.x != null) occupiedNow.push({ x:v.x, y:v.y || 0, z:v.z || 0 });
+  });
+  const s = pickSpawnPoint(me.team, true, occupiedNow);
   me.pos.set(s.x, 0.2, s.z);
   me.yaw = Math.atan2(-s.x, -s.z) + Math.PI;
 
@@ -1973,6 +2065,9 @@ function stepHill(dt){
       net.hillOwner === 1 ? CFG.teamColors[1] :
       net.hillOwner === 2 ? 0xFF5470 : 0x8892A6
     );
+    HILL_MAT.opacity = net.hillOwner === 2
+      ? 0.4 + 0.35*Math.abs(Math.sin(performance.now()/220))
+      : (net.hillOwner >= 0 ? 0.7 : 0.45);
   }
 
   if (!net.isKeeper || net.matchOver) return;
@@ -2257,7 +2352,7 @@ function botTeam(){
 function spawnBot(i){
   const id = 'd' + i;
   const team = isTeam() ? botTeam() : 0;
-  const sp = isTeam() ? teamSpawn(team) : pick(SPAWNS);
+  const sp = pickSpawnPoint(team, false);
   const ai = {
     id, team, name: BOT_NAMES[i-1] || ('DRONE-' + i),
     color: isTeam() ? CFG.teamColors[team] : 0x8892A6, goal: null, mv: 0, moveDir: 0,
@@ -2339,7 +2434,7 @@ function stepNetBots(dt){
   net.botAI.forEach(ai => {
     if (!ai.alive){
       if (now > ai.respawnAt){
-        const sp = isTeam() ? teamSpawn(ai.team) : pick(SPAWNS);
+        const sp = pickSpawnPoint(ai.team, false);
         ai.pos.set(sp.x, 0, sp.z);
         ai.hp = 100; ai.alive = true;
         ai.goal = null; ai.seenAt = -1e9; ai.threatAt = -1e9;
@@ -2693,7 +2788,7 @@ function spawnBots(n){
     const name = ['Drone-A','Drone-B','Drone-C','Drone-D'][i] || ('Drone-' + i);
     const av = buildAvatar(c, name);
     scene.add(av.group);
-    const s = SPAWNS[(i*2) % SPAWNS.length];
+    const s = pickSpawnPoint(0, false);
     bots.set('bot'+i, {
       uid:'bot'+i, name, color:c, team:0, avatar:av, alive:true, hp:100, kills:0, deaths:0,
       pos:new THREE.Vector3(s.x, 0, s.z), goal:null,
@@ -2740,7 +2835,7 @@ function stepBots(dt){
   bots.forEach(b => {
     if (!b.alive){
       if (now > b.respawn){
-        const sp = pick(SPAWNS);
+        const sp = pickSpawnPoint(0, false);
         b.pos.set(sp.x, 0, sp.z);
         b.hp = 100; b.alive = true;
         b.goal = null; b.seenAt = -1e9; b.threatAt = -1e9;
@@ -2912,6 +3007,56 @@ function updateBoard(){
     html += side.length ? side.map(line).join('') : '<tr><td colspan="4" style="color:var(--dim)">—</td></tr>';
   });
   $('boardBody').innerHTML = html;
+}
+
+/*
+  Objective readout. The corner bars are easy to miss mid-fight, so the state that
+  matters — are you on it, is it contested, which way is it — goes at the top of the
+  screen, around the crosshair, and on the screen edge.
+*/
+function updateObjective(){
+  const el = $('obj'), arrow = $('objArrow'), edge = $('objEdge');
+  if (!isKoth() || mode === 'menu'){
+    el.style.display = 'none';
+    arrow.style.display = 'none';
+    edge.style.opacity = 0;
+    return;
+  }
+  const h = currentMap().hill;
+  const name = (h && h.name ? h.name : 'the hill').toUpperCase();
+  const inside = me.alive && inHill(me.pos);
+  const dist = h ? Math.hypot(me.pos.x - h.x, me.pos.z - h.z) : 0;
+
+  let text, col;
+  if (net.hillOwner === 2){
+    text = 'CONTESTED — CLEAR THEM OFF'; col = 'var(--hostile)';
+  } else if (net.hillOwner === me.team){
+    text = (inside ? 'HOLDING ' : 'YOUR TEAM HOLDS ') + name; col = hex(CFG.teamColors[me.team]);
+  } else if (net.hillOwner >= 0){
+    text = CFG.teamNames[net.hillOwner] + ' HOLDS ' + name; col = hex(CFG.teamColors[net.hillOwner]);
+  } else {
+    text = name + ' IS OPEN'; col = 'var(--ink)';
+  }
+  if (!inside) text += '  ·  ' + Math.round(dist) + 'm';
+
+  el.style.display = 'block';
+  el.classList.toggle('contested', net.hillOwner === 2);
+  $('objText').innerHTML = text + '<div id="objSub">' +
+    Math.floor(net.hill[me.team]) + 's held  ·  ' + CFG.hillTarget + 's to win</div>';
+  $('objText').style.color = col;
+  const bar = $('objBar').firstElementChild;
+  bar.style.width = Math.min(100, (net.hill[me.team] / CFG.hillTarget) * 100).toFixed(0) + '%';
+  bar.style.background = hex(CFG.teamColors[me.team]);
+
+  edge.style.opacity = inside && net.hillOwner !== 2 ? 1 : 0;
+
+  if (inside || !h || !me.alive){
+    arrow.style.display = 'none';
+  } else {
+    const rel = Math.atan2(h.x - me.pos.x, h.z - me.pos.z) - (me.yaw + Math.PI);
+    arrow.style.display = 'block';
+    arrow.style.transform = 'rotate(' + (-rel) + 'rad)';
+  }
 }
 
 /*
@@ -3215,7 +3360,8 @@ function startGame(kind){
   addFeed(currentMap().name + ' — drones: ' + diff().name, true);
   if (isKoth()){
     const h = currentMap().hill;
-    addFeed('King of the Hill — hold ' + ((h && h.name) || 'the hill') + ' for ' + CFG.hillTarget + 's', true);
+    addFeed('King of the Hill — stand on ' + ((h && h.name) || 'the hill') + ' to bank time', true);
+    addFeed('Your clock only runs while no enemy is up there', true);
     addFeed('You are ' + CFG.teamNames[me.team], true);
   } else if (isTeam()){
     addFeed('Realm ' + net.room + ' — teams, first side to ' + CFG.killTarget + ' combined', true);
@@ -3311,7 +3457,7 @@ function frame(){
 
   miniAcc += dt;
   if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); updateTagVisibility(); }
-  if (mode !== 'menu') updateAimAssist();
+  if (mode !== 'menu'){ updateAimAssist(); updateObjective(); }
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
   if (isKoth()){
