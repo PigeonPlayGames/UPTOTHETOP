@@ -63,11 +63,31 @@
   button[disabled]{opacity:.45; cursor:not-allowed}
 
   /* ---------- menu ---------- */
+  /* align-items:center on a scrollable flex container clips the overflowing top and
+     makes it unreachable — margin:auto on the child centres without that failure */
   #menu{
-    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-    padding:20px; backdrop-filter:blur(3px); background:rgba(6,8,13,.55); z-index:40; overflow:auto;
+    position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center;
+    padding:max(16px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+            max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    backdrop-filter:blur(3px); background:rgba(6,8,13,.55); z-index:40;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
   }
-  #menuCard{width:min(560px,100%); padding:30px 30px 26px}
+  #menuCard{width:min(560px,100%); padding:30px 30px 26px; margin:auto}
+
+  @media (max-height:820px), (max-width:560px){
+    #menuCard{padding:18px 18px 16px}
+    .wordmark{font-size:clamp(30px,8vw,44px); margin:6px 0 4px}
+    .tagline{margin-bottom:14px; font-size:11px; line-height:1.5}
+    .field{margin-bottom:12px}
+    .divider{margin:14px 0}
+    .opts{gap:10px 14px; margin:12px 0 4px}
+    #realms{max-height:104px}
+    button{padding:11px 14px}
+  }
+  @media (max-height:620px){
+    .tagline{display:none}
+    .wordmark{font-size:30px}
+  }
   .wordmark{
     font-family:var(--display); font-weight:900; font-size:clamp(38px,9vw,64px);
     line-height:.88; letter-spacing:-.035em; text-transform:uppercase; margin:10px 0 6px;
@@ -214,8 +234,8 @@
     -webkit-tap-highlight-color:transparent; user-select:none; padding:0;
   }
   .tbtn:active, .tbtn.on{background:rgba(232,176,75,.3); border-color:var(--amber); color:var(--amber)}
-  #tFire{right:calc(22px + env(safe-area-inset-right)); bottom:calc(104px + env(safe-area-inset-bottom)); width:98px; height:98px; font-size:12px; border-width:2px}
-  #tJump{right:calc(134px + env(safe-area-inset-right)); bottom:calc(76px + env(safe-area-inset-bottom)); width:66px; height:66px}
+  #tFire{right:calc(20px + env(safe-area-inset-right)); bottom:calc(102px + env(safe-area-inset-bottom)); width:108px; height:108px; font-size:12px; border-width:2px}
+  #tJump{right:calc(140px + env(safe-area-inset-right)); bottom:calc(72px + env(safe-area-inset-bottom)); width:72px; height:72px}
   #tReload{right:calc(38px + env(safe-area-inset-right)); bottom:calc(26px + env(safe-area-inset-bottom)); width:60px; height:60px}
   #tAds{right:calc(142px + env(safe-area-inset-right)); bottom:calc(158px + env(safe-area-inset-bottom)); width:58px; height:58px}
   #tTools{position:absolute; top:calc(12px + env(safe-area-inset-top)); right:calc(12px + env(safe-area-inset-right)); display:flex; gap:8px}
@@ -391,6 +411,14 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
     </div>
 
+    <div class="field" id="touchOpts" style="display:none">
+      <label for="tsensIn">Touch look speed</label>
+      <input id="tsensIn" type="range" min="50" max="280" value="140">
+      <small id="tsensVal" style="display:block;margin-top:4px;color:var(--dim);font-size:11px">1.40</small>
+      <label class="toggle" style="margin-top:12px"><input type="checkbox" id="assistIn" checked> Aim assist</label>
+      <small style="display:block;margin-top:4px;color:var(--dim);font-size:11px">Slows your aim while the crosshair is on an enemy, so a thumb can hold a target. Touch only — it never aims for you.</small>
+    </div>
+
     <div class="divider"></div>
 
     <div class="row" style="gap:10px">
@@ -398,7 +426,7 @@
       <button id="btnSolo">Practice offline</button>
     </div>
     <div id="status"></div>
-    <div class="note" id="touchNote" style="display:none">Touch controls are on: left thumb to move, right thumb to look, buttons on the right to fire. Landscape works best.</div>
+    <div class="note" id="touchNote" style="display:none">Touch controls are on: left thumb to move, right thumb to look. Tap the right side to fire, or hold the Fire button. Landscape works best.</div>
     <div class="note">Practice offline drops you in alone with three training drones — no Firebase needed. <b>Enter arena</b> needs your Firebase config pasted at the top of this file.</div>
   </div>
 </div>
@@ -674,10 +702,10 @@ const PIT = {
   pickups:[ {id:'p0',x:0,z:4.5,y:2.0},{id:'p1',x:-20,z:0,y:0},{id:'p2',x:20,z:0,y:0},
             {id:'p3',x:0,z:-20,y:0},{id:'p4',x:0,z:20,y:0} ],
   // stair routes onto the centre platform, so drones can reach height
-  climbs:[ {base:{x:0,z:10.5},  top:{x:0,z:4},  y:2.0},
-           {base:{x:0,z:-10.5}, top:{x:0,z:-4}, y:2.0},
-           {base:{x:10.5,z:0},  top:{x:4,z:0},  y:2.0},
-           {base:{x:-10.5,z:0}, top:{x:-4,z:0}, y:2.0} ],
+  climbs:[ {base:{x:0,z:10.5},  top:{x:0,z:4},  y:2.0, w:5},
+           {base:{x:0,z:-10.5}, top:{x:0,z:-4}, y:2.0, w:5},
+           {base:{x:10.5,z:0},  top:{x:4,z:0},  y:2.0, w:5},
+           {base:{x:-10.5,z:0}, top:{x:-4,z:0}, y:2.0, w:5} ],
   build(){
     const S = 62, H = 8, h = S/2;
     flat(new THREE.PlaneGeometry(S,S), MAT.floor, 0, 0, 0);
@@ -742,8 +770,8 @@ const STACKS = {
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
   pickups:[ {id:'p0',x:0,z:6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
             {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0} ],
-  climbs:[ {base:{x:16.4,z:0},  top:{x:6,z:0},  y:3.8},
-           {base:{x:-16.4,z:0}, top:{x:-6,z:0}, y:3.8} ],
+  climbs:[ {base:{x:16.4,z:0},  top:{x:6,z:0},  y:3.8, w:12},
+           {base:{x:-16.4,z:0}, top:{x:-6,z:0}, y:3.8, w:12} ],
   build(){
     const S = 44, H = 7, h = S/2;
     flat(new THREE.PlaneGeometry(S,S), MAT.floor2, 0, 0, 0);
@@ -774,14 +802,14 @@ const STACKS = {
     box(0, 3.8, -9.2, 19.2, 0.8, 0.8, MAT.crateB);
     box(0, 3.8,  9.2, 19.2, 0.8, 0.8, MAT.crateB);
     [-1,1].forEach(sx => {
-      box(sx*9.2, 3.8, -6.1, 0.8, 0.8, 6.2, MAT.crateB);   // gap at z≈0 where the stairs land
-      box(sx*9.2, 3.8,  6.1, 0.8, 0.8, 6.2, MAT.crateB);
+      box(sx*9.2, 3.8, -7.9, 0.8, 0.8, 2.6, MAT.crateB);   // east/west edges open onto the terraces
+      box(sx*9.2, 3.8,  7.9, 0.8, 0.8, 2.6, MAT.crateB);
     });
 
     // external stairs to the roof on the east and west faces
     [-1,1].forEach(sx => {
       for (let i = 0; i < 6; i++){
-        box(sx*(9.95 + (5-i)*1.1), 0, 0, 1.1, 0.55 + i*0.55, 4.6, i%2 ? MAT.crateA : MAT.crateB);
+        box(sx*(9.95 + (5-i)*1.1), 0, 0, 1.1, 0.55 + i*0.55, 12.0, i%2 ? MAT.crateA : MAT.crateB);
       }
     });
 
@@ -1025,15 +1053,20 @@ let sensitivity = 1.10, targetFov = 88;
 /* ===================== TOUCH CONTROLS ===================== */
 const touch = {
   on:false, moveId:null, lookId:null,
-  origin:{x:0,y:0}, move:{x:0,y:0}, mag:0, last:{x:0,y:0}
+  origin:{x:0,y:0}, move:{x:0,y:0}, mag:0, last:{x:0,y:0},
+  sens:1.4, assist:true, stickF:1,
+  lookStart:{x:0,y:0,t:0}, lookMoved:0
 };
 const STICK_R = 58;
+const STICK_DEAD = 0.14;
 
 function touchAvailable(){ return matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0; }
 function setTouchMode(on){
   touch.on = on;
   const note = $('touchNote');
   if (note) note.style.display = on ? 'block' : 'none';
+  const opts = $('touchOpts');
+  if (opts) opts.style.display = on ? 'block' : 'none';
   document.body.classList.toggle('touch', on);
   const t = $('touchIn');
   if (t) t.checked = on;
@@ -1055,6 +1088,9 @@ function initTouch(){
     } else if (touch.lookId === null){
       touch.lookId = t.identifier;
       touch.last.x = t.clientX; touch.last.y = t.clientY;
+      touch.lookStart.x = t.clientX; touch.lookStart.y = t.clientY;
+      touch.lookStart.t = performance.now();
+      touch.lookMoved = 0;
     }
   }
 
@@ -1074,13 +1110,22 @@ function initTouch(){
         let dx = t.clientX - touch.origin.x, dy = t.clientY - touch.origin.y;
         const d = Math.hypot(dx, dy);
         if (d > STICK_R){ dx = dx/d*STICK_R; dy = dy/d*STICK_R; }
-        touch.move.x = dx/STICK_R; touch.move.y = dy/STICK_R;
-        touch.mag = Math.min(1, d/STICK_R);
+        let m = Math.min(1, d/STICK_R);
+        m = m < STICK_DEAD ? 0 : (m - STICK_DEAD)/(1 - STICK_DEAD);
+        m = m * (0.55 + 0.45*m);            // ease in: gentle near centre, full at the rim
+        const ux = d > 0.001 ? dx/d : 0, uz = d > 0.001 ? dy/d : 0;
+        touch.move.x = ux * m; touch.move.y = uz * m;
+        touch.mag = m;
         stick.firstElementChild.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
       } else if (t.identifier === touch.lookId){
-        const s2 = sensitivity * 0.0042 * (me.ads ? 0.55 : 1);
-        me.yaw   -= (t.clientX - touch.last.x) * s2;
-        me.pitch -= (t.clientY - touch.last.y) * s2;
+        const dx2 = t.clientX - touch.last.x, dy2 = t.clientY - touch.last.y;
+        const mag = Math.hypot(dx2, dy2);
+        touch.lookMoved += mag;
+        // flicks turn faster than slow drags, so you can spin round and still aim finely
+        const accel = 1 + Math.min(1.1, mag / 26);
+        const s2 = touch.sens * 0.0042 * accel * (me.ads ? 0.55 : 1) * touch.stickF;
+        me.yaw   -= dx2 * s2;
+        me.pitch -= dy2 * s2;
         me.pitch = clamp(me.pitch, -1.53, 1.53);
         touch.last.x = t.clientX; touch.last.y = t.clientY;
       }
@@ -1095,6 +1140,12 @@ function initTouch(){
         touch.moveId = null; touch.move.x = touch.move.y = 0; touch.mag = 0;
         stick.style.display = 'none';
       } else if (t.identifier === touch.lookId){
+        // a quick tap that barely moved is a shot, so you can fire without
+        // letting go of the aiming thumb to reach the button
+        if (touch.lookMoved < 16 && performance.now() - touch.lookStart.t < 260 && me.alive && !chatting){
+          mouseDown = true;
+          setTimeout(() => { mouseDown = false; }, 70);
+        }
         touch.lookId = null;
       }
     }
@@ -1210,9 +1261,9 @@ function lockPointer(){
 /* ===================== MOVEMENT + COLLISION ===================== */
 // highest surface at or below the entity's feet (plus a step) — must be height aware,
 // or anything standing under a roof gets lifted onto it
-function groundAt(x, z, fromY){
+function groundAt(x, z, fromY, reach){
   const R = CFG.playerRadius;
-  const ceiling = (fromY == null ? 1e9 : fromY + CFG.stepHeight);
+  const ceiling = (fromY == null ? 1e9 : fromY + (reach == null ? CFG.stepHeight : reach));
   let top = 0;
   for (const b of colliders){
     if (x + R > b.min.x && x - R < b.max.x && z + R > b.min.z && z - R < b.max.z){
@@ -2241,11 +2292,17 @@ function hasLOS(from, to){
   return ray.intersectObjects(solids, false).length === 0;
 }
 
-// true if a waist-high obstruction sits at this spot that the drone can't step over
+/*
+  A player can jump 1.45m, so most of this map's ledges are meant to be mounted rather
+  than walked around. Holding drones to a 0.62m step made every route a threading
+  problem for a steering heuristic that isn't a pathfinder. Give them the same reach a
+  player has and the narrow staircase stops being the only way up.
+*/
+const DRONE_STEP = 1.30;
 function blockedAt(x, z, feetY){
   for (const b of colliders){
     if (x + 0.42 > b.min.x && x - 0.42 < b.max.x && z + 0.42 > b.min.z && z - 0.42 < b.max.z){
-      if (b.max.y > feetY + CFG.stepHeight + 0.06 && b.min.y < feetY + 1.7) return true;
+      if (b.max.y > feetY + DRONE_STEP && b.min.y < feetY + 1.7) return true;
     }
   }
   return false;
@@ -2264,8 +2321,12 @@ function steerMove(ai, dirX, dirZ, speed, dt){
   */
   ai.avoidT = (ai.avoidT || 0) - dt;
   const committed = ai.avoidT > 0 && ai.avoidSign;
+  // Straight ahead is always tried first. An earlier version put the committed
+  // deflection first, which made a drone on a staircase drift diagonally off the
+  // side of the treads instead of walking up them. Commitment only decides which
+  // way to go *around* something once the direct path is genuinely blocked.
   const deflect = committed
-    ? [ai.avoidSign*0.6, ai.avoidSign*1.1, ai.avoidSign*1.7, ai.avoidSign*2.4, 0, -ai.avoidSign*1.1]
+    ? [0, ai.avoidSign*0.6, ai.avoidSign*1.1, ai.avoidSign*1.7, ai.avoidSign*2.4, -ai.avoidSign*1.1]
     : [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4];
 
   for (let i = 0; i < deflect.length; i++){
@@ -2276,13 +2337,16 @@ function steerMove(ai, dirX, dirZ, speed, dt){
       const lim = (currentMap().id === 'stacks' ? 22 : 31) - 2;
       ai.pos.x = clamp(nx, -lim, lim);
       ai.pos.z = clamp(nz, -lim, lim);
-      const g = groundAt(ai.pos.x, ai.pos.z, ai.pos.y);
-      ai.pos.y = g > ai.pos.y ? g : lerp(ai.pos.y, g, clamp(dt*10, 0, 1));
+      const g = groundAt(ai.pos.x, ai.pos.z, ai.pos.y, DRONE_STEP);
+      // rising is quick but not instant, so a mount reads as a hop rather than a pop
+      ai.pos.y = g > ai.pos.y ? Math.min(g, ai.pos.y + 9*dt) : lerp(ai.pos.y, g, clamp(dt*10, 0, 1));
       ai.moveDir = Math.atan2(-dx, -dz);
       ai.mv = 1;
-      if (!committed){
-        if (deflect[i] === 0){ ai.avoidSign = 0; ai.avoidT = 0; }
-        else { ai.avoidSign = deflect[i] > 0 ? 1 : -1; ai.avoidT = 1.2; }
+      if (deflect[i] !== 0){
+        ai.avoidSign = deflect[i] > 0 ? 1 : -1;
+        ai.avoidT = 1.2;
+      } else if (!committed){
+        ai.avoidSign = 0; ai.avoidT = 0;
       }
       return true;
     }
@@ -2311,12 +2375,20 @@ function routeTo(ai, tx, tz, ty){
   routePt.x = tx; routePt.z = tz;
   const climbs = currentMap().climbs;
   if (!climbs || !climbs.length) return routePt;
-  if (ty - ai.pos.y <= 1.2) return routePt;          // same level, go direct
 
-  // stick with one stairway once committed, or a drone between two will dither
-  let best = ai.onRamp ? ai.climbPick : null;
-  let bd = best ? Math.hypot(ai.pos.x - best.base.x, ai.pos.z - best.base.z) : 1e9;
+  // stay committed until level with the goal, not just within a step of it
+  const rise = ty - ai.pos.y;
+  if (!(rise > 1.2 || (ai.onRamp && rise > 0.4))){
+    ai.onRamp = false;
+    ai.climbPick = null;
+    return routePt;
+  }
+
+  // keep the chosen stairway while it is still nearby, otherwise take the closest
+  let best = ai.climbPick;
+  if (best && Math.hypot(ai.pos.x - best.base.x, ai.pos.z - best.base.z) > 18) best = null;
   if (!best){
+    let bd = 1e9;
     for (let i = 0; i < climbs.length; i++){
       const c = climbs[i];
       const d = Math.hypot(ai.pos.x - c.base.x, ai.pos.z - c.base.z);
@@ -2326,12 +2398,20 @@ function routeTo(ai, tx, tz, ty){
   }
   if (!best) return routePt;
 
-  // Latch the decision. Switching on distance alone makes a drone flip between
-  // "walk to the stairs" and "walk up them" a few metres out, and oscillate there.
-  // Commit once it is actually on a tread (or standing on the bottom one), and only
-  // let go once it is back on the floor and well clear.
-  if (ai.pos.y > 0.35 || bd < 1.2) ai.onRamp = true;
-  else if (ai.pos.y < 0.15 && bd > 3.5) ai.onRamp = false;
+  /*
+    "Am I on the stairs?" has to be geometric. Judging it by height alone means any
+    waist-high crate counts, and a drone standing on cover across the map thinks it
+    is already climbing. Project onto the base->top line instead.
+  */
+  const vx = best.top.x - best.base.x, vz = best.top.z - best.base.z;
+  const wx = ai.pos.x - best.base.x,   wz = ai.pos.z - best.base.z;
+  const L2 = vx*vx + vz*vz || 1;
+  const t = clamp((wx*vx + wz*vz) / L2, -0.5, 1.5);
+  const perp = Math.hypot(ai.pos.x - (best.base.x + vx*t), ai.pos.z - (best.base.z + vz*t));
+  // A tight corridor on purpose: commit only when genuinely lined up with the climb.
+  // A generous radius makes drones near the building think they are already on it and
+  // walk into the wall instead of going round to the terrace.
+  ai.onRamp = perp < 3.0 && t > -0.3;
 
   routePt.x = ai.onRamp ? best.top.x : best.base.x;
   routePt.z = ai.onRamp ? best.top.z : best.base.z;
@@ -2408,7 +2488,8 @@ function droneThink(ai, dt, targets, hooks){
     const to = dA.copy(seen.pos).sub(ai.pos); to.y = 0;
     const d = to.length() || 1;
     to.divideScalar(d);
-    if (seen.pos.y - ai.pos.y > 1.2){
+    const above = seen.pos.y - ai.pos.y;
+    if (above > 1.2 || (ai.onRamp && above > 0.4)){
       const rp = routeTo(ai, seen.pos.x, seen.pos.z, seen.pos.y);   // they're above us: take the stairs
       steerMove(ai, rp.x - ai.pos.x, rp.z - ai.pos.z, D.speed, dt);
     } else {
@@ -2469,7 +2550,7 @@ function droneThink(ai, dt, targets, hooks){
       const r = Math.hypot(ai.pos.x, ai.pos.z) || 1;
       ai.pos.x -= (ai.pos.x / r) * 0.7;
       ai.pos.z -= (ai.pos.z / r) * 0.7;
-      ai.pos.y = groundAt(ai.pos.x, ai.pos.z, ai.pos.y);
+      ai.pos.y = groundAt(ai.pos.x, ai.pos.z, ai.pos.y, DRONE_STEP);
       ai.goal = null;
     }
   } else {
@@ -2694,6 +2775,26 @@ function updateBoard(){
   $('boardBody').innerHTML = html;
 }
 
+/*
+  Touch aim assist: while the crosshair is actually on an enemy, look input is damped
+  so a thumb can hold the target. It never moves your aim for you and never widens a
+  hitbox — a touch player still has to put the crosshair there themselves.
+*/
+const assistOrigin = new THREE.Vector3(), assistDir = new THREE.Vector3();
+function updateAimAssist(){
+  if (!touch.on || !touch.assist){ touch.stickF = 1; return; }
+  camera.getWorldPosition(assistOrigin);
+  camera.getWorldDirection(assistDir);
+  ray.set(assistOrigin, assistDir);
+  ray.far = 90;
+  let onTarget = false;
+  eachTarget(t => {
+    if (onTarget || !t.alive || t.stale || isFriendly(t)) return;
+    if (ray.intersectObjects([t.avatar.bodyHit, t.avatar.headHit], false).length) onTarget = true;
+  });
+  touch.stickF = onTarget ? 0.45 : 1;
+}
+
 /* nametags: enemies only when you can actually see them, teammates always */
 const tagFrom = new THREE.Vector3(), tagTo = new THREE.Vector3();
 function updateTagVisibility(){
@@ -2842,6 +2943,22 @@ function initMenu(){
     b.onclick = () => { diffIdx = +b.dataset.diff; localStorage.setItem('eonarena.diff', diffIdx); paintDiff(); };
   });
   paintDiff();
+
+  const tsensIn = $('tsensIn'), assistIn = $('assistIn');
+  touch.sens = (+(localStorage.getItem('eonarena.tsens')) || 140) / 100;
+  tsensIn.value = Math.round(touch.sens * 100);
+  $('tsensVal').textContent = touch.sens.toFixed(2);
+  tsensIn.oninput = () => {
+    touch.sens = tsensIn.value / 100;
+    $('tsensVal').textContent = touch.sens.toFixed(2);
+    localStorage.setItem('eonarena.tsens', tsensIn.value);
+  };
+  touch.assist = localStorage.getItem('eonarena.assist') !== '0';
+  assistIn.checked = touch.assist;
+  assistIn.onchange = () => {
+    touch.assist = assistIn.checked;
+    localStorage.setItem('eonarena.assist', touch.assist ? '1' : '0');
+  };
 
   const touchIn = $('touchIn');
   const stored = localStorage.getItem('eonarena.touch');
@@ -3017,6 +3134,7 @@ function frame(){
 
   miniAcc += dt;
   if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); updateTagVisibility(); }
+  if (mode !== 'menu') updateAimAssist();
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
   if (mode === 'online'){
