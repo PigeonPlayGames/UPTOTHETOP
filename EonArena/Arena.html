@@ -441,6 +441,8 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="shadowIn" checked> Dynamic shadows</label><small>Turn off on older laptops</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="soundIn" checked> Sound</label><small>Synthesised, no downloads</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match</small></div>
+      <div class="opt"><label for="musicVol">Music volume</label><input id="musicVol" type="range" min="0" max="100" value="60"><small id="musicVolVal">60%</small></div>
     </div>
 
     <div class="field" id="touchOpts" style="display:none">
@@ -491,6 +493,14 @@ const firebaseConfig = {
   messagingSenderId: "144034388827",
   appId: "1:144034388827:web:dd14cde1e809abd123587e"
 };
+
+/* ---------------------------------------------------------------------
+   BACKGROUND MUSIC
+   Drop an audio file next to Arena.html and name it here. Loops forever,
+   louder on the menu than in a match. Leave it as-is if you have no file —
+   the game just hides the music controls.
+   --------------------------------------------------------------------- */
+const MUSIC_FILE = 'EonArena1.mp3';
 
 /* ===================== TUNABLES ===================== */
 const CFG = {
@@ -637,6 +647,60 @@ function audioBearing(pos){
   const rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
   const pan = d < 0.001 ? 0 : clamp(((dx/d)*rx + (dz/d)*rz), -1, 1) * 0.85;
   return { gain, pan };
+}
+
+/* ===================== MUSIC ===================== */
+/*
+  Kept separate from the synthesised sound effects: it has its own volume, its own
+  toggle, and it ducks in a match so gunfire and footsteps stay readable. Uses a plain
+  audio element rather than the Web Audio graph — nothing here needs filtering, and it
+  keeps working if the audio context is refused.
+*/
+const music = {
+  el:null, on:true, level:0.6, ready:false, missing:false, started:false,
+  menuGain:0.75, gameGain:0.22
+};
+
+function initMusic(){
+  const el = new Audio();
+  el.loop = true;
+  el.preload = 'auto';
+  el.volume = 0;
+  el.addEventListener('canplaythrough', () => { music.ready = true; });
+  el.addEventListener('error', () => {
+    music.missing = true;
+    const n = $('musicNote');
+    if (n){
+      n.textContent = 'No ' + MUSIC_FILE + ' found next to Arena.html';
+      n.style.color = 'var(--dim)';
+    }
+    const box = $('musicIn');
+    if (box){ box.checked = false; box.disabled = true; }
+    const vol = $('musicVol');
+    if (vol) vol.disabled = true;
+  });
+  el.src = MUSIC_FILE;
+  music.el = el;
+}
+
+// browsers refuse audio until the page has been interacted with, so the first
+// click or key press is what actually starts it
+function startMusic(){
+  if (!music.el || music.missing || !music.on || music.started) return;
+  const p = music.el.play();
+  if (p && p.catch) p.catch(() => { music.started = false; });
+  music.started = true;
+}
+function musicTarget(){
+  if (!music.on || music.missing) return 0;
+  return (mode === 'menu' ? music.menuGain : music.gameGain) * music.level;
+}
+function stepMusic(dt){
+  if (!music.el) return;
+  const want = musicTarget();
+  const now = music.el.volume;
+  music.el.volume = clamp(now + (want - now) * clamp(dt * 1.8, 0, 1), 0, 1);
+  if (music.on && !music.started && want > 0) startMusic();
 }
 
 /* ===================== RENDERER / SCENE ===================== */
@@ -3262,6 +3326,25 @@ function initMenu(){
   });
   paintDiff();
 
+  const musicIn = $('musicIn'), musicVol = $('musicVol');
+  music.on = localStorage.getItem('eonarena.music') !== '0';
+  music.level = (+(localStorage.getItem('eonarena.musicvol')) || 60) / 100;
+  musicIn.checked = music.on;
+  musicVol.value = Math.round(music.level * 100);
+  $('musicVolVal').textContent = Math.round(music.level * 100) + '%';
+  musicIn.onchange = () => {
+    music.on = musicIn.checked;
+    localStorage.setItem('eonarena.music', music.on ? '1' : '0');
+    if (music.on) startMusic();
+    else if (music.el){ music.el.pause(); music.started = false; }
+  };
+  musicVol.oninput = () => {
+    music.level = musicVol.value / 100;
+    $('musicVolVal').textContent = musicVol.value + '%';
+    localStorage.setItem('eonarena.musicvol', musicVol.value);
+    if (music.level > 0) startMusic();
+  };
+
   const tsensIn = $('tsensIn'), assistIn = $('assistIn');
   touch.sens = (+(localStorage.getItem('eonarena.tsens')) || 140) / 100;
   tsensIn.value = Math.round(touch.sens * 100);
@@ -3451,6 +3534,7 @@ function frame(){
     if (mode === 'solo') stepBots(dt);
   }
 
+  stepMusic(dt);
   stepRemotes(dt);
   if (mode !== 'menu') stepRemoteFire();
   stepFx(dt);
@@ -3484,7 +3568,11 @@ function frame(){
   buildHudBits();
   initInput();
   initTouch();
+  initMusic();
   initMenu();
+  // audio is blocked until the page has been interacted with — take the first one
+  ['pointerdown','keydown','touchstart'].forEach(ev =>
+    addEventListener(ev, startMusic, { once:true, passive:true }));
   updateHud();
   if (initFirebaseApp()) subscribeLobby();
   $('boot').style.display = 'none';
