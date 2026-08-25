@@ -175,7 +175,11 @@
   #feed em{font-style:normal; color:var(--dim); margin:0 6px}
 
   #mini{position:absolute; left:26px; top:22px; width:150px; height:150px; border:1px solid var(--line); background:rgba(8,10,16,.6)}
-  #score{position:absolute; left:26px; top:182px; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
+  #modeTag{
+    position:absolute; left:26px; top:182px; font-size:10px; letter-spacing:.26em;
+    text-transform:uppercase; color:var(--amber);
+  }
+  #score{position:absolute; left:26px; top:200px; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)}
   #score b{color:var(--amber); font-weight:400}
 
   #obj{
@@ -272,7 +276,8 @@
   body.touch #vitals{left:calc(20px + env(safe-area-inset-left)); bottom:calc(20px + env(safe-area-inset-bottom))}
   body.touch #feed{top:64px; max-width:40vw}
   body.touch #mini{width:112px; height:112px; left:calc(16px + env(safe-area-inset-left)); top:calc(14px + env(safe-area-inset-top))}
-  body.touch #score{left:calc(16px + env(safe-area-inset-left)); top:calc(136px + env(safe-area-inset-top))}
+  body.touch #modeTag{left:calc(16px + env(safe-area-inset-left)); top:calc(134px + env(safe-area-inset-top))}
+  body.touch #score{left:calc(16px + env(safe-area-inset-left)); top:calc(152px + env(safe-area-inset-top))}
   body.touch #chat{bottom:calc(240px + env(safe-area-inset-bottom)); left:calc(16px + env(safe-area-inset-left)); width:min(360px,44vw)}
   #rotate{position:fixed; inset:0; z-index:70; display:none; align-items:center; justify-content:center; background:var(--void); text-align:center; padding:30px}
   body.touch.playing.portrait #rotate{display:flex}
@@ -292,6 +297,7 @@
 
 <div id="hud">
   <div id="mini"><canvas id="miniC" width="300" height="300" style="width:100%;height:100%"></canvas></div>
+  <div id="modeTag">—</div>
   <div id="score">Frags <b id="scoreMe">0</b> &nbsp;/&nbsp; Target <b id="scoreTarget">25</b></div>
   <div id="feed"></div>
   <div id="cross"><i class="h1"></i><i class="h2"></i><i class="v1"></i><i class="v2"></i><i class="dot"></i></div>
@@ -500,7 +506,7 @@ const firebaseConfig = {
    louder on the menu than in a match. Leave it as-is if you have no file —
    the game just hides the music controls.
    --------------------------------------------------------------------- */
-const MUSIC_FILE = 'EonArena1.mp3';
+const MUSIC_FILE = 'music.mp3';
 
 /* ===================== TUNABLES ===================== */
 const CFG = {
@@ -1772,7 +1778,7 @@ function isFriendly(r){ return isTeam() && r && !r.self && r.team === me.team; }
 */
 function spawnList(team){
   const m = currentMap();
-  const teamy = (net.gameMode === 'team' || net.gameMode === 'koth') && m.teamSpawns;
+  const teamy = net.gameMode === 'team' && m.teamSpawns;
   if (!teamy) return SPAWNS;
   const idx = m.teamSpawns[team] || m.teamSpawns[0];
   return idx.map(i => SPAWNS[i]);
@@ -1836,6 +1842,7 @@ function subscribeLobby(){
   });
 }
 function renderRealms(v){
+  net.lobbySnapshot = v;
   const rows = [];
   for (const room in v){
     const entry = v[room] || {};
@@ -1875,16 +1882,43 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
   net.offset = off.val() || 0;
   net.joinedAt = net.now();
 
-  // a realm's match type is set by whoever creates it; later arrivals adopt it
+  /*
+    Read the roster before deciding the match type. The config node outlives the
+    players in it, so a code used once for free-for-all would otherwise be stuck that
+    way forever and silently override whatever the menu says. If nobody is currently
+    in the realm, whoever walks in sets the rules.
+  */
+  const roster = await net.ref.child('players').once('value');
+  const ghosts = [];
+  let liveCount = 0;
+  roster.forEach(c => {
+    const v = c.val() || {};
+    // our own node from a previous session: anonymous auth keeps the same uid across
+    // reloads, so this is us, not another player
+    if (c.key === me.uid){ ghosts.push(c.key); return; }
+    // no heartbeat, or a stale one: onDisconnect did not fire (crash, killed tab)
+    if (!v.ts || net.now() - v.ts > 12000){ ghosts.push(c.key); return; }
+    liveCount++;
+  });
+  ghosts.forEach(k => net.ref.child('players/' + k).remove());
+
   const cfgSnap = await net.ref.child('config').once('value');
   const cfg = cfgSnap.val() || {};
-  if (!cfg.mode){
+  const freshRealm = liveCount === 0;
+
+  if (!cfg.mode || freshRealm){
     net.gameMode = wantMode || 'ffa';
     diffIdx = clamp(wantDiff == null ? diffIdx : wantDiff, 0, 2);
     if (wantMap && MAPS[wantMap] && wantMap !== mapId) loadMap(wantMap);
-    await net.ref.child('config').update({ mode: net.gameMode, diff: diffIdx, map: mapId });
+    net.wave = { n:0, state:'idle', left:0, lives:CFG.waveLives, until:0, best:0 };
+    // set, not update: wipes any leftover wave state and team counter from last time
+    await net.ref.child('config').set({ mode: net.gameMode, diff: diffIdx, map: mapId });
+    net.ref.child('bots').remove();
+    net.ref.child('matchOver').remove();
+    net.adoptedMode = null;
   } else {
     net.gameMode = cfg.mode;
+    net.adoptedMode = (wantMode && wantMode !== cfg.mode) ? cfg.mode : null;
     if (cfg.diff != null) diffIdx = clamp(cfg.diff, 0, 2);   // the realm's settings win
     if (cfg.map && MAPS[cfg.map] && cfg.map !== mapId) loadMap(cfg.map);
     if (cfg.wave){
@@ -1898,7 +1932,6 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
   }
 
   // uids keep identity honest, but a room of three "Operator"s is unreadable
-  const roster = await net.ref.child('players').once('value');
   const taken = {};
   roster.forEach(c => { const n = (c.val() || {}).name; if (n) taken[n.toLowerCase()] = true; });
   if (taken[me.name.toLowerCase()]){
@@ -2127,7 +2160,7 @@ function stepWaves(dt){
   if (w.state === 'idle'){
     w.lives = CFG.waveLives;
     w.state = 'break';
-    w.until = now + 6000;
+    w.until = now + 3500;
     w.n = 0;
     publishWave();
     return;
@@ -2170,6 +2203,7 @@ function stepWaves(dt){
   if (humansAlive() === 0 && w.lives <= 0){
     w.state = 'over';
     w.until = now + 11000;
+    w.left = 0;
     Array.from(net.botAI.keys()).forEach(id => despawnBot(id));
     publishWave();
     net.ref.child('matchOver').set({
@@ -3048,7 +3082,9 @@ function updateHud(){
       '</b> &nbsp;·&nbsp; <b style="color:' + hex(CFG.teamColors[1]) + '">' + CFG.teamNames[1] + ' ' + t[1] +
       '</b> &nbsp;/&nbsp; ' + CFG.killTarget;
   } else {
-    $('score').innerHTML = 'Frags <b id="scoreMe">' + me.kills + '</b> &nbsp;/&nbsp; Target <b id="scoreTarget">' + CFG.killTarget + '</b>';
+    $('score').innerHTML =
+      (mode === 'online' ? '<span style="color:var(--dim)">' + modeLabel().toUpperCase() + '</span><br>' : '') +
+      'Frags <b id="scoreMe">' + me.kills + '</b> &nbsp;/&nbsp; Target <b id="scoreTarget">' + CFG.killTarget + '</b>';
   }
 }
 
@@ -3121,7 +3157,7 @@ function updateBoard(){
     rows.forEach(r => { net.teamScore[r.team] += (r.kills || 0); });
   }
 
-  $('boardRoom').textContent = mode === 'solo' ? 'practice' : net.room;
+  $('boardRoom').textContent = mode === 'solo' ? 'practice' : (net.room + '  ·  ' + modeLabel());
 
   const line = r =>
     '<tr><td><span class="chip" style="background:'+esc(r.color)+'"></span>'+esc(r.name)+
@@ -3448,8 +3484,9 @@ function initMenu(){
       Audio2.boot();
       await joinOnline(rm, wantMode, diffIdx, wantMap);
       startGame('online');
-      if (net.gameMode !== wantMode){
-        addFeed('This realm is already running ' + (net.gameMode === 'team' ? 'Teams' : 'Free-for-all'), true);
+      if (net.adoptedMode){
+        addFeed('NOTE: this realm was already running ' + modeLabel() + ' — your choice was ignored', true);
+        addFeed('Use an empty realm code to start a ' + (wantMode === 'waves' ? 'Waves' : wantMode === 'team' ? 'Teams' : 'Free-for-all') + ' match', true);
       }
     } catch (err){
       console.error(err);
@@ -3471,9 +3508,22 @@ function initMenu(){
     startGame('solo');
   };
 
-  roomIn.addEventListener('input', () => { roomIn.value = roomIn.value.toUpperCase().replace(/[^A-Z0-9]/g,''); });
+  roomIn.addEventListener('input', () => {
+    roomIn.value = roomIn.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    const live = net.lobbySnapshot && net.lobbySnapshot[roomIn.value];
+    const n = live ? Object.keys(live.p || {}).length : 0;
+    if (n > 0){
+      const running = live.m === 'team' ? 'Teams' : live.m === 'waves' ? 'Waves' : 'Free-for-all';
+      setStatus(roomIn.value + ' is live and running ' + running + ' — joining adopts that mode.', '');
+    } else {
+      setStatus('', '');
+    }
+  });
 }
 function cleanNameGlobal(v){ return String(v||'').replace(/[\u0000-\u001F<>]/g,'').replace(/\s+/g,' ').trim(); }
+function modeLabel(){
+  return net.gameMode === 'waves' ? 'Waves' : net.gameMode === 'team' ? 'Teams' : 'Free-for-all';
+}
 function setStatus(msg, cls){
   const s = $('status');
   s.textContent = msg;
@@ -3483,6 +3533,9 @@ function setStatus(msg, cls){
 function startGame(kind){
   mode = kind;
   me.uid = me.uid || ('local-' + Math.random().toString(36).slice(2,8));
+  // elect now that mode is set: joinOnline's election ran while mode was still 'menu'
+  // and returned early, leaving nobody to run the wave machine
+  if (kind === 'online') electKeeper();
   me.kills = 0; me.deaths = 0;
   me.ammo = WEAPONS.map(w => w.mag);
   me.hp = CFG.maxHp; me.alive = true;
@@ -3496,6 +3549,7 @@ function startGame(kind){
   $('chat').classList.add('on');
   swapWeaponInitial();
   updateHud(); updateBoard();
+  $('modeTag').textContent = (kind === 'solo' ? 'Practice' : net.room + ' · ' + modeLabel());
   addFeed(currentMap().name + ' — drones: ' + diff().name, true);
   if (isWaves()){
     addFeed('Wave survival — clear every drone to finish the wave', true);
@@ -3517,6 +3571,14 @@ function swapWeaponInitial(){
 function leaveArena(){
   if (mode === 'online' && net.ref && me.uid){
     if (net.isKeeper) standDown();
+    let othersLeft = 0;
+    remotes.forEach(r => { if (!r.isBot && !r.stale) othersLeft++; });
+    if (othersLeft === 0){
+      // nobody else in: clear the realm's settings so it isn't stuck on this mode
+      net.ref.child('config').remove();
+      net.ref.child('bots').remove();
+      net.ref.child('matchOver').remove();
+    }
     if (net.lobbyKey){ net.lobbyKey.onDisconnect().cancel(); net.lobbyKey.remove(); net.lobbyKey = null; }
     net.ref.child('players/' + me.uid).remove();
     net.ref.off();
