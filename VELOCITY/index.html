@@ -376,16 +376,18 @@ var MUSIC_TRACKS = ["VelocityRun.mp3"];
    ONLINE GHOST LEADERBOARD (optional — leave null to keep it off)
    Paste the same Firebase web config your other Eon games use:
 
-   
+   var FIREBASE_CONFIG = {
+     apiKey: "...", authDomain: "...", databaseURL: "...",
+     projectId: "...", appId: "..."
+   };
+
    Data layout it writes:
      velocity/<trackId>/board/<uid>   { name, lap, car, ts }   <- small, indexed
      velocity/<trackId>/ghosts/<uid>  { lap, rec }             <- the lap recording
 
    The matching Realtime Database rules are in the setup notes.
    --------------------------------------------------------------- */
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
+var FIREBASE_CONFIG = {
   apiKey: "AIzaSyC1TMdNxiOGXwAjKx-wwtrZk0Ab92EIAms",
   authDomain: "up-to-battles.firebaseapp.com",
   databaseURL: "https://up-to-battles-default-rtdb.europe-west1.firebasedatabase.app",
@@ -394,8 +396,9 @@ const firebaseConfig = {
   messagingSenderId: "277525542955",
   appId: "1:277525542955:web:52d76130dd2e7f1aa3d26e"
 };
-  
-var FIREBASE_CONFIG = null;
+
+// Everything Velocity writes lives under this one node, so it sits alongside
+// whatever else the up-to-battles project is already used for.
 var LEADERBOARD_PATH = "velocity";
 
 var DIFFICULTY = [
