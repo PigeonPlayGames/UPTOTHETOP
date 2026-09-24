@@ -219,6 +219,13 @@
     border:1px solid var(--teal); padding:4px 10px; border-radius:2px; visibility:hidden;
   }
   #shield.on{visibility:visible}
+  #netstat{
+    position:absolute; right:26px; bottom:calc(26px + 132px); display:none;
+    font-size:10px; line-height:1.7; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--dim); text-align:right; text-shadow:0 1px 3px #000;
+  }
+  #netstat.on{display:block}
+  #netstat b{font-weight:400}
   #vignette{position:absolute; inset:0; opacity:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(255,84,112,.55) 100%); transition:opacity .25s}
 
   /* ---------- overlays ---------- */
@@ -320,6 +327,7 @@
   <div id="objEdge"></div>
   <div id="hitdir"></div>
   <div id="shield">Spawn shield</div>
+  <div id="netstat"></div>
   <div id="vignette"></div>
 </div>
 
@@ -449,6 +457,8 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="shadowIn" checked> Dynamic shadows</label><small>Turn off on older laptops</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="soundIn" checked> Sound</label><small>Synthesised, no downloads</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="statsIn"> Performance readout</label><small>FPS and ping in game (also F3)</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="autoQIn" checked> Auto quality</label><small>Drops resolution if the frame rate sags</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match</small></div>
       <div class="opt"><label for="musicVol">Music volume</label><input id="musicVol" type="range" min="0" max="100" value="60"><small id="musicVolVal">60%</small></div>
     </div>
@@ -490,9 +500,6 @@
 <div id="boot">Loading arena…</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 /* =====================================================================
    EON ARENA — 3D multiplayer deathmatch
@@ -723,7 +730,10 @@ function stepMusic(dt){
   if (!music.el) return;
   const want = musicTarget();
   const now = music.el.volume;
-  music.el.volume = clamp(now + (want - now) * clamp(dt * 1.8, 0, 1), 0, 1);
+  const next = clamp(now + (want - now) * clamp(dt * 1.8, 0, 1), 0, 1);
+  // writing this property every frame is a real cost in some browsers, and pointless
+  // once the fade has settled
+  if (Math.abs(next - now) > 0.002) music.el.volume = next;
   if (music.on && !music.started && want > 0) startMusic();
 }
 
@@ -1489,6 +1499,7 @@ function initInput(){
     if (k === '3') swapWeapon(2);
     if (k === 'q') swapWeapon((me.weapon+1) % WEAPONS.length);
     if (k === 'enter' && mode !== 'menu') openChat();
+    if (k === 'f3'){ perf.show = !perf.show; $('netstat').classList.toggle('on', perf.show); localStorage.setItem('eonarena.stats', perf.show ? '1':'0'); e.preventDefault(); }
     if (k === ' ') e.preventDefault();
   });
   addEventListener('keyup', e => {
@@ -1819,10 +1830,16 @@ function dealDamage(uid, dmg, head){
   if (!net.ref) return;
   const r = remotes.get(uid);
   if (r && r.isBot){
-    net.ref.child('botHits').push({
-      bot: uid, by: me.uid, byName: me.name, dmg, head: !!head,
-      t: firebase.database.ServerValue.TIMESTAMP
-    });
+    const payload = { bot: uid, by: me.uid, byName: me.name, dmg, head: !!head };
+    if (net.isKeeper){
+      applyBotHit(payload);          // our own drone: no need to ask Belgium first
+      const ent = remotes.get(uid);
+      const ai = net.botAI.get(uid);
+      if (ent && ai){ ent.hp = ai.hp; ent.alive = ai.alive; updateTag(ent.avatar.tag, ai.hp, ent.hpMax); }
+      return;
+    }
+    payload.t = firebase.database.ServerValue.TIMESTAMP;
+    net.ref.child('botHits').push(payload);
     return;
   }
   net.ref.child('players/' + uid + '/inbox').push({
@@ -1993,6 +2010,33 @@ function teamSpawn(team){
   return SPAWNS[idx[(Math.random()*idx.length)|0]];
 }
 
+/*
+  Firebase is three separate bundles and nothing needs them until you go
+  online — Practice offline never does. Loading it with <script> tags blocked the
+  first paint, which on a weak connection is seconds of staring at nothing. Fetch it
+  after the game is up and running instead.
+*/
+const FB_SDK = [
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js'
+];
+let fbPromise = null;
+function loadFirebase(){
+  if (typeof firebase !== 'undefined') return Promise.resolve(true);
+  if (fbPromise) return fbPromise;
+  fbPromise = FB_SDK.reduce((chain, url) => chain.then(() => new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = url;
+    el.async = false;                       // order matters: app before auth and database
+    el.onload = resolve;
+    el.onerror = () => reject(new Error('Firebase SDK could not be fetched — a privacy extension or a blocked connection to www.gstatic.com.'));
+    document.head.appendChild(el);
+  })), Promise.resolve()).then(() => true);
+  fbPromise.catch(() => { fbPromise = null; });   // let a later attempt retry
+  return fbPromise;
+}
+
 function configLooksReal(){
   return firebaseConfig && typeof firebaseConfig.apiKey === 'string' &&
          firebaseConfig.apiKey.indexOf('PASTE') === -1 &&
@@ -2044,7 +2088,7 @@ function renderRealms(v){
 
 async function joinOnline(room, wantMode, wantDiff, wantMap){
   if (!configLooksReal()) throw new Error('Firebase config missing. Open this file and paste your project config near the top, then reload.');
-  if (typeof firebase === 'undefined') throw new Error('Firebase SDK did not load. A privacy extension or offline connection can block www.gstatic.com — allow it and reload.');
+  await loadFirebase();                     // usually already done in the background
 
   initFirebaseApp();
   if (!net.db) throw new Error('Firebase failed to initialise.');
@@ -2504,6 +2548,9 @@ function addEntity(id, v, isBot){
     kills: v.kills || 0, deaths: v.deaths || 0,
     pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
     target: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
+    from: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
+    to: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
+    fromRy: v.ry || 0, toRy: v.ry || 0, lerpT: 0, lerpDur: 0.1, lastUpd: 0,
     ry: v.ry || 0, targetRy: v.ry || 0, rx: 0, targetRx: 0,
     mv: 0, ts: v.ts || 0, walk: 0, stale: false, fr: 0, nextFx: 0
   });
@@ -2512,10 +2559,26 @@ function addEntity(id, v, isBot){
 function updateEntity(id, v, isBot){
   const r = remotes.get(id);
   if (!r){ addEntity(id, v, isBot); return; }
-  if (v.x != null) r.target.x = v.x;
-  if (v.y != null) r.target.y = v.y;
-  if (v.z != null) r.target.z = v.z;
-  if (v.ry != null) r.targetRy = v.ry;
+  if (v.x != null || v.y != null || v.z != null || v.ry != null){
+    /*
+      Interpolate across the interval the packets are actually arriving in, rather than
+      at a fixed rate. A jittery link delivers updates in bursts, and a fixed rate makes
+      that look like stuttering; matching the measured gap turns it back into motion.
+    */
+    const nowS = performance.now() / 1000;
+    const gap = r.lastUpd ? nowS - r.lastUpd : 0.1;
+    r.lastUpd = nowS;
+    r.lerpDur = clamp(gap, 0.06, 0.4);
+    r.lerpT = 0;
+    r.from.copy(r.pos);
+    r.fromRy = r.ry;
+    if (v.x != null) r.target.x = v.x;
+    if (v.y != null) r.target.y = v.y;
+    if (v.z != null) r.target.z = v.z;
+    if (v.ry != null) r.targetRy = v.ry;
+    r.to.copy(r.target);
+    r.toRy = r.targetRy;
+  }
   if (v.rx != null) r.targetRx = clamp(v.rx, -1.1, 1.1);
   if (v.alive != null) r.alive = v.alive !== false;
   if (v.hp != null) r.hp = v.hp;
@@ -2549,8 +2612,10 @@ function removeRemote(uid){ removeEntity(uid); }
 function stepRemotes(dt){
   const k = clamp(dt * 11, 0, 1);
   remotes.forEach(r => {
-    r.pos.lerp(r.target, k);
-    r.ry = angLerp(r.ry, r.targetRy, k);
+    r.lerpT += dt;
+    const a = clamp(r.lerpT / (r.lerpDur || 0.1), 0, 1);
+    r.pos.lerpVectors(r.from, r.to, a);
+    r.ry = angLerp(r.fromRy, r.toRy, a);
     r.rx = lerp(r.rx, r.targetRx, k);
     const g = r.avatar.group;
     g.position.copy(r.pos);
@@ -2723,6 +2788,9 @@ function ensureBotCount(){
 function onBotHit(snap){
   const v = snap.val() || {};
   snap.ref.remove();
+  applyBotHit(v);
+}
+function applyBotHit(v){
   const ai = net.botAI.get(v.bot);
   if (!ai || !ai.alive) return;
   ai.hp -= (v.dmg || 0);
@@ -2783,6 +2851,18 @@ function stepNetBots(dt){
       return;
     }
     droneThink(ai, dt, targets, netHooks);
+    // Render from the local simulation. We computed this position ourselves; waiting
+    // for Firebase to echo it back adds a full round trip to every drone on screen,
+    // which on a weak connection is most of the lag.
+    const ent = remotes.get(ai.id);
+    if (ent){
+      ent.from.copy(ent.pos);
+      ent.to.set(ai.pos.x, ai.pos.y, ai.pos.z);
+      ent.fromRy = ent.ry; ent.toRy = ai.ry;
+      ent.lerpT = 0; ent.lerpDur = 0.05;
+      ent.mv = ai.mv;
+      ent.alive = ai.alive;
+    }
   });
 
   // write drone state on the same throttle as players, deltas only
@@ -3316,8 +3396,9 @@ function sendChat(){
   closeChat();
 }
 
-function showBoard(on){ $('board').classList.toggle('on', on); if (on) updateBoard(); }
-function updateBoard(){
+function showBoard(on){ $('board').classList.toggle('on', on); if (on) updateBoard(true); }
+let boardBuiltAt = 0;
+function updateBoard(force){
   const rows = [{ name:me.name, color:hex(myColor()), team:me.team, kills:me.kills, deaths:me.deaths, ping:me.ping, me:true }];
   remotes.forEach(r => {
     if (r.stale) return;
@@ -3332,6 +3413,19 @@ function updateBoard(){
     net.teamScore = [0,0];
     rows.forEach(r => { net.teamScore[r.team] += (r.kills || 0); });
   }
+
+  /*
+    Called from updateEntity, so it fires on every network packet for every entity —
+    over a hundred times a second with a full wave on the board. The team totals above
+    are cheap and always needed; building the table is not, and the panel is usually
+    closed. Skip the DOM entirely unless it's actually on screen.
+  */
+  if (!$('board').classList.contains('on')) return;
+
+  // even with it open, ten rebuilds a second is plenty for a scoreboard
+  const nowMs = performance.now();
+  if (!force && nowMs - boardBuiltAt < 100) return;
+  boardBuiltAt = nowMs;
 
   $('boardRoom').textContent = mode === 'solo' ? 'practice' : (net.room + '  ·  ' + modeLabel());
 
@@ -3412,13 +3506,18 @@ const assistOrigin = new THREE.Vector3(), assistDir = new THREE.Vector3();
 const assistTo = new THREE.Vector3(), assistAim = new THREE.Vector3();
 const ASSIST_CONE = 0.075;    // ~4.3 degrees around the crosshair
 
-function updateAimAssist(){
+let assistAcc = 0;
+function updateAimAssist(dt){
   const want = (touch.on && touch.assist) || (PAD.active && PAD.assist);
   if (!want || !me.alive){
     assistF = 1;
     $('cross').classList.remove('sticky');
     return;
   }
+  // one raycast per target per frame is wasteful; the crosshair cannot move far in 50ms
+  assistAcc += dt || 0;
+  if (assistAcc < 0.05) return;
+  assistAcc = 0;
   camera.getWorldPosition(assistOrigin);
   camera.getWorldDirection(assistDir);
 
@@ -3594,6 +3693,21 @@ function initMenu(){
     b.onclick = () => { diffIdx = +b.dataset.diff; localStorage.setItem('eonarena.diff', diffIdx); paintDiff(); };
   });
   paintDiff();
+
+  const statsIn = $('statsIn'), autoQIn = $('autoQIn');
+  statsIn.checked = perf.show;
+  $('netstat').classList.toggle('on', perf.show);
+  statsIn.onchange = () => {
+    perf.show = statsIn.checked;
+    $('netstat').classList.toggle('on', perf.show);
+    localStorage.setItem('eonarena.stats', perf.show ? '1' : '0');
+  };
+  autoQIn.checked = perf.auto;
+  autoQIn.onchange = () => {
+    perf.auto = autoQIn.checked;
+    localStorage.setItem('eonarena.autoq', perf.auto ? '1' : '0');
+    if (!perf.auto){ perf.scale = 1; applyScale(); }
+  };
 
   const musicIn = $('musicIn'), musicVol = $('musicVol');
   music.on = localStorage.getItem('eonarena.music') !== '0';
@@ -3805,6 +3919,62 @@ function leaveArena(){
   setStatus('Left the arena.', 'ok');
 }
 
+/* ===================== PERFORMANCE ===================== */
+/*
+  Two completely different things get called "lag": a low frame rate, which is your
+  device, and network delay, which is the link. They need opposite fixes, so measure
+  both and show them side by side rather than guessing.
+*/
+const perf = {
+  show: localStorage.getItem('eonarena.stats') === '1',
+  auto: localStorage.getItem('eonarena.autoq') !== '0',
+  frames: 0, acc: 0, fps: 60, scale: 1, checks: 0, dropped: false, worstAcc: 0
+};
+const PIX_CAP = () => Math.min(devicePixelRatio, (matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0) ? 1.5 : 2);
+
+function applyScale(){
+  renderer.setPixelRatio(PIX_CAP() * perf.scale);
+  renderer.setSize(innerWidth, innerHeight);
+}
+
+function stepPerf(dt){
+  perf.frames++;
+  perf.acc += dt;
+  if (perf.acc < 1) return;
+  perf.fps = perf.frames / perf.acc;
+  perf.frames = 0; perf.acc = 0;
+
+  if (perf.auto && mode !== 'menu'){
+    perf.checks++;
+    if (perf.fps < 40 && perf.scale > 0.6){
+      perf.scale = Math.max(0.6, perf.scale - 0.15);
+      applyScale();
+    } else if (perf.fps > 56 && perf.scale < 1){
+      perf.scale = Math.min(1, perf.scale + 0.1);
+      applyScale();
+    }
+    // still crawling with resolution already down: shadows are the next biggest cost
+    if (perf.fps < 30 && perf.scale <= 0.6 && renderer.shadowMap.enabled && !perf.dropped){
+      perf.dropped = true;
+      renderer.shadowMap.enabled = false;
+      scene.traverse(o => { if (o.isMesh && o.material) o.material.needsUpdate = true; });
+      addFeed('Frame rate low — shadows off', true);
+    }
+  }
+
+  if (!perf.show) return;
+  const fpsCol = perf.fps >= 50 ? 'var(--teal)' : perf.fps >= 30 ? 'var(--amber)' : 'var(--hostile)';
+  const ping = mode === 'online' ? me.ping : 0;
+  const pingCol = ping < 90 ? 'var(--teal)' : ping < 220 ? 'var(--amber)' : 'var(--hostile)';
+  $('netstat').innerHTML =
+    '<b style="color:' + fpsCol + '">' + perf.fps.toFixed(0) + ' fps</b>' +
+    (perf.scale < 1 ? ' <span style="color:var(--dim)">· ' + Math.round(perf.scale*100) + '% res</span>' : '') +
+    (mode === 'online'
+      ? '<br><b style="color:' + pingCol + '">' + ping + ' ms</b>' +
+        '<br><span style="color:var(--dim)">' + (net.isKeeper ? 'hosting drones' : 'guest') + '</span>'
+      : '<br><span style="color:var(--dim)">offline</span>');
+}
+
 /* ===================== MAIN LOOP ===================== */
 let last = performance.now(), miniAcc = 0, boardAcc = 0, hudAcc = 0, orbit = 0;
 function frame(){
@@ -3863,7 +4033,7 @@ function frame(){
 
   miniAcc += dt;
   if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); updateTagVisibility(); }
-  if (mode !== 'menu'){ updateAimAssist(); updateObjective(); }
+  if (mode !== 'menu'){ updateAimAssist(dt); updateObjective(); }
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
   if (isWaves()){
@@ -3875,6 +4045,7 @@ function frame(){
     if (net.electAcc > 3){ net.electAcc = 0; electKeeper(); }
   }
 
+  stepPerf(dt);
   renderer.render(scene, camera);
 }
 
@@ -3897,15 +4068,22 @@ function frame(){
   ['pointerdown','keydown','touchstart'].forEach(ev =>
     addEventListener(ev, startMusic, { once:true, passive:true }));
   updateHud();
-  if (initFirebaseApp()) subscribeLobby();
   $('boot').style.display = 'none';
-  if (typeof firebase === 'undefined'){
-    setStatus('Firebase SDK did not load — online play is unavailable. Practice offline still works.', 'bad');
-  } else if (!configLooksReal()){
+  frame();
+
+  // now that the menu is up and rendering, go and get the network stack
+  if (!configLooksReal()){
     setStatus('No Firebase config yet — paste yours at the top of arena.html to play online.', '');
     $('realms').innerHTML = '<div class="rl-empty">Add your Firebase config to see live realms.</div>';
+  } else {
+    loadFirebase().then(() => {
+      if (initFirebaseApp()) subscribeLobby();
+    }).catch(err => {
+      console.warn(err);
+      setStatus('Online play unavailable: ' + err.message + ' Practice offline still works.', 'bad');
+      $('realms').innerHTML = '<div class="rl-empty">Could not reach Firebase — practice offline still works.</div>';
+    });
   }
-  frame();
 })();
 </script>
 </body>
