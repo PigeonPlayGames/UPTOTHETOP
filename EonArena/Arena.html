@@ -286,7 +286,8 @@
   @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
   @media (max-width:700px){
     #mini{width:104px; height:104px}
-    #score{top:136px}
+    #modeTag{top:134px}
+    #score{top:152px}
     #vitals,#arms{transform:scale(.86); transform-origin:bottom}
   }
 </style>
@@ -366,6 +367,7 @@
       <button id="btnLeave">Leave arena</button>
     </div>
     <div class="note" style="text-align:left">WASD move · Space jump · Shift sprint · Left click fire · Right click focus · R reload · 1–3 weapons · Tab standings · Enter chat</div>
+    <div class="note" style="text-align:left">Controller: ✕ resume · ◯ leave</div>
   </div>
 </div>
 
@@ -449,6 +451,20 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match</small></div>
       <div class="opt"><label for="musicVol">Music volume</label><input id="musicVol" type="range" min="0" max="100" value="60"><small id="musicVolVal">60%</small></div>
+    </div>
+
+    <div class="field" id="padOpts" style="display:none">
+      <label for="padSensIn">Controller look speed</label>
+      <input id="padSensIn" type="range" min="50" max="300" value="150">
+      <small id="padSensVal" style="display:block;margin-top:4px;color:var(--dim);font-size:11px">1.50</small>
+      <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:12px">
+        <label class="toggle"><input type="checkbox" id="padInvert"> Invert Y</label>
+        <label class="toggle"><input type="checkbox" id="padAssist" checked> Aim assist</label>
+        <label class="toggle"><input type="checkbox" id="padRumble" checked> Rumble</label>
+      </div>
+      <small style="display:block;margin-top:8px;color:var(--dim);font-size:11px">
+        Left stick move · Right stick look · R2 fire · L2 focus · ✕ jump · ▢ reload · △/R1/L1 weapons · Share standings · Options pause
+      </small>
     </div>
 
     <div class="field" id="touchOpts" style="display:none">
@@ -1166,7 +1182,7 @@ let sensitivity = 1.10, targetFov = 88;
 const touch = {
   on:false, moveId:null, lookId:null,
   origin:{x:0,y:0}, move:{x:0,y:0}, mag:0, last:{x:0,y:0},
-  sens:1.4, assist:true, stickF:1,
+  sens:1.4, assist:true,
   lookStart:{x:0,y:0,t:0}, lookMoved:0
 };
 const STICK_R = 58;
@@ -1235,7 +1251,7 @@ function initTouch(){
         touch.lookMoved += mag;
         // flicks turn faster than slow drags, so you can spin round and still aim finely
         const accel = 1 + Math.min(1.1, mag / 26);
-        const s2 = touch.sens * 0.0042 * accel * (me.ads ? 0.55 : 1) * touch.stickF;
+        const s2 = touch.sens * 0.0042 * accel * (me.ads ? 0.55 : 1) * assistF;
         me.yaw   -= dx2 * s2;
         me.pitch -= dy2 * s2;
         me.pitch = clamp(me.pitch, -1.53, 1.53);
@@ -1300,6 +1316,162 @@ function initTouch(){
   checkOrientation();
 }
 
+/* ===================== GAMEPAD ===================== */
+/*
+  Standard-mapping pad (DualSense, DualShock 4, Xbox) via the Gamepad API. Polled each
+  frame rather than event-driven, because axes have no events. A pad that has produced
+  no input for a while stops being treated as active, so plugging one in and then using
+  mouse and keyboard doesn't leave the pointer-lock prompt suppressed.
+*/
+const PAD = {
+  connected:false, active:false, index:null,
+  sens:1.5, invertY:false, assist:true, rumble:true,
+  dead:0.18, activeAt:-1e9, prev:[], name:''
+};
+let assistF = 1;
+
+const PAD_BTN = {            // standard mapping
+  cross:0, circle:1, square:2, triangle:3,
+  l1:4, r1:5, l2:6, r2:7,
+  share:8, options:9, l3:10, r3:11,
+  up:12, down:13, left:14, right:15
+};
+
+function initPad(){
+  addEventListener('gamepadconnected', e => {
+    PAD.connected = true;
+    PAD.index = e.gamepad.index;
+    PAD.name = e.gamepad.id || 'Controller';
+    showPadUI(true);
+  });
+  addEventListener('gamepaddisconnected', e => {
+    if (PAD.index !== e.gamepad.index) return;
+    PAD.connected = false; PAD.active = false; PAD.index = null;
+    showPadUI(false);
+  });
+  // a pad already plugged in before the page loaded raises no event until it's touched
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (let i = 0; i < pads.length; i++){
+    if (pads[i] && pads[i].connected){
+      PAD.connected = true; PAD.index = i; PAD.name = pads[i].id || 'Controller';
+      showPadUI(true);
+      break;
+    }
+  }
+}
+function showPadUI(on){
+  const el = $('padOpts');
+  if (el) el.style.display = on ? 'block' : 'none';
+  if (on && mode === 'menu'){
+    setStatus('Controller detected — ✕ / A enters the arena, ◯ / B practises offline.', 'ok');
+  }
+}
+function readPad(){
+  if (!navigator.getGamepads) return null;
+  const pads = navigator.getGamepads();
+  let gp = PAD.index != null ? pads[PAD.index] : null;
+  if (!gp || !gp.connected){
+    gp = null;
+    for (let i = 0; i < pads.length; i++){
+      if (pads[i] && pads[i].connected){ gp = pads[i]; PAD.index = i; break; }
+    }
+  }
+  return gp;
+}
+// dead zone then an exponential curve: small pushes stay small so you can aim
+function padAxis(v){
+  const a = Math.abs(v || 0);
+  if (a < PAD.dead) return 0;
+  const n = (a - PAD.dead) / (1 - PAD.dead);
+  return Math.sign(v) * n * n * 0.75 + Math.sign(v) * n * 0.25;
+}
+function padPressed(gp, i){ const b = gp.buttons[i]; return !!(b && (b.pressed || b.value > 0.5)); }
+function padTap(gp, i){
+  const now = padPressed(gp, i);
+  const was = PAD.prev[i];
+  PAD.prev[i] = now;
+  return now && !was;
+}
+function rumble(strong, weak, ms){
+  if (!PAD.rumble || !PAD.active) return;
+  const gp = readPad();
+  if (!gp || !gp.vibrationActuator || !gp.vibrationActuator.playEffect) return;
+  try {
+    gp.vibrationActuator.playEffect('dual-rumble', {
+      duration: ms, strongMagnitude: strong, weakMagnitude: weak, startDelay: 0
+    });
+  } catch (e){}
+}
+
+function stepPad(dt){
+  const gp = readPad();
+  if (!gp){ PAD.active = false; PAD.moveX = PAD.moveY = 0; return; }
+
+  const lx = padAxis(gp.axes[0]), ly = padAxis(gp.axes[1]);
+  const rx = padAxis(gp.axes[2]), ry = padAxis(gp.axes[3]);
+  let anyBtn = false;
+  for (let i = 0; i < gp.buttons.length; i++){ if (padPressed(gp, i)){ anyBtn = true; break; } }
+  if (lx || ly || rx || ry || anyBtn) PAD.activeAt = performance.now();
+  PAD.active = performance.now() - PAD.activeAt < 20000;
+
+  if (mode === 'menu'){
+    if (padTap(gp, PAD_BTN.cross) && !$('btnJoin').disabled) $('btnJoin').click();
+    else if (padTap(gp, PAD_BTN.circle) && !$('btnSolo').disabled) $('btnSolo').click();
+    // keep the edge state fresh for every other button so nothing fires on entry
+    for (let i = 0; i < gp.buttons.length; i++) PAD.prev[i] = padPressed(gp, i);
+    return;
+  }
+
+  // paused overlay: ✕ resumes, ◯ leaves
+  if ($('paused').classList.contains('on')){
+    if (padTap(gp, PAD_BTN.cross)){ $('paused').classList.remove('on'); }
+    else if (padTap(gp, PAD_BTN.circle)){ leaveArena(); }
+    for (let i = 0; i < gp.buttons.length; i++) PAD.prev[i] = padPressed(gp, i);
+    return;
+  }
+
+  PAD.moveX = lx;
+  PAD.moveY = ly;
+
+  // look
+  if (rx || ry){
+    const rate = PAD.sens * 2.9 * (me.ads ? 0.45 : 1) * assistF * dt;
+    me.yaw   -= rx * rate;
+    me.pitch -= (PAD.invertY ? -ry : ry) * rate;
+    me.pitch = clamp(me.pitch, -1.53, 1.53);
+  }
+
+  if (chatting) return;
+
+  // triggers
+  const firing = padPressed(gp, PAD_BTN.r2);
+  if (firing){ mouseDown = true; PAD.firedByPad = true; }
+  else if (PAD.firedByPad){ mouseDown = false; PAD.firedByPad = false; }
+  const padAds = padPressed(gp, PAD_BTN.l2);
+  if (padAds){ me.ads = true; PAD.adsByPad = true; }
+  else if (PAD.adsByPad){ me.ads = false; PAD.adsByPad = false; }
+
+  // buttons. Each one only clears what it set: writing the raw pad state every frame
+  // would cancel a keyboard press the moment a pad is plugged in.
+  const padJump = padPressed(gp, PAD_BTN.cross);
+  if (padJump) keys[' '] = true;
+  else if (PAD.jumpByPad) keys[' '] = false;
+  PAD.jumpByPad = padJump;
+  if (padTap(gp, PAD_BTN.square)) reload();
+  if (padTap(gp, PAD_BTN.triangle) || padTap(gp, PAD_BTN.r1)) swapWeapon((me.weapon + 1) % WEAPONS.length);
+  if (padTap(gp, PAD_BTN.l1)) swapWeapon((me.weapon + WEAPONS.length - 1) % WEAPONS.length);
+  if (padTap(gp, PAD_BTN.up)) swapWeapon(0);
+  if (padTap(gp, PAD_BTN.left)) swapWeapon(1);
+  if (padTap(gp, PAD_BTN.right)) swapWeapon(2);
+  if (padTap(gp, PAD_BTN.options)) $('paused').classList.add('on');
+  const padBoard = padPressed(gp, PAD_BTN.share);
+  if (padBoard) showBoard(true);
+  else if (PAD.boardByPad) showBoard(false);
+  PAD.boardByPad = padBoard;
+
+  PAD.sprint = padPressed(gp, PAD_BTN.l3) || Math.hypot(lx, ly) > 0.92;
+}
+
 /* ===================== INPUT ===================== */
 function initInput(){
   addEventListener('keydown', e => {
@@ -1351,7 +1523,7 @@ function initInput(){
 
   document.addEventListener('pointerlockchange', () => {
     pointerLocked = document.pointerLockElement === renderer.domElement;
-    if (!pointerLocked && mode !== 'menu' && !chatting && !touch.on) $('paused').classList.add('on');
+    if (!pointerLocked && mode !== 'menu' && !chatting && !touch.on && !PAD.active) $('paused').classList.add('on');
     if (pointerLocked) $('paused').classList.remove('on');
   });
   $('paused').addEventListener('click', e => { if (e.target === $('paused')) lockPointer(); });
@@ -1431,11 +1603,13 @@ function movePlayer(dt){
     if (keys['d'] || keys['arrowright']) ix += 1;
     if (keys['a'] || keys['arrowleft']) ix -= 1;
     if (touch.on){ ix += touch.move.x; iz += -touch.move.y; }
+    if (PAD.active){ ix += PAD.moveX || 0; iz += -(PAD.moveY || 0); }
   }
   const wish = new THREE.Vector3().addScaledVector(fwd, iz).addScaledVector(right, ix);
   if (wish.lengthSq() > 0) wish.normalize();
 
-  me.sprinting = !me.ads && (!!(keys['shift'] && iz > 0) || (touch.on && touch.mag > 0.86 && iz > 0));
+  me.sprinting = !me.ads && (!!(keys['shift'] && iz > 0) || (touch.on && touch.mag > 0.86 && iz > 0) ||
+                            (PAD.active && PAD.sprint && iz > 0));
   const speed = CFG.walkSpeed * (me.sprinting ? CFG.sprintMul : 1) * (me.ads ? 0.55 : 1);
   const accel = me.onGround ? 14 : 14 * CFG.airControl;
 
@@ -1549,6 +1723,7 @@ function tryFire(){
   me.recoil += w.recoil * 0.022 * (me.ads ? 0.6 : 1);
   me.shake = Math.min(0.05, me.shake + w.recoil*0.006);
   flashMuzzle();
+  rumble(Math.min(0.5, w.recoil * 0.18), 0.12, 55);
   viewGroup.position.z += 0.06;
 
   const origin = camera.getWorldPosition(new THREE.Vector3());
@@ -1578,7 +1753,7 @@ function tryFire(){
     any = true; head = head || hits[uid].head;
     dealDamage(uid, Math.round(hits[uid].dmg), hits[uid].head);
   }
-  if (any){ markHit(head ? 'kill' : 'hit'); Audio2.play(head ? 'headshot' : 'hit'); }
+  if (any){ markHit(head ? 'kill' : 'hit'); Audio2.play(head ? 'headshot' : 'hit'); rumble(0, 0.5, 70); }
 
   updateHud();
   if (me.ammo[me.weapon] === 0) reload();
@@ -1663,6 +1838,7 @@ function takeDamage(dmg, byName, head, fromPos){
   me.hp -= dmg;
   me.shake = Math.min(0.06, me.shake + 0.02);
   flashVignette();
+  rumble(0.55, 0.3, 160);
   Audio2.play('hurt');
   if (me.hp <= 0){ die(byName, head); }
   updateHud();
@@ -2473,7 +2649,7 @@ function standDown(){
 function adoptBot(id, v){
   if (net.botAI.has(id)) return;
   net.botAI.set(id, {
-    id, name: v.name || id, color: v.color || 0x8892A6, team: v.team || 0, goal: null, mv: 0, moveDir: 0,
+    id, name: v.name || id, color: v.color || 0x8892A6, team: v.team || 0, mv: 0, moveDir: 0,
     pos: new THREE.Vector3(v.x||0, v.y||0, v.z||0),
     goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
     ry: v.ry || 0, hp: v.hp == null ? 100 : v.hp, alive: v.alive !== false,
@@ -2498,7 +2674,7 @@ function spawnBot(i){
   const ai = {
     id, team, name: (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
     color: isWaves() ? 0xFF5470 : (isTeam() ? CFG.teamColors[team] : 0x8892A6),
-    hpMax, goal: null, mv: 0, moveDir: 0,
+    hpMax, mv: 0, moveDir: 0,
     pos: new THREE.Vector3(sp.x, 0, sp.z), goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
     ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
   };
@@ -3237,8 +3413,9 @@ const assistTo = new THREE.Vector3(), assistAim = new THREE.Vector3();
 const ASSIST_CONE = 0.075;    // ~4.3 degrees around the crosshair
 
 function updateAimAssist(){
-  if (!touch.on || !touch.assist || !me.alive){
-    touch.stickF = 1;
+  const want = (touch.on && touch.assist) || (PAD.active && PAD.assist);
+  if (!want || !me.alive){
+    assistF = 1;
     $('cross').classList.remove('sticky');
     return;
   }
@@ -3264,7 +3441,7 @@ function updateAimAssist(){
     if (closeness > best) best = closeness;
   });
 
-  touch.stickF = 1 - 0.55 * best;                       // 1.00 outside, 0.45 dead centre
+  assistF = 1 - 0.55 * best;                            // 1.00 outside, 0.45 dead centre
   $('cross').classList.toggle('sticky', best > 0.12);   // visible cue that it engaged
 }
 
@@ -3436,6 +3613,26 @@ function initMenu(){
     localStorage.setItem('eonarena.musicvol', musicVol.value);
     if (music.level > 0) startMusic();
   };
+
+  const padSensIn = $('padSensIn');
+  PAD.sens = (+(localStorage.getItem('eonarena.padsens')) || 150) / 100;
+  PAD.invertY = localStorage.getItem('eonarena.padinv') === '1';
+  PAD.assist = localStorage.getItem('eonarena.padassist') !== '0';
+  PAD.rumble = localStorage.getItem('eonarena.padrumble') !== '0';
+  padSensIn.value = Math.round(PAD.sens * 100);
+  $('padSensVal').textContent = PAD.sens.toFixed(2);
+  padSensIn.oninput = () => {
+    PAD.sens = padSensIn.value / 100;
+    $('padSensVal').textContent = PAD.sens.toFixed(2);
+    localStorage.setItem('eonarena.padsens', padSensIn.value);
+  };
+  $('padInvert').checked = PAD.invertY;
+  $('padInvert').onchange = () => { PAD.invertY = $('padInvert').checked; localStorage.setItem('eonarena.padinv', PAD.invertY ? '1':'0'); };
+  $('padAssist').checked = PAD.assist;
+  $('padAssist').onchange = () => { PAD.assist = $('padAssist').checked; localStorage.setItem('eonarena.padassist', PAD.assist ? '1':'0'); };
+  $('padRumble').checked = PAD.rumble;
+  $('padRumble').onchange = () => { PAD.rumble = $('padRumble').checked; localStorage.setItem('eonarena.padrumble', PAD.rumble ? '1':'0'); };
+  if (PAD.connected) showPadUI(true);
 
   const tsensIn = $('tsensIn'), assistIn = $('assistIn');
   touch.sens = (+(localStorage.getItem('eonarena.tsens')) || 140) / 100;
@@ -3618,6 +3815,7 @@ function frame(){
   dt = Math.min(dt, 0.05);
 
   if (mode === 'menu'){
+    stepPad(dt);
     // live arena backdrop behind the menu
     orbit += dt * 0.06;
     camera.position.set(Math.cos(orbit)*34, 13 + Math.sin(orbit*0.7)*3, Math.sin(orbit)*34);
@@ -3638,6 +3836,7 @@ function frame(){
         if (left <= 0) respawn();
       }
     }
+    stepPad(dt);
     movePlayer(dt);
     if (mouseDown && me.alive && !chatting){
       if (currentWeapon().auto) tryFire();
@@ -3691,6 +3890,7 @@ function frame(){
   buildHudBits();
   initInput();
   initTouch();
+  initPad();
   initMusic();
   initMenu();
   // audio is blocked until the page has been interacted with — take the first one
