@@ -594,7 +594,10 @@ const COLORS = [
 const WEAPONS = [
   { id:"pulse",   name:"Pulse",   auto:true,  dmg:16, pellets:1, rate:0.095, mag:30, reload:1.9,  spread:0.014, range:140, recoil:0.55, falloff:0, adsFov:62 },
   { id:"scatter", name:"Scatter", auto:false, dmg:10, pellets:8, rate:0.72,  mag:6,  reload:2.55, spread:0.085, range:38,  recoil:2.2,  falloff:0.55, adsFov:70 },
-  { id:"rail",    name:"Rail",    auto:false, dmg:78, pellets:1, rate:1.15,  mag:4,  reload:2.7,  spread:0.0,   range:220, recoil:2.6,  falloff:0, adsFov:32 }
+  { id:"rail",    name:"Rail",    auto:false, dmg:78, pellets:1, rate:1.15,  mag:4,  reload:2.7,  spread:0.0,   range:220, recoil:2.6,  falloff:0, adsFov:32 },
+  // the only projectile and the only area weapon: arcs, bounces once, then detonates
+  { id:"arc",     name:"Arc",     auto:false, dmg:55, pellets:1, rate:1.05,  mag:3,  reload:3.0,  spread:0.004, range:120, recoil:2.4,  falloff:0, adsFov:55,
+    proj:true, speed:40, drop:15, blast:4.6, blastDmg:72, selfMul:0.4, fuse:3.4, locked:true }
 ];
 
 /* ===================== SMALL UTILS ===================== */
@@ -686,6 +689,12 @@ const Audio2 = (() => {
     step(){ noise(0.045, 0.05, 380, 1.4, 'lowpass'); },
     pickup(){ tone(600, 0.09, 'sine', 0.14); setTimeout(()=>tone(950,0.12,'sine',0.14), 80); },
     swap(){ noise(0.05, 0.10, 1600, 3); },
+    thunk(){ tone(210, 0.12, 'square', 0.14, 90); noise(0.08, 0.12, 700, 1.4); },
+    boom(){
+      noise(0.55, 0.42, 190, 0.7, 'lowpass');
+      tone(90, 0.5, 'sawtooth', 0.26, 38);
+      noise(0.16, 0.2, 2200, 1.1);
+    },
     chat(){ tone(1000, 0.05, 'sine', 0.08); },
     join(){ tone(500, 0.10, 'sine', 0.10, 800); },
     win(){ [660,880,1100,1320].forEach((f,i)=>setTimeout(()=>tone(f,0.30,'triangle',0.16), i*130)); },
@@ -1118,8 +1127,118 @@ function buildAvatar(colorHex, name){
   return { group:g, tag, bodyHit, headHit, legL, legR, armL, armR, head, gun, visor, flash };
 }
 
+/* ===================== PROJECTILES ===================== */
+/*
+  The Arc is the only weapon that isn't hitscan. Shots are simulated locally by whoever
+  fired them and damage is applied by that client, exactly like the hitscan weapons —
+  other clients render a cosmetic copy from the firing flag they already receive, so a
+  launcher costs no extra network traffic.
+*/
+const projectiles = [];
+const projGeo = new THREE.SphereGeometry(0.13, 10, 8);
+const projMat = new THREE.MeshBasicMaterial({ color:0xFFB347 });
+const blastGeo = new THREE.SphereGeometry(1, 16, 12);
+
+function spawnProjectile(origin, dir, weapon, owned){
+  const mesh = new THREE.Mesh(projGeo, projMat);
+  mesh.position.copy(origin);
+  scene.add(mesh);
+  const light = new THREE.PointLight(0xFFA030, 1.1, 7);
+  mesh.add(light);
+  projectiles.push({
+    mesh,
+    vel: dir.clone().multiplyScalar(weapon.speed),
+    prev: origin.clone(),
+    t: 0,
+    w: weapon,
+    mine: !!owned            // only our own shots deal damage
+  });
+}
+
+function explode(point, w, mine, directId){
+  // visual
+  const m = new THREE.Mesh(blastGeo, new THREE.MeshBasicMaterial({ color:0xFFC46B, transparent:true, opacity:0.75, depthWrite:false }));
+  m.position.copy(point);
+  m.scale.setScalar(0.4);
+  scene.add(m);
+  fx.blasts.push({ mesh:m, t:0, r:w.blast });
+  const fl = new THREE.PointLight(0xFFA030, 5, w.blast * 3.5);
+  fl.position.copy(point);
+  scene.add(fl);
+  fx.blasts[fx.blasts.length-1].light = fl;
+  impact(point, new THREE.Vector3(0,1,0), 0xFFB347);
+
+  const a = audioBearing(point);
+  Audio2.playAt('boom', Math.max(a.gain, 0.25), a.pan);
+
+  const near = point.distanceTo(me.pos);
+  if (near < w.blast * 3) me.shake = Math.min(0.08, me.shake + 0.05 * (1 - near/(w.blast*3)));
+
+  if (!mine) return;          // someone else's shot: theirs to score
+
+  // damage everything in radius that the blast can actually see
+  const chest = new THREE.Vector3();
+  eachTarget(t => {
+    if (!t.alive || t.stale || isFriendly(t)) return;
+    chest.copy(t.pos); chest.y += 0.9;
+    const d = chest.distanceTo(point);
+    if (d > w.blast) return;
+    if (!hasLOS(point, chest)) return;                  // walls stop a blast
+    const fall = 1 - (d / w.blast) * 0.72;
+    // landing it on the body is the skill shot, so it pays the impact damage too
+    const direct = (t.uid === directId) ? w.dmg : 0;
+    dealDamage(t.uid, Math.round((w.blastDmg * fall + direct) * dmgMul()), false);
+    markHit(direct ? 'kill' : 'hit');
+  });
+
+  // your own blast can hurt you, which is what stops it being a point-blank answer
+  const selfD = me.pos.clone().add(new THREE.Vector3(0, 0.9, 0)).distanceTo(point);
+  if (me.alive && selfD < w.blast){
+    const fall = 1 - (selfD / w.blast) * 0.72;
+    takeDamage(Math.round(w.blastDmg * fall * w.selfMul), 'your own blast', false, point);
+  }
+}
+
+const projStep = new THREE.Vector3(), projTo = new THREE.Vector3();
+function stepProjectiles(dt){
+  for (let i = projectiles.length - 1; i >= 0; i--){
+    const p = projectiles[i];
+    p.t += dt;
+    p.vel.y -= p.w.drop * dt;
+    p.prev.copy(p.mesh.position);
+    projStep.copy(p.vel).multiplyScalar(dt);
+    projTo.copy(p.prev).add(projStep);
+
+    let hitPoint = null;
+    const len = projStep.length();
+    if (len > 0.0001){
+      ray.set(p.prev, projStep.clone().divideScalar(len));
+      ray.far = len;
+      const wall = ray.intersectObjects(solids, false);
+      if (wall.length) hitPoint = wall[0].point.clone();
+      if (!hitPoint && p.mine){
+        // direct hit on a body detonates early
+        eachTarget(t => {
+          if (hitPoint || !t.alive || t.stale || isFriendly(t)) return;
+          const c = t.pos.clone(); c.y += 0.9;
+          if (c.distanceTo(projTo) < 0.85){ hitPoint = projTo.clone(); p.direct = t.uid; }
+        });
+      }
+    }
+    if (!hitPoint && projTo.y <= 0.08) hitPoint = projTo.clone().setY(0.05);
+
+    if (hitPoint || p.t > p.w.fuse){
+      explode(hitPoint || projTo, p.w, p.mine, p.direct);
+      scene.remove(p.mesh);
+      projectiles.splice(i, 1);
+      continue;
+    }
+    p.mesh.position.copy(projTo);
+  }
+}
+
 /* ===================== EFFECTS ===================== */
-const fx = { tracers:[], decals:[], sparks:[] };
+const fx = { tracers:[], decals:[], sparks:[], blasts:[] };
 const tracerMat = new THREE.LineBasicMaterial({ color:0xFFE1A0, transparent:true, opacity:0.9 });
 const decalGeo = new THREE.PlaneGeometry(0.28, 0.28);
 
@@ -1146,6 +1265,18 @@ function impact(point, normal, colorHex){
   }
 }
 function stepFx(dt){
+  for (let i=fx.blasts.length-1;i>=0;i--){
+    const b = fx.blasts[i]; b.t += dt;
+    const k = Math.min(1, b.t/0.28);
+    b.mesh.scale.setScalar(0.4 + k * b.r);
+    b.mesh.material.opacity = 0.75 * (1 - k);
+    if (b.light) b.light.intensity = 5 * (1 - k);
+    if (b.t > 0.3){
+      scene.remove(b.mesh); b.mesh.material.dispose();
+      if (b.light) scene.remove(b.light);
+      fx.blasts.splice(i,1);
+    }
+  }
   for (let i=fx.tracers.length-1;i>=0;i--){
     const t = fx.tracers[i]; t.t += dt;
     t.line.material.opacity = Math.max(0, 0.9 - t.t*9);
@@ -1189,6 +1320,7 @@ function buildViewmodel(){
   viewParts.pulse = gun([[0,0,0, .09,.11,.62],[0,-.08,.12, .07,.13,.16],[0,.07,-.1, .06,.05,.3, 1],[0,-.02,-.34, .05,.05,.16]]);
   viewParts.scatter = gun([[0,0,0, .12,.13,.55],[0,-.07,.1, .08,.15,.2],[0,-.06,-.16, .07,.06,.34, 1]]);
   viewParts.rail = gun([[0,0,0, .08,.1,.8],[0,-.07,.16, .06,.14,.15],[0,.09,-.02, .05,.05,.44, 1],[0,-.01,-.44, .06,.06,.2]]);
+  viewParts.arc = gun([[0,0,0, .15,.16,.5],[0,-.07,.12, .08,.14,.18],[0,.02,-.3, .17,.17,.22, 1],[0,.1,.02, .05,.04,.26]]);
 
   muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.34,0.34), new THREE.MeshBasicMaterial({ color:0xFFD98A, transparent:true, opacity:0.95, depthTest:false }));
   muzzle.position.set(0.26, -0.22, -1.0);
@@ -1211,7 +1343,7 @@ const me = {
   weapon:0, ammo:[30,6,4], reloading:false, reloadEnd:0, nextShot:0,
   ads:false, recoil:0, bob:0, shake:0, lastStep:0,
   respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0, hadLife:true, localKillAt:0,
-  credits:0, upg:{ dmg:0, hp:0, reload:0, speed:0 }, armSel:0
+  credits:0, upg:{ dmg:0, hp:0, reload:0, speed:0, arc:0 }, armSel:0
 };
 const keys = Object.create(null);
 let mouseDown = false, pointerLocked = false, chatting = false;
@@ -1332,7 +1464,7 @@ function initTouch(){
   hold('tFire',   () => { mouseDown = true; },  () => { mouseDown = false; });
   hold('tJump',   () => { keys[' '] = true; },  () => { keys[' '] = false; });
   hold('tReload', () => reload());
-  hold('tWeap',   () => swapWeapon((me.weapon + 1) % WEAPONS.length));
+  hold('tWeap',   () => swapWeapon(nextOwnedWeapon(1)));
   hold('tChat',   () => openChat());
 
   const ads = $('tAds');
@@ -1502,14 +1634,15 @@ function stepPad(dt){
     if (padTap(gp, PAD_BTN.left)){ me.armSel = (me.armSel + UPGRADES.length - 1) % UPGRADES.length; renderArmoury(); }
     if (padTap(gp, PAD_BTN.right)){ me.armSel = (me.armSel + 1) % UPGRADES.length; renderArmoury(); }
     if (padTap(gp, PAD_BTN.triangle)) buyUpgrade(me.armSel);
-    if (padTap(gp, PAD_BTN.r1)) swapWeapon((me.weapon + 1) % WEAPONS.length);
-    if (padTap(gp, PAD_BTN.l1)) swapWeapon((me.weapon + WEAPONS.length - 1) % WEAPONS.length);
+    if (padTap(gp, PAD_BTN.r1)) swapWeapon(nextOwnedWeapon(1));
+    if (padTap(gp, PAD_BTN.l1)) swapWeapon(nextOwnedWeapon(-1));
   } else {
-    if (padTap(gp, PAD_BTN.triangle) || padTap(gp, PAD_BTN.r1)) swapWeapon((me.weapon + 1) % WEAPONS.length);
-    if (padTap(gp, PAD_BTN.l1)) swapWeapon((me.weapon + WEAPONS.length - 1) % WEAPONS.length);
+    if (padTap(gp, PAD_BTN.triangle) || padTap(gp, PAD_BTN.r1)) swapWeapon(nextOwnedWeapon(1));
+    if (padTap(gp, PAD_BTN.l1)) swapWeapon(nextOwnedWeapon(-1));
     if (padTap(gp, PAD_BTN.up)) swapWeapon(0);
     if (padTap(gp, PAD_BTN.left)) swapWeapon(1);
     if (padTap(gp, PAD_BTN.right)) swapWeapon(2);
+    if (padTap(gp, PAD_BTN.down)) swapWeapon(3);
   }
   if (padTap(gp, PAD_BTN.options)) $('paused').classList.add('on');
   const padBoard = padPressed(gp, PAD_BTN.share);
@@ -1539,7 +1672,8 @@ function initInput(){
       if (k === '2') swapWeapon(1);
       if (k === '3') swapWeapon(2);
     }
-    if (k === 'q') swapWeapon((me.weapon+1) % WEAPONS.length);
+    if (k === '4' && !armouryOpen()) swapWeapon(3);
+    if (k === 'q') swapWeapon(nextOwnedWeapon(1));
     if (k === 'enter' && mode !== 'menu') openChat();
     // backquote as well as F3: on a Mac the function keys are Mission Control and the
     // browser never sees F3 without holding Fn
@@ -1570,7 +1704,7 @@ function initInput(){
   addEventListener('contextmenu', e => e.preventDefault());
   addEventListener('wheel', e => {
     if (!pointerLocked) return;
-    swapWeapon((me.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length-1)) % WEAPONS.length);
+    swapWeapon(nextOwnedWeapon(e.deltaY > 0 ? 1 : -1));
   }, { passive:true });
 
   addEventListener('mousemove', e => {
@@ -1751,8 +1885,27 @@ const UPGRADES = [
   { id:'hp',     name:'Plating',            effect:'+25 integrity',     max:4, cost:l => 100 + l*80 },
   { id:'reload', name:'Feed mechanism',     effect:'18% faster reload', max:3, cost:l => 110 + l*70 },
   { id:'speed',  name:'Servo boost',        effect:'+8% movement',      max:3, cost:l => 110 + l*70 },
-  { id:'repair', name:'Field repair',       effect:'back to full',      max:99, cost:() => 60 }
+  { id:'repair', name:'Field repair',       effect:'back to full',      max:99, cost:() => 60 },
+  { id:'arc',    name:'Arc launcher',      effect:'new weapon — blast', max:1,  cost:() => 360 }
 ];
+
+/*
+  The Arc is standard kit in deathmatch so everyone fights on level terms, and a
+  purchase in Waves, where progression is the point.
+*/
+function ownsWeapon(i){
+  const w = WEAPONS[i];
+  if (!w || !w.locked) return true;
+  return !isWaves() || !!me.upg.arc;
+}
+function nextOwnedWeapon(dir){
+  let i = me.weapon;
+  for (let n = 0; n < WEAPONS.length; n++){
+    i = (i + dir + WEAPONS.length) % WEAPONS.length;
+    if (ownsWeapon(i)) return i;
+  }
+  return me.weapon;
+}
 
 function maxHp(){ return CFG.maxHp + 25 * (me.upg.hp || 0); }
 function dmgMul(){ return 1 + 0.15 * (me.upg.dmg || 0); }
@@ -1761,7 +1914,7 @@ function speedMul(){ return 1 + 0.08 * (me.upg.speed || 0); }
 
 function resetRun(){
   me.credits = 0;
-  me.upg = { dmg:0, hp:0, reload:0, speed:0 };
+  me.upg = { dmg:0, hp:0, reload:0, speed:0, arc:0 };
   me.armSel = 0;
   me.hp = Math.min(me.hp, maxHp());
 }
@@ -1784,6 +1937,12 @@ function buyUpgrade(i){
   } else {
     me.upg[u.id] = (me.upg[u.id] || 0) + 1;
     if (u.id === 'hp') me.hp += 25;            // plating adds the integrity it grants
+    if (u.id === 'arc'){
+      const i = WEAPONS.findIndex(w => w.id === 'arc');
+      me.ammo[i] = WEAPONS[i].mag;
+      swapWeapon(i);
+      addFeed('Arc launcher online — mind the blast radius', true);
+    }
   }
   Audio2.play('pickup');
   updateHud();
@@ -1822,6 +1981,7 @@ function currentWeapon(){ return WEAPONS[me.weapon]; }
 
 function swapWeapon(i){
   if (i === me.weapon || !me.alive) return;
+  if (!ownsWeapon(i)){ Audio2.play('dry'); return; }
   if (me.reloading){ me.reloading = false; $('reloading').classList.remove('on'); }
   me.weapon = i;
   Audio2.play('swap');
@@ -1855,7 +2015,7 @@ function tryFire(){
   me.firingUntil = performance.now() + Math.max(140, w.rate*1000 + 60);
   me.spawnSafeUntil = 0;
   me.ammo[me.weapon]--;
-  Audio2.play(w.id);
+  Audio2.play(w.proj ? 'thunk' : w.id);
   me.recoil += w.recoil * 0.022 * (me.ads ? 0.6 : 1);
   me.shake = Math.min(0.05, me.shake + w.recoil*0.006);
   flashMuzzle();
@@ -1864,6 +2024,17 @@ function tryFire(){
 
   const origin = camera.getWorldPosition(new THREE.Vector3());
   const spread = w.spread * (me.ads ? 0.35 : 1) * (me.onGround ? 1 : 1.7);
+
+  if (w.proj){
+    camera.getWorldDirection(tmpDir);
+    const dir = tmpDir.clone();
+    if (spread > 0){ dir.x += rand(-spread,spread); dir.y += rand(-spread,spread); dir.z += rand(-spread,spread); dir.normalize(); }
+    spawnProjectile(origin.clone().addScaledVector(dir, 0.7), dir, w, true);
+    updateHud();
+    if (me.ammo[me.weapon] === 0) reload();
+    return;
+  }
+
   const hits = {};
 
   for (let p = 0; p < w.pellets; p++){
@@ -2809,17 +2980,21 @@ function stepRemoteFire(){
       -Math.cos(r.ry) * Math.cos(r.rx)
     ).normalize();
 
-    ray.set(fxFrom, fxDir);
-    ray.far = w.range;
-    const hit = ray.intersectObjects(solids, false);
-    const end = hit.length ? hit[0].point : fxFrom.clone().addScaledVector(fxDir, w.range);
-    tracer(fxFrom, end);
+    if (w.proj){
+      spawnProjectile(fxFrom.clone().addScaledVector(fxDir, 0.7), fxDir.clone(), w, false);
+    } else {
+      ray.set(fxFrom, fxDir);
+      ray.far = w.range;
+      const hit = ray.intersectObjects(solids, false);
+      const end = hit.length ? hit[0].point : fxFrom.clone().addScaledVector(fxDir, w.range);
+      tracer(fxFrom, end);
+    }
 
     flash.visible = true;
     r.flashUntil = now + 55;
 
     const a = audioBearing(r.pos);
-    Audio2.playAt(w.id, a.gain, a.pan);
+    Audio2.playAt(w.proj ? 'thunk' : w.id, a.gain, a.pan);
   });
 }
 
@@ -3488,7 +3663,10 @@ function updateHud(){
   $('ammoNum').innerHTML = ammo + '<small>' + w.name + '</small>';
 
   const rows = $('wlist').children;
-  for (let i=0;i<rows.length;i++) rows[i].className = (i === me.weapon ? 'sel' : '');
+  for (let i=0;i<rows.length;i++){
+    rows[i].className = (i === me.weapon ? 'sel' : '');
+    rows[i].style.opacity = ownsWeapon(i) ? '' : '0.3';
+  }
 
   if (isWaves()){
     const w = net.wave;
@@ -4205,6 +4383,7 @@ function frame(){
     $('cross').style.transform = 'translate(-50%,-50%) scale(' + bloomAmt.toFixed(2) + ')';
     $('shield').classList.toggle('on', me.alive && performance.now() < me.spawnSafeUntil);
 
+    stepProjectiles(dt);
     stepPickups(dt, now);
     writeState(dt);
     if (mode === 'online'){ stepNetBots(dt); checkTeamWin(dt); stepWaves(dt); }
