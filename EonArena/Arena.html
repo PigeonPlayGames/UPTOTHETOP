@@ -488,6 +488,7 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="statsIn"> Performance readout</label><small>FPS and ping in game (toggle with ` or F3)</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="autoQIn" checked> Auto quality</label><small>Drops resolution if the frame rate sags</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="glowIn" checked> Glow effects</label><small>Light halos and dust — turn off on old phones</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match</small></div>
       <div class="opt"><label for="musicVol">Music volume</label><input id="musicVol" type="range" min="0" max="100" value="60"><small id="musicVolVal">60%</small></div>
     </div>
@@ -786,28 +787,38 @@ function initRender(){
   renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.5 : 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
+  // ACES rolls off highlights instead of clipping them, so saturated lights stay
+  // coloured at full brightness rather than washing out to white
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('view').appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x090C13);
-  scene.fog = new THREE.Fog(0x090C13, 40, 130);
+  scene.background = new THREE.Color(0x0A0E1C);
+  scene.fog = new THREE.Fog(0x16203C, 40, 130);
 
   camera = new THREE.PerspectiveCamera(88, innerWidth/innerHeight, 0.05, 400);
   camera.rotation.order = 'YXZ';
 
-  scene.add(new THREE.HemisphereLight(0x5A6B8C, 0x141820, 0.85));
-  sun = new THREE.DirectionalLight(0xFFE6BE, 1.15);
+  scene.add(new THREE.HemisphereLight(0x5570FF, 0x2A1A14, 0.75));   // cool sky, warm bounce
+  sun = new THREE.DirectionalLight(0xFFD49A, 1.55);
   sun.position.set(28, 42, 18);
   sun.castShadow = true;
   sun.shadow.mapSize.set(coarse ? 512 : 1024, coarse ? 512 : 1024);
   const sc = sun.shadow.camera;
   sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 130;
   scene.add(sun);
-  const rim = new THREE.DirectionalLight(0x4FD6C8, 0.32);
+  const rim = new THREE.DirectionalLight(0x37E0CF, 0.55);
   rim.position.set(-20, 16, -26);
   scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xFF4F8B, 0.22);          // separates shadowed faces
+  fill.position.set(14, 8, 26);
+  scene.add(fill);
+
+  buildSky();
+  buildDust();
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth/innerHeight;
@@ -816,19 +827,114 @@ function initRender(){
   });
 }
 
+/* ===================== ATMOSPHERE ===================== */
+let dustPoints = null;
+function buildSky(){
+  const geo = new THREE.SphereGeometry(300, 24, 16);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      top:    { value: new THREE.Color(0x05070F) },
+      middle: { value: new THREE.Color(0x141C3A) },
+      bottom: { value: new THREE.Color(0x2A2140) },
+      glow:   { value: new THREE.Color(0x2E6C8C) }
+    },
+    vertexShader: [
+      'varying vec3 vPos;',
+      'void main(){ vPos = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform vec3 top; uniform vec3 middle; uniform vec3 bottom; uniform vec3 glow;',
+      'varying vec3 vPos;',
+      'void main(){',
+      '  float h = vPos.y;',
+      '  vec3 c = h > 0.0 ? mix(middle, top, pow(h, 0.65)) : mix(middle, bottom, pow(-h, 0.8));',
+      '  float band = exp(-abs(h) * 9.0);',            // a horizon glow to sit the arena in
+      '  c += glow * band * 0.5;',
+      '  gl_FragColor = vec4(c, 1.0);',
+      '}'
+    ].join('\n')
+  });
+  const dome = new THREE.Mesh(geo, mat);
+  dome.frustumCulled = false;
+  scene.add(dome);
+}
+
+function buildDust(){
+  const n = 320;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++){
+    pos[i*3]   = rand(-32, 32);
+    pos[i*3+1] = rand(0.4, 16);
+    pos[i*3+2] = rand(-32, 32);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  dustPoints = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0x9FD8FF, size: 0.08, transparent: true, opacity: 0.5,
+    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true, fog: true
+  }));
+  dustPoints.frustumCulled = false;
+  scene.add(dustPoints);
+}
+
+// one radial-gradient sprite, reused for every glow in the game
+let glowTexture = null;
+let glowOn = localStorage.getItem('eonarena.glow') !== '0';
+function glowTex(){
+  if (glowTexture) return glowTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0,    'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.35)');
+  grad.addColorStop(1,    'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  glowTexture = new THREE.CanvasTexture(c);
+  return glowTexture;
+}
+function addGlow(x, y, z, color, size, parent){
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex(), color, transparent: true, opacity: 0.85,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: true
+  }));
+  spr.position.set(x, y, z);
+  spr.scale.setScalar(size);
+  spr.visible = glowOn;
+  (parent || worldGroup).add(spr);
+  return spr;
+}
+
 /* ===================== WORLD ===================== */
+const NEON = { amber:0xFFB13D, teal:0x37E0CF, rose:0xFF4F8B, violet:0x9A7BFF };
 const MAT = {
-  floor:   new THREE.MeshLambertMaterial({ color:0x1A2030 }),
-  floor2:  new THREE.MeshLambertMaterial({ color:0x191E2B }),
-  grid:    new THREE.MeshLambertMaterial({ color:0x232C40 }),
-  wall:    new THREE.MeshLambertMaterial({ color:0x2A3348 }),
-  wallB:   new THREE.MeshLambertMaterial({ color:0x1F2739 }),
-  crateA:  new THREE.MeshLambertMaterial({ color:0x394358 }),
-  crateB:  new THREE.MeshLambertMaterial({ color:0x2E3648 }),
-  rust:    new THREE.MeshLambertMaterial({ color:0x4A3B34 }),
-  accent:  new THREE.MeshBasicMaterial({ color:0xE8B04B }),
-  accent2: new THREE.MeshBasicMaterial({ color:0x4FD6C8 })
+  floor:   new THREE.MeshLambertMaterial({ color:0x141A31 }),
+  floor2:  new THREE.MeshLambertMaterial({ color:0x121729 }),
+  grid:    new THREE.MeshBasicMaterial({ color:0x1C5E66 }),          // glowing inlay, not paint
+  grid2:   new THREE.MeshBasicMaterial({ color:0x4A2A5E }),
+  wall:    new THREE.MeshLambertMaterial({ color:0x28314F }),
+  wallB:   new THREE.MeshLambertMaterial({ color:0x1C2340 }),
+  crateA:  new THREE.MeshLambertMaterial({ color:0x36406A }),
+  crateB:  new THREE.MeshLambertMaterial({ color:0x2A3357 }),
+  rust:    new THREE.MeshLambertMaterial({ color:0x6B4230 }),
+  panel:   new THREE.MeshLambertMaterial({ color:0x1F2A4C }),
+  accent:  new THREE.MeshBasicMaterial({ color:NEON.amber }),
+  accent2: new THREE.MeshBasicMaterial({ color:NEON.teal }),
+  accent3: new THREE.MeshBasicMaterial({ color:NEON.rose })
 };
+
+// a light strip: emissive bar plus a soft halo, the cheapest way to make a room glow
+function strip(x, y, z, w, h, d, mat, color, glowSize){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  worldGroup.add(m);
+  if (glowSize !== 0) addGlow(x, y, z, color, glowSize || Math.max(w, d) * 0.9);
+  return m;
+}
 
 let worldGroup = null;
 let mapId = 'pit';
@@ -880,18 +986,26 @@ const PIT = {
     flat(new THREE.PlaneGeometry(S,S), MAT.floor, 0, 0, 0);
     solids.push(worldGroup.children[worldGroup.children.length-1]);
     for (let i = -3; i <= 3; i++){
-      flat(new THREE.PlaneGeometry(S, 0.08), MAT.grid, 0, 0.01, i*9);
-      flat(new THREE.PlaneGeometry(0.08, S), MAT.grid, i*9, 0.01, 0);
+      flat(new THREE.PlaneGeometry(S, 0.08), i % 2 ? MAT.grid : MAT.grid2, 0, 0.01, i*9);
+      flat(new THREE.PlaneGeometry(0.08, S), i % 2 ? MAT.grid : MAT.grid2, i*9, 0.01, 0);
     }
     const ring = flat(new THREE.RingGeometry(13.6, 13.9, 64), MAT.accent, 0, 0.02, 0);
     ring.receiveShadow = false;
+    const ring2 = flat(new THREE.RingGeometry(6.9, 7.05, 48), MAT.accent2, 0, 2.03, 0);
+    ring2.receiveShadow = false;
 
     box(0, 0,  h, S+2, H, 1, MAT.wall);
     box(0, 0, -h, S+2, H, 1, MAT.wall);
     box( h, 0, 0, 1, H, S+2, MAT.wall);
     box(-h, 0, 0, 1, H, S+2, MAT.wall);
 
-    box(0, 0, 0, 13, 2, 13, MAT.wallB);
+    // light strips running the length of each wall, alternating warm and cool
+    [[0, h-0.6, S, 0.25, NEON.teal, MAT.accent2], [0, -(h-0.6), S, 0.25, NEON.amber, MAT.accent]]
+      .forEach(([x, z, w, t, col, mt]) => strip(x, 2.6, z, w, t, 0.25, mt, col, 5));
+    [[h-0.6, 0], [-(h-0.6), 0]].forEach(([x, z], i) =>
+      strip(x, 2.6, z, 0.25, 0.25, S, i ? MAT.accent2 : MAT.accent, i ? NEON.teal : NEON.amber, 5));
+
+    box(0, 0, 0, 13, 2, 13, MAT.panel);
     const treads = [[0.60, 9.4, 1.6], [1.20, 8.0, 1.4], [1.75, 6.9, 1.2]];
     treads.forEach(t => {
       const [hh, dist, dep] = t;
@@ -900,9 +1014,12 @@ const PIT = {
       box( dist, 0, 0, dep, hh, 5, MAT.crateA);
       box(-dist, 0, 0, dep, hh, 5, MAT.crateA);
     });
-    box(0, 2, 0, 3, 4, 3, MAT.wallB);
+    box(0, 2, 0, 3, 4, 3, MAT.panel);
+    strip(0, 4.2, 1.55, 2.2, 2.4, 0.08, MAT.accent2, NEON.teal, 3.2);
+    strip(0, 4.2, -1.55, 2.2, 2.4, 0.08, MAT.accent2, NEON.teal, 3.2);
     const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 1.2), MAT.accent);
     beacon.position.set(0, 6.2, 0); worldGroup.add(beacon);
+    addGlow(0, 6.3, 0, NEON.amber, 6);
 
     [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
       box(x, 0, z, 6, 4.5, 6, MAT.wallB);
@@ -912,6 +1029,8 @@ const PIT = {
       box(x + sx*2.6, 0, z + sz*2.4, 2.2, 3.35, 2.2, MAT.crateA);
       const lamp = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
       lamp.position.set(x, 4.7, z); worldGroup.add(lamp);
+      addGlow(x, 4.8, z, NEON.teal, 4.5);
+      strip(x, 2.2, z + (z > 0 ? -3.05 : 3.05), 4.4, 0.16, 0.1, MAT.accent3, NEON.rose, 3);
     });
 
     const cover = [
@@ -946,8 +1065,8 @@ const STACKS = {
     flat(new THREE.PlaneGeometry(S,S), MAT.floor2, 0, 0, 0);
     solids.push(worldGroup.children[worldGroup.children.length-1]);
     for (let i = -2; i <= 2; i++){
-      flat(new THREE.PlaneGeometry(S, 0.07), MAT.grid, 0, 0.01, i*8);
-      flat(new THREE.PlaneGeometry(0.07, S), MAT.grid, i*8, 0.01, 0);
+      flat(new THREE.PlaneGeometry(S, 0.07), i % 2 ? MAT.grid : MAT.grid2, 0, 0.01, i*8);
+      flat(new THREE.PlaneGeometry(0.07, S), i % 2 ? MAT.grid : MAT.grid2, i*8, 0.01, 0);
     }
 
     box(0, 0,  h, S+2, H, 1, MAT.wall);
@@ -997,14 +1116,26 @@ const STACKS = {
       box(x, 0, z, 3, 2.6, 3, MAT.rust);
       const sx = x > 0 ? -1 : 1;
       box(x + sx*2.6, 0, z, 2.2, 1.25, 2.2, MAT.crateA);
+      strip(x, 2.35, z, 3.05, 0.1, 0.1, MAT.accent3, NEON.rose, 2.6);
     });
 
     // waist-high cover along the outer lanes
     [[-15,-7],[15,-7],[-15,7],[15,7],[-7,-15],[7,-15],[-7,15],[7,15]]
       .forEach((c,i) => box(c[0], 0, c[1], 2.4, 1.2, 2.4, i%2 ? MAT.crateA : MAT.rust));
 
+    // doorway lights so the entrances read from across the map
+    [[0, -9.5, 0], [0, 9.5, 0], [-9.5, 0, 1], [9.5, 0, 1]].forEach(([x, z, rot]) => {
+      const w = rot ? 0.12 : 3.0, d = rot ? 3.0 : 0.12;
+      strip(x, 3.15, z, w, 0.14, d, MAT.accent, NEON.amber, 3.4);
+    });
+    // roof edge trim
+    [[0, -9.4], [0, 9.4]].forEach(([x, z]) => strip(x, 3.9, z, 18.8, 0.1, 0.12, MAT.accent2, NEON.teal, 0));
+    [[-9.4, 0], [9.4, 0]].forEach(([x, z]) => strip(x, 3.9, z, 0.12, 0.1, 18.8, MAT.accent2, NEON.teal, 0));
+    [[-9.4,-9.4],[9.4,-9.4],[-9.4,9.4],[9.4,9.4]].forEach(([x,z]) => addGlow(x, 3.95, z, NEON.teal, 4));
+
     const beacon = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
     beacon.position.set(0, 4.0, 0); worldGroup.add(beacon);
+    addGlow(0, 4.1, 0, NEON.teal, 5);
   }
 };
 
@@ -1014,12 +1145,13 @@ function currentMap(){ return MAPS[mapId] || PIT; }
 function buildPickupMeshes(){
   PICKUPS.forEach(p => {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.55, 12), new THREE.MeshLambertMaterial({ color:0x4FD6C8 }));
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.55, 12), new THREE.MeshBasicMaterial({ color:NEON.teal }));
     body.castShadow = true;
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.1, 0.18), MAT.accent2);
     cap.position.y = 0.05;
     const cap2 = cap.clone(); cap2.rotation.y = Math.PI/2;
     g.add(body, cap, cap2);
+    addGlow(0, 0, 0, NEON.teal, 2.4, g);
     g.position.set(p.x, p.y + 0.7, p.z);
     worldGroup.add(g);
     pickupMeshes[p.id] = g;
@@ -1043,7 +1175,7 @@ function loadMap(id){
   PICKUPS = m.pickups;
   m.build();
   buildPickupMeshes();
-  scene.fog = new THREE.Fog(0x090C13, m.fog[0], m.fog[1]);
+  scene.fog = new THREE.Fog(0x16203C, m.fog[0], m.fog[1]);
   if (sun) sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
 }
 
@@ -1101,17 +1233,24 @@ function buildAvatar(colorHex, name){
   head.position.y = 1.68; head.castShadow = true;
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.11, 0.03), new THREE.MeshBasicMaterial({ color:colorHex }));
   visor.position.set(0, 1.7, -0.18);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex(), color: colorHex, transparent:true, opacity:0.5,
+    blending: THREE.AdditiveBlending, depthWrite:false
+  }));
+  halo.position.set(0, 1.7, -0.22);
+  halo.scale.setScalar(1.1);
+  halo.visible = glowOn;
   const gun = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.72), dark);
   gun.position.set(0.3, 1.16, -0.36);
 
   const flash = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.3, 0.3),
-    new THREE.MeshBasicMaterial({ color:0xFFD98A, transparent:true, opacity:0.95, depthWrite:false })
+    new THREE.PlaneGeometry(0.42, 0.42),
+    new THREE.MeshBasicMaterial({ map:glowTex(), color:0xFFCE7A, transparent:true, opacity:0.95, depthWrite:false, blending:THREE.AdditiveBlending })
   );
   flash.position.set(0.3, 1.16, -0.78);
   flash.visible = false;
 
-  g.add(torso, hips, legL, legR, armL, armR, head, visor, gun, flash);
+  g.add(torso, hips, legL, legR, armL, armR, head, visor, halo, gun, flash);
 
   // invisible hit volumes used by the raycaster
   const bodyHit = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.45, 0.6), new THREE.MeshBasicMaterial({ visible:false }));
@@ -1136,12 +1275,19 @@ function buildAvatar(colorHex, name){
 */
 const projectiles = [];
 const projGeo = new THREE.SphereGeometry(0.13, 10, 8);
-const projMat = new THREE.MeshBasicMaterial({ color:0xFFB347 });
+const projMat = new THREE.MeshBasicMaterial({ color:0xFFC46B });
 const blastGeo = new THREE.SphereGeometry(1, 16, 12);
 
 function spawnProjectile(origin, dir, weapon, owned){
   const mesh = new THREE.Mesh(projGeo, projMat);
   mesh.position.copy(origin);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex(), color: 0xFF9A3C, transparent:true, opacity:0.9,
+    blending: THREE.AdditiveBlending, depthWrite:false
+  }));
+  halo.scale.setScalar(1.3);
+  halo.visible = glowOn;
+  mesh.add(halo);
   scene.add(mesh);
   const light = new THREE.PointLight(0xFFA030, 1.1, 7);
   mesh.add(light);
@@ -1239,7 +1385,7 @@ function stepProjectiles(dt){
 
 /* ===================== EFFECTS ===================== */
 const fx = { tracers:[], decals:[], sparks:[], blasts:[] };
-const tracerMat = new THREE.LineBasicMaterial({ color:0xFFE1A0, transparent:true, opacity:0.9 });
+const tracerMat = new THREE.LineBasicMaterial({ color:0xFFD27A, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false });
 const decalGeo = new THREE.PlaneGeometry(0.28, 0.28);
 
 function tracer(a, b){
@@ -1257,7 +1403,7 @@ function impact(point, normal, colorHex){
   fx.decals.push({ mesh:d, t:0 });
 
   for (let i=0;i<4;i++){
-    const s = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.04,0.04), new THREE.MeshBasicMaterial({ color:0xFFD07A }));
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.05), new THREE.MeshBasicMaterial({ color:0xFFC85A, blending:THREE.AdditiveBlending, depthWrite:false, transparent:true }));
     s.position.copy(point);
     const v = new THREE.Vector3(normal.x + rand(-.6,.6), normal.y + rand(0,.9), normal.z + rand(-.6,.6)).multiplyScalar(rand(2,5));
     scene.add(s);
@@ -1322,7 +1468,7 @@ function buildViewmodel(){
   viewParts.rail = gun([[0,0,0, .08,.1,.8],[0,-.07,.16, .06,.14,.15],[0,.09,-.02, .05,.05,.44, 1],[0,-.01,-.44, .06,.06,.2]]);
   viewParts.arc = gun([[0,0,0, .15,.16,.5],[0,-.07,.12, .08,.14,.18],[0,.02,-.3, .17,.17,.22, 1],[0,.1,.02, .05,.04,.26]]);
 
-  muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.34,0.34), new THREE.MeshBasicMaterial({ color:0xFFD98A, transparent:true, opacity:0.95, depthTest:false }));
+  muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.42), new THREE.MeshBasicMaterial({ map:glowTex(), color:0xFFCE7A, transparent:true, opacity:0.95, depthTest:false, blending:THREE.AdditiveBlending }));
   muzzle.position.set(0.26, -0.22, -1.0);
   muzzle.visible = false;
   viewGroup.add(muzzle);
@@ -4072,6 +4218,17 @@ function initMenu(){
     if (!perf.auto){ perf.scale = 1; applyScale(); }
   };
 
+  const glowIn = $('glowIn');
+  glowIn.checked = localStorage.getItem('eonarena.glow') !== '0';
+  const applyGlow = () => {
+    const on = glowIn.checked;
+    glowOn = on;
+    if (dustPoints) dustPoints.visible = on;
+    scene.traverse(o => { if (o.isSprite && o.material && o.material.blending === THREE.AdditiveBlending) o.visible = on; });
+  };
+  glowIn.onchange = () => { localStorage.setItem('eonarena.glow', glowIn.checked ? '1':'0'); applyGlow(); };
+  applyGlow();
+
   const musicIn = $('musicIn'), musicVol = $('musicVol');
   music.on = localStorage.getItem('eonarena.music') !== '0';
   music.level = (+(localStorage.getItem('eonarena.musicvol')) || 60) / 100;
@@ -4391,6 +4548,10 @@ function frame(){
     if (mode === 'solo') stepBots(dt);
   }
 
+  if (dustPoints){
+    dustPoints.rotation.y += dt * 0.012;
+    dustPoints.position.y = Math.sin(performance.now()/6000) * 0.6;
+  }
   stepMusic(dt);
   stepRemotes(dt);
   if (mode !== 'menu') stepRemoteFire();
