@@ -219,6 +219,29 @@
     border:1px solid var(--teal); padding:4px 10px; border-radius:2px; visibility:hidden;
   }
   #shield.on{visibility:visible}
+  #armoury{
+    position:absolute; left:50%; bottom:calc(120px + env(safe-area-inset-bottom));
+    transform:translateX(-50%); display:none; pointer-events:auto; text-align:center;
+    background:rgba(11,15,24,.92); border:1px solid var(--line); padding:14px 16px;
+    max-width:min(760px, 94vw);
+  }
+  #armoury.on{display:block}
+  #armList{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; justify-content:center}
+  .arm{
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+    padding:9px 11px; min-width:132px; text-transform:none; letter-spacing:0;
+    background:#0A0E17; border:1px solid var(--line); cursor:pointer;
+  }
+  .arm b{font-size:9px; color:var(--dim); letter-spacing:.2em; font-weight:400}
+  .arm .an{font-size:12px; color:var(--ink)}
+  .arm .an i{font-style:normal; color:var(--dim); font-size:10px}
+  .arm .ae{font-size:10px; color:var(--dim)}
+  .arm .ac{font-size:11px; color:var(--amber); margin-top:3px}
+  .arm.sel{border-color:var(--amber)}
+  .arm.poor{opacity:.45}
+  .arm.poor .ac{color:var(--hostile)}
+  .arm.maxed{opacity:.5}
+  .arm.maxed .ac{color:var(--teal)}
   #netstat{
     position:absolute; right:26px; bottom:calc(26px + 132px); display:none;
     font-size:10px; line-height:1.7; letter-spacing:.12em; text-transform:uppercase;
@@ -327,6 +350,11 @@
   <div id="objEdge"></div>
   <div id="hitdir"></div>
   <div id="shield">Spawn shield</div>
+  <div id="armoury">
+    <div class="eyebrow">Armoury — <b id="armCredits">0</b> credits</div>
+    <div id="armList"></div>
+    <div class="eyebrow" style="margin-top:10px;color:var(--dim)">1–5 to buy · D-pad to select, △ to buy · tap a card</div>
+  </div>
   <div id="netstat"></div>
   <div id="vignette"></div>
 </div>
@@ -1182,7 +1210,8 @@ const me = {
   onGround:false, sprinting:false,
   weapon:0, ammo:[30,6,4], reloading:false, reloadEnd:0, nextShot:0,
   ads:false, recoil:0, bob:0, shake:0, lastStep:0,
-  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0, hadLife:true, localKillAt:0
+  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0, hadLife:true, localKillAt:0,
+  credits:0, upg:{ dmg:0, hp:0, reload:0, speed:0 }, armSel:0
 };
 const keys = Object.create(null);
 let mouseDown = false, pointerLocked = false, chatting = false;
@@ -1235,7 +1264,7 @@ function initTouch(){
 
   addEventListener('touchstart', e => {
     if (!touch.on) return;
-    if (e.target && e.target.closest && (e.target.closest('.tbtn') || e.target.tagName === 'INPUT')) return;
+    if (e.target && e.target.closest && (e.target.closest('.tbtn') || e.target.closest('#armoury') || e.target.tagName === 'INPUT')) return;
     if (mode === 'menu' || chatting) return;
     for (let i=0;i<e.changedTouches.length;i++) begin(e.changedTouches[i]);
     e.preventDefault();
@@ -1469,11 +1498,19 @@ function stepPad(dt){
   else if (PAD.jumpByPad) keys[' '] = false;
   PAD.jumpByPad = padJump;
   if (padTap(gp, PAD_BTN.square)) reload();
-  if (padTap(gp, PAD_BTN.triangle) || padTap(gp, PAD_BTN.r1)) swapWeapon((me.weapon + 1) % WEAPONS.length);
-  if (padTap(gp, PAD_BTN.l1)) swapWeapon((me.weapon + WEAPONS.length - 1) % WEAPONS.length);
-  if (padTap(gp, PAD_BTN.up)) swapWeapon(0);
-  if (padTap(gp, PAD_BTN.left)) swapWeapon(1);
-  if (padTap(gp, PAD_BTN.right)) swapWeapon(2);
+  if (armouryOpen()){
+    if (padTap(gp, PAD_BTN.left)){ me.armSel = (me.armSel + UPGRADES.length - 1) % UPGRADES.length; renderArmoury(); }
+    if (padTap(gp, PAD_BTN.right)){ me.armSel = (me.armSel + 1) % UPGRADES.length; renderArmoury(); }
+    if (padTap(gp, PAD_BTN.triangle)) buyUpgrade(me.armSel);
+    if (padTap(gp, PAD_BTN.r1)) swapWeapon((me.weapon + 1) % WEAPONS.length);
+    if (padTap(gp, PAD_BTN.l1)) swapWeapon((me.weapon + WEAPONS.length - 1) % WEAPONS.length);
+  } else {
+    if (padTap(gp, PAD_BTN.triangle) || padTap(gp, PAD_BTN.r1)) swapWeapon((me.weapon + 1) % WEAPONS.length);
+    if (padTap(gp, PAD_BTN.l1)) swapWeapon((me.weapon + WEAPONS.length - 1) % WEAPONS.length);
+    if (padTap(gp, PAD_BTN.up)) swapWeapon(0);
+    if (padTap(gp, PAD_BTN.left)) swapWeapon(1);
+    if (padTap(gp, PAD_BTN.right)) swapWeapon(2);
+  }
   if (padTap(gp, PAD_BTN.options)) $('paused').classList.add('on');
   const padBoard = padPressed(gp, PAD_BTN.share);
   if (padBoard) showBoard(true);
@@ -1495,9 +1532,13 @@ function initInput(){
     keys[k] = true;
     if (k === 'tab'){ e.preventDefault(); showBoard(true); }
     if (k === 'r') reload();
-    if (k === '1') swapWeapon(0);
-    if (k === '2') swapWeapon(1);
-    if (k === '3') swapWeapon(2);
+    if (armouryOpen() && k >= '1' && k <= '5'){
+      buyUpgrade(+k - 1);                 // Q and the scroll wheel still change weapon
+    } else {
+      if (k === '1') swapWeapon(0);
+      if (k === '2') swapWeapon(1);
+      if (k === '3') swapWeapon(2);
+    }
     if (k === 'q') swapWeapon((me.weapon+1) % WEAPONS.length);
     if (k === 'enter' && mode !== 'menu') openChat();
     // backquote as well as F3: on a Mac the function keys are Mission Control and the
@@ -1629,7 +1670,7 @@ function movePlayer(dt){
 
   me.sprinting = !me.ads && (!!(keys['shift'] && iz > 0) || (touch.on && touch.mag > 0.86 && iz > 0) ||
                             (PAD.active && PAD.sprint && iz > 0));
-  const speed = CFG.walkSpeed * (me.sprinting ? CFG.sprintMul : 1) * (me.ads ? 0.55 : 1);
+  const speed = CFG.walkSpeed * speedMul() * (me.sprinting ? CFG.sprintMul : 1) * (me.ads ? 0.55 : 1);
   const accel = me.onGround ? 14 : 14 * CFG.airControl;
 
   me.vel.x = lerp(me.vel.x, wish.x * speed, clamp(accel*dt, 0, 1));
@@ -1697,6 +1738,82 @@ function eachTarget(fn){
   bots.forEach(b => fn(b));
 }
 
+/* ===================== ARMOURY (waves) ===================== */
+/*
+  Waves had no arc: your loadout on wave 12 was identical to wave 1, so the only thing
+  that changed was how hard the drones hit. Credits earned from kills and cleared waves
+  buy upgrades in the break between them, which is what makes a run feel like a run.
+  Entirely local — it only affects your own character, so there is nothing to arbitrate
+  and nothing extra to sync.
+*/
+const UPGRADES = [
+  { id:'dmg',    name:'Weapon calibration', effect:'+15% damage',       max:4, cost:l => 120 + l*90 },
+  { id:'hp',     name:'Plating',            effect:'+25 integrity',     max:4, cost:l => 100 + l*80 },
+  { id:'reload', name:'Feed mechanism',     effect:'18% faster reload', max:3, cost:l => 110 + l*70 },
+  { id:'speed',  name:'Servo boost',        effect:'+8% movement',      max:3, cost:l => 110 + l*70 },
+  { id:'repair', name:'Field repair',       effect:'back to full',      max:99, cost:() => 60 }
+];
+
+function maxHp(){ return CFG.maxHp + 25 * (me.upg.hp || 0); }
+function dmgMul(){ return 1 + 0.15 * (me.upg.dmg || 0); }
+function reloadMul(){ return 1 / (1 + 0.22 * (me.upg.reload || 0)); }
+function speedMul(){ return 1 + 0.08 * (me.upg.speed || 0); }
+
+function resetRun(){
+  me.credits = 0;
+  me.upg = { dmg:0, hp:0, reload:0, speed:0 };
+  me.armSel = 0;
+  me.hp = Math.min(me.hp, maxHp());
+}
+function awardCredits(n){
+  if (!isWaves() || n <= 0) return;
+  me.credits += Math.round(n);
+  updateHud();
+}
+function upgLevel(u){ return u.id === 'repair' ? 0 : (me.upg[u.id] || 0); }
+function upgCost(u){ return u.cost(upgLevel(u)); }
+function canBuy(u){ return upgLevel(u) < u.max && me.credits >= upgCost(u); }
+
+function buyUpgrade(i){
+  const u = UPGRADES[i];
+  if (!u || !canBuy(u)) { Audio2.play('dry'); return; }
+  me.credits -= upgCost(u);
+  if (u.id === 'repair'){
+    me.hp = maxHp();
+    $('vignette').style.opacity = 0;
+  } else {
+    me.upg[u.id] = (me.upg[u.id] || 0) + 1;
+    if (u.id === 'hp') me.hp += 25;            // plating adds the integrity it grants
+  }
+  Audio2.play('pickup');
+  updateHud();
+  renderArmoury();
+}
+
+function armouryOpen(){ return isWaves() && net.wave.state === 'break' && me.alive; }
+function renderArmoury(){
+  const el = $('armoury');
+  if (!armouryOpen()){ el.classList.remove('on'); return; }
+  el.classList.add('on');
+  $('armCredits').textContent = me.credits;
+  $('armList').innerHTML = UPGRADES.map((u, i) => {
+    const lvl = upgLevel(u);
+    const maxed = lvl >= u.max;
+    const afford = canBuy(u);
+    const cls = 'arm' + (i === me.armSel ? ' sel' : '') + (maxed ? ' maxed' : (afford ? '' : ' poor'));
+    return '<button class="' + cls + '" data-i="' + i + '">' +
+      '<b>' + (i+1) + '</b>' +
+      '<span class="an">' + esc(u.name) + (u.max < 90 ? ' <i>' + lvl + '/' + u.max + '</i>' : '') + '</span>' +
+      '<span class="ae">' + esc(u.effect) + '</span>' +
+      '<span class="ac">' + (maxed ? 'MAX' : upgCost(u) + 'c') + '</span>' +
+      '</button>';
+  }).join('');
+  [].forEach.call($('armList').children, b => {
+    b.onclick = () => buyUpgrade(+b.dataset.i);
+    b.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); buyUpgrade(+b.dataset.i); }, { passive:false });
+  });
+}
+
 /* ===================== SHOOTING ===================== */
 const ray = new THREE.Raycaster();
 const tmpDir = new THREE.Vector3();
@@ -1716,7 +1833,7 @@ function reload(){
   const w = currentWeapon();
   if (me.reloading || me.ammo[me.weapon] >= w.mag || !me.alive) return;
   me.reloading = true;
-  me.reloadEnd = performance.now() + w.reload*1000;
+  me.reloadEnd = performance.now() + w.reload*1000*reloadMul();
   $('reloading').classList.add('on');
   Audio2.play('reload');
 }
@@ -1759,7 +1876,7 @@ function tryFire(){
     const r = castShot(origin, dir, w);
     if (r && r.uid){
       const dist = r.point.distanceTo(origin);
-      let dmg = w.dmg * (r.head ? 2 : 1);
+      let dmg = w.dmg * (r.head ? 2 : 1) * dmgMul();
       if (w.falloff) dmg *= clamp(1 - (dist / w.range) * w.falloff, 0.35, 1);
       if (!hits[r.uid]) hits[r.uid] = { dmg:0, head:false, name:r.name };
       hits[r.uid].dmg += dmg;
@@ -1880,7 +1997,7 @@ function showHitDir(fromPos){
 let vigTimer = null;
 function flashVignette(){
   const v = $('vignette');
-  v.style.opacity = clamp(1 - me.hp/CFG.maxHp, 0.25, 0.9);
+  v.style.opacity = clamp(1 - me.hp/maxHp(), 0.25, 0.9);
   clearTimeout(vigTimer);
   vigTimer = setTimeout(() => { v.style.opacity = me.hp < 35 ? 0.28 : 0; }, 220);
 }
@@ -1915,7 +2032,7 @@ function respawn(){
   const s = pickSpawnPoint(me.team, true);
   me.pos.set(s.x, 0.2, s.z);
   me.vel.set(0,0,0);
-  me.hp = CFG.maxHp;
+  me.hp = maxHp();
   me.alive = true;
   me.yaw = Math.atan2(-s.x, -s.z) + Math.PI;
   me.pitch = 0;
@@ -1928,7 +2045,7 @@ function respawn(){
   Audio2.play('spawn');
   if (mode === 'online' && net.ref){
     net.sent = {};
-    net.ref.child('players/' + me.uid).update({ hp:CFG.maxHp, alive:true, x:me.pos.x, y:me.pos.y, z:me.pos.z });
+    net.ref.child('players/' + me.uid).update({ hp:maxHp(), alive:true, x:me.pos.x, y:me.pos.y, z:me.pos.z });
   }
   updateHud();
 }
@@ -1943,10 +2060,10 @@ function stepPickups(dt, now){
     if (!ready) return;
     mesh.rotation.y += dt*1.6;
     mesh.position.y = p.y + 0.7 + Math.sin(now/450 + p.x)*0.09;
-    if (!me.alive || me.hp >= CFG.maxHp) return;
+    if (!me.alive || me.hp >= maxHp()) return;
     const d = Math.hypot(me.pos.x - p.x, me.pos.z - p.z);
     if (d < 1.1 && Math.abs(me.pos.y - p.y) < 1.2){
-      me.hp = Math.min(CFG.maxHp, me.hp + PICKUP_HEAL);
+      me.hp = Math.min(maxHp(), me.hp + PICKUP_HEAL);
       pickupTaken[p.id] = net.now();
       Audio2.play('pickup');
       updateHud();
@@ -2312,7 +2429,7 @@ function selfRecord(){
     name: me.name, color: myColor(), team: me.team,
     x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2),
     ry: +me.yaw.toFixed(2), rx: 0,
-    hp: Math.max(0, Math.round(me.hp)), alive: me.alive,
+    hp: Math.max(0, Math.round(me.hp)), hpMax: maxHp(), alive: me.alive,
     kills: me.kills, deaths: me.deaths, mv: 0,
     ts: firebase.database.ServerValue.TIMESTAMP,
     joined: firebase.database.ServerValue.TIMESTAMP
@@ -2332,7 +2449,7 @@ function syncSelfScore(v){
       performance.now() - (me.localKillAt || 0) < 3000){
     // stale echo of a kill we already counted
   } else if (typeof v.kills === 'number' && v.kills !== me.kills){
-    if (v.kills > me.kills) Audio2.play('frag');
+    if (v.kills > me.kills){ Audio2.play('frag'); awardCredits(12 * (v.kills - me.kills)); }
     me.kills = v.kills;
     updateHud();
     if (!isTeam() && me.kills >= CFG.killTarget && !net.matchOver) declareWin(me.name, -1, me.uid);
@@ -2841,6 +2958,7 @@ function applyBotHit(v){
       // not a round trip later; the echo will match and pass silently
       me.kills++;
       me.localKillAt = performance.now();
+      awardCredits(12 + (v.head ? 6 : 0));
       Audio2.play('frag');
       updateHud();
     }
@@ -3209,7 +3327,7 @@ function droneThink(ai, dt, targets, hooks){
     const rp = routeTo(ai, can.x, can.z, can.y);
     const to = dA.set(rp.x - ai.pos.x, 0, rp.z - ai.pos.z);
     if (Math.hypot(can.x - ai.pos.x, can.z - ai.pos.z) < 1.3 && Math.abs(ai.pos.y - can.y) < 1.2){
-      ai.hp = Math.min(CFG.maxHp, ai.hp + PICKUP_HEAL);
+      ai.hp = Math.min(ai.hpMax || CFG.maxHp, ai.hp + PICKUP_HEAL);
       hooks.heal(ai, can.id);
     } else {
       steerMove(ai, to.x, to.z, D.speed * 1.05, dt);
@@ -3353,7 +3471,7 @@ function buildHudBits(){
 }
 function updateHud(){
   const segs = $('hpRail').children;
-  const filled = Math.ceil(clamp(me.hp,0,CFG.maxHp)/10);
+  const filled = Math.ceil(clamp(me.hp, 0, maxHp()) / (maxHp()/10));
   for (let i=0;i<segs.length;i++){
     segs[i].className = i < filled ? (me.hp <= 30 ? 'f low' : 'f') : '';
   }
@@ -3378,7 +3496,8 @@ function updateHud(){
     $('score').innerHTML =
       '<span style="color:var(--amber);font-size:13px;letter-spacing:.24em">WAVE ' + Math.max(1, w.n) + '</span>' +
       '<div style="margin-top:5px">Drones left <b>' + w.left + '</b></div>' +
-      '<div style="margin-top:3px">Squad lives ' + lives + '</div>';
+      '<div style="margin-top:3px">Squad lives ' + lives + '</div>' +
+      '<div style="margin-top:3px">Credits <b>' + me.credits + '</b></div>';
   } else if (isTeam()){
     const t = net.teamScore;
     $('score').innerHTML = '<b style="color:' + hex(CFG.teamColors[0]) + '">' + CFG.teamNames[0] + ' ' + t[0] +
@@ -3505,6 +3624,24 @@ function updateBoard(force){
   matters — are you on it, is it contested, which way is it — goes at the top of the
   screen, around the crosshair, and on the screen edge.
 */
+let lastWaveSeen = { n:-1, state:'' };
+function watchWaveChanges(){
+  if (!isWaves()) return;
+  const w = net.wave;
+  if (w.state !== lastWaveSeen.state || w.n !== lastWaveSeen.n){
+    // cleared a wave: pay out, then open the armoury for the break
+    if (w.state === 'break' && lastWaveSeen.state === 'active' && w.n > 0){
+      awardCredits(25 + 10 * w.n);
+      addFeed('Wave ' + w.n + ' cleared — ' + (25 + 10*w.n) + ' credits', true);
+    }
+    if (w.n === 1 && lastWaveSeen.n > 1) resetRun();      // a fresh run after being overrun
+    if (w.state === 'over') addFeed('Run over on wave ' + w.n, true);
+    lastWaveSeen.state = w.state;
+    lastWaveSeen.n = w.n;
+    renderArmoury();
+  }
+}
+
 function updateObjective(){
   const el = $('obj'), arrow = $('objArrow'), edge = $('objEdge');
   arrow.style.display = 'none';
@@ -3897,6 +4034,7 @@ function startGame(kind){
   me.kills = 0; me.deaths = 0;
   me.ammo = WEAPONS.map(w => w.mag);
   me.hp = CFG.maxHp; me.alive = true;
+  resetRun();
   $('menu').style.display = 'none';
   document.body.classList.add('playing');
   checkOrientation();
@@ -4080,12 +4218,12 @@ function frame(){
 
   miniAcc += dt;
   if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); updateTagVisibility(); }
-  if (mode !== 'menu'){ updateAimAssist(dt); updateObjective(); }
+  if (mode !== 'menu'){ updateAimAssist(dt); watchWaveChanges(); updateObjective(); }
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
   if (isWaves()){
     hudAcc += dt;
-    if (hudAcc > 0.25){ hudAcc = 0; updateHud(); }
+    if (hudAcc > 0.25){ hudAcc = 0; updateHud(); renderArmoury(); }
   }
   if (mode === 'online'){
     net.electAcc += dt;
