@@ -376,6 +376,7 @@
     </div>
     <div class="note" style="text-align:left">WASD move · Space jump · Shift sprint · Left click fire · Right click focus · R reload · 1–3 weapons · Tab standings · Enter chat</div>
     <div class="note" style="text-align:left">Controller: ✕ resume · ◯ leave</div>
+    <div class="note" style="text-align:left">Press ` for the performance readout</div>
   </div>
 </div>
 
@@ -457,7 +458,7 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="shadowIn" checked> Dynamic shadows</label><small>Turn off on older laptops</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="soundIn" checked> Sound</label><small>Synthesised, no downloads</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="touchIn"> Touch controls</label><small>On-screen stick and buttons</small></div>
-      <div class="opt"><label class="toggle"><input type="checkbox" id="statsIn"> Performance readout</label><small>FPS and ping in game (also F3)</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="statsIn"> Performance readout</label><small>FPS and ping in game (toggle with ` or F3)</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="autoQIn" checked> Auto quality</label><small>Drops resolution if the frame rate sags</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match</small></div>
       <div class="opt"><label for="musicVol">Music volume</label><input id="musicVol" type="range" min="0" max="100" value="60"><small id="musicVolVal">60%</small></div>
@@ -1181,7 +1182,7 @@ const me = {
   onGround:false, sprinting:false,
   weapon:0, ammo:[30,6,4], reloading:false, reloadEnd:0, nextShot:0,
   ads:false, recoil:0, bob:0, shake:0, lastStep:0,
-  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0, hadLife:true
+  respawnAt:0, killedBy:'', ping:0, spawnSafeUntil:0, team:0, firingUntil:0, hadLife:true, localKillAt:0
 };
 const keys = Object.create(null);
 let mouseDown = false, pointerLocked = false, chatting = false;
@@ -1499,7 +1500,14 @@ function initInput(){
     if (k === '3') swapWeapon(2);
     if (k === 'q') swapWeapon((me.weapon+1) % WEAPONS.length);
     if (k === 'enter' && mode !== 'menu') openChat();
-    if (k === 'f3'){ perf.show = !perf.show; $('netstat').classList.toggle('on', perf.show); localStorage.setItem('eonarena.stats', perf.show ? '1':'0'); e.preventDefault(); }
+    // backquote as well as F3: on a Mac the function keys are Mission Control and the
+    // browser never sees F3 without holding Fn
+    if (k === 'f3' || k === '`' || k === '~'){
+      perf.show = !perf.show;
+      $('netstat').classList.toggle('on', perf.show);
+      localStorage.setItem('eonarena.stats', perf.show ? '1':'0');
+      e.preventDefault();
+    }
     if (k === ' ') e.preventDefault();
   });
   addEventListener('keyup', e => {
@@ -2314,7 +2322,16 @@ function selfRecord(){
 function syncSelfScore(v){
   if (v.ts) me.ping = clamp(Math.round(net.now() - v.ts), 0, 999);
   if (v.team != null) me.team = v.team;
-  if (typeof v.kills === 'number' && v.kills !== me.kills){
+  /*
+    We credit our own kills locally so the sound lands with the shot. The echoes of
+    those credits then arrive a round trip later and can be behind us — two quick kills
+    produce an echo of 5 when we are already on 6. Ignore an echo that moves the count
+    backwards shortly after a local credit; a genuine reset to zero still gets through.
+  */
+  if (typeof v.kills === 'number' && v.kills < me.kills && v.kills !== 0 &&
+      performance.now() - (me.localKillAt || 0) < 3000){
+    // stale echo of a kill we already counted
+  } else if (typeof v.kills === 'number' && v.kills !== me.kills){
     if (v.kills > me.kills) Audio2.play('frag');
     me.kills = v.kills;
     updateHud();
@@ -2505,10 +2522,23 @@ function handleEvent(v){
   }
 }
 
+/*
+  How often to publish. Playing alone, every one of these writes is read by nobody —
+  but it still goes up a phone's uplink, and a weak uplink queues, and a queued uplink
+  is latency. So drop to a bare presence heartbeat until somebody else is actually in
+  the realm, and ease off when the link is clearly struggling.
+*/
+function netInterval(){
+  if ((net.humanCount || 1) <= 1) return 1.0;            // nobody to tell
+  if (me.ping > 400) return 0.14;
+  if (me.ping > 200) return 0.10;
+  return CFG.netRate;
+}
+
 function writeState(dt){
   if (mode !== 'online' || !net.ref) return;
   net.lastWrite += dt;
-  if (net.lastWrite < CFG.netRate) return;
+  if (net.lastWrite < netInterval()) return;
   net.lastWrite = 0;
 
   const sent = net.sent;
@@ -2806,6 +2836,14 @@ function applyBotHit(v){
     pushEvent({ type:'kill', killer: v.byName || 'someone', victim: ai.name, head: !!v.head,
                 ku: v.by || null, vu: ai.id,
                 kt: shooter ? (shooter.team || 0) : null });
+    if (v.by === me.uid){
+      // credit ourselves straight away so the sound and the counter land with the kill,
+      // not a round trip later; the echo will match and pass silently
+      me.kills++;
+      me.localKillAt = performance.now();
+      Audio2.play('frag');
+      updateHud();
+    }
     if (v.by) net.ref.child('players/' + v.by + '/kills').transaction(k => (k||0) + 1);
   } else {
     net.ref.child('bots/' + ai.id).update({ hp: Math.round(ai.hp) });
@@ -2815,6 +2853,15 @@ function applyBotHit(v){
 const netHooks = {
   shoot(ai, target, dmg, head){
     if (dmg <= 0) return;                       // misses are presentation only
+    if (target.id === me.uid){
+      // we are hosting this drone and it just shot us: posting that to the database
+      // and waiting for it to come back is a round trip to tell ourselves something
+      // we already know
+      takeDamage(dmg, ai.name, head, ai.pos);
+      net.lastAttacker = ai.id;
+      net.attackerIsBot = true;
+      return;
+    }
     net.ref.child('players/' + target.id + '/inbox').push({
       by: ai.id, byName: ai.name, bot: true,
       dmg, head: !!head, w: 'Pulse',
@@ -2867,7 +2914,7 @@ function stepNetBots(dt){
 
   // write drone state on the same throttle as players, deltas only
   net.botAcc += dt;
-  if (net.botAcc < CFG.netRate) return;
+  if (net.botAcc < netInterval()) return;
   net.botAcc = 0;
   const nowMs = net.now();
   net.botAI.forEach(ai => {
