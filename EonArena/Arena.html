@@ -353,7 +353,7 @@
   <div id="armoury">
     <div class="eyebrow">Armoury — <b id="armCredits">0</b> credits</div>
     <div id="armList"></div>
-    <div class="eyebrow" style="margin-top:10px;color:var(--dim)">1–5 to buy · D-pad to select, △ to buy · tap a card</div>
+    <div class="eyebrow" style="margin-top:10px;color:var(--dim)" id="armHint">to buy · D-pad to select, △ to buy · tap a card</div>
   </div>
   <div id="netstat"></div>
   <div id="vignette"></div>
@@ -1665,7 +1665,7 @@ function initInput(){
     keys[k] = true;
     if (k === 'tab'){ e.preventDefault(); showBoard(true); }
     if (k === 'r') reload();
-    if (armouryOpen() && k >= '1' && k <= '5'){
+    if (armouryOpen() && k >= '1' && k <= '9' && (+k) <= UPGRADES.length){
       buyUpgrade(+k - 1);                 // Q and the scroll wheel still change weapon
     } else {
       if (k === '1') swapWeapon(0);
@@ -1955,6 +1955,7 @@ function renderArmoury(){
   if (!armouryOpen()){ el.classList.remove('on'); return; }
   el.classList.add('on');
   $('armCredits').textContent = me.credits;
+  $('armHint').textContent = '1–' + UPGRADES.length + ' to buy · D-pad to select, △ to buy · tap a card';
   $('armList').innerHTML = UPGRADES.map((u, i) => {
     const lvl = upgLevel(u);
     const maxed = lvl >= u.max;
