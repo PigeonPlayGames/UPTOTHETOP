@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>eon games — browser games you can play right now</title>
-  <meta name="description" content="eon games builds multiplayer browser games you can play instantly — no installs, no launchers. Strategy, social deduction and arena shooters." />
+  <meta name="description" content="eon games builds multiplayer browser games you can play instantly — no installs, no launchers. Strategy, social deduction, arena shooters and racing." />
   <meta name="theme-color" content="#050816" />
 
   <!-- Open Graph / social sharing -->
@@ -17,6 +17,118 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles-home.css" />
   <noscript><style>.reveal{opacity:1 !important;transform:none !important;}</style></noscript>
+
+  <!--
+    GAME CARD FIXES
+    Loaded after styles.css / styles-home.css so these rules win.
+    - Every cover is locked to a 16:9 frame and cropped (object-fit: cover),
+      so tall screenshots can't stretch the card on phones.
+    - "Artwork coming soon" sits behind the image and only shows if the image is missing.
+    - Status pill floats over the artwork instead of pushing content down.
+    - Tags become small chips instead of a bulleted list.
+  -->
+  <style>
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+      gap: 1.25rem;
+    }
+
+    .game-card {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .game-art {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(38, 208, 255, .18), transparent 60%),
+        radial-gradient(circle at 75% 70%, rgba(124, 92, 255, .22), transparent 60%),
+        #0a1028;
+      flex-shrink: 0;
+    }
+
+    .art-placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: .8rem;
+      color: rgba(238, 242, 255, .55);
+      z-index: 0;
+    }
+
+    .game-cover {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
+      z-index: 1;
+    }
+
+    .game-art .status-pill {
+      position: absolute;
+      top: .6rem;
+      left: .6rem;
+      z-index: 2;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    .game-card-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: .6rem;
+      padding-top: .9rem;
+    }
+
+    .game-card-body h3,
+    .game-card-body p { margin: 0; }
+
+    .tag-row {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem;
+    }
+
+    .tag-row li {
+      font-size: .72rem;
+      line-height: 1;
+      padding: .35rem .6rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      background: rgba(255, 255, 255, .05);
+      color: rgba(238, 242, 255, .8);
+    }
+
+    .game-card-body .btn-card {
+      margin-top: auto;
+      align-self: flex-start;
+    }
+
+    /* Empty slots: quieter, so the real games stand out */
+    .game-card-slot .game-art { aspect-ratio: 16 / 7; }
+    .game-card-slot { opacity: .7; }
+
+    @media (max-width: 600px) {
+      .games-grid { gap: 1rem; }
+      .game-card-body p { font-size: .92rem; }
+    }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#games">Skip to games</a>
@@ -50,8 +162,8 @@
         <p class="eyebrow">Playable in your browser</p>
         <h1>Build the future of play with <span>eon games</span></h1>
         <p class="hero-text">
-          Strategy, Social, Shooter, Speedway
-          No installs, no launchers, no accounts needed to play just open a tab and go!
+          Strategy, social deduction, shooters and racing.
+          No installs, no launchers, no account needed to play — just open a tab and go.
         </p>
 
         <div class="hero-actions">
@@ -103,7 +215,7 @@
       <div class="section-header">
         <p class="section-tag">Our games</p>
         <h2>Featured titles</h2>
-        <p>Four are playable today. The rest are slots waiting for the next build.</p>
+        <p>Four are playable today, one is in development, and the rest are slots waiting for the next build.</p>
       </div>
 
       <div class="games-grid">
@@ -112,7 +224,7 @@
         <article class="game-card reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/SaxonStrategy.png" alt="Saxons Strategy cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <img class="game-cover" src="Eon_Images/SaxonStrategy.png" alt="Saxons Strategy cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-live">Playable</span>
           </div>
           <div class="game-card-body">
@@ -127,7 +239,7 @@
         <article class="game-card reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/WhoMe.png" alt="Who me? cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <img class="game-cover" src="Eon_Images/WhoMe.png" alt="Who me? cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-live">Playable</span>
           </div>
           <div class="game-card-body">
@@ -142,7 +254,7 @@
         <article class="game-card reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/EonArena1.png" alt="Eon Arena cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <img class="game-cover" src="Eon_Images/EonArena1.png" alt="Eon Arena cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-live">Playable</span>
           </div>
           <div class="game-card-body">
@@ -153,39 +265,39 @@
           </div>
         </article>
 
+        <!-- Velocity -->
+        <article class="game-card reveal">
+          <div class="game-art">
+            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
+            <img class="game-cover" src="VELOCITY/Velocity.jpg" alt="Velocity cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
+            <span class="status-pill pill-live">Playable</span>
+          </div>
+          <div class="game-card-body">
+            <h3>Velocity</h3>
+            <p>Race through the lost city of Velocity. Neon streets, tight corners and a clock that doesn't wait — on touchscreen, keyboard or controller.</p>
+            <ul class="tag-row"><li>Racing</li><li>3D</li><li>Controller ready</li></ul>
+            <a href="VELOCITY/index.html" class="btn btn-card">Play now</a>
+          </div>
+        </article>
+
         <!-- Neon Rift -->
         <article class="game-card reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/NeonRift.png" alt="Neon Rift cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
+            <img class="game-cover" src="Eon_Images/NeonRift.png" alt="Neon Rift cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill">In development</span>
           </div>
           <div class="game-card-body">
             <h3>Neon Rift</h3>
             <p>A fast arcade run through a fracturing skyline. Still being built — the art direction is locked, the gameplay is not.</p>
             <ul class="tag-row"><li>Arcade</li><li>Single player</li></ul>
-            <a href="NeonRift.html" class="btn btn-card">Play now</a>
-          </div>
-        </article>
-
-        <!-- Velocity -->
-        <article class="game-card game-card-slot reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="VELOCITY/Velocity.jpg" alt="Game five cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-slot">Slot open</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Velocity</h3>
-            <p>Race in the lost city of Velocity.</p>
-            <a href="VELOCITY/index.html" class="btn btn-card">Play now</a>
+            <a href="NeonRift.html" class="btn btn-card">Try the preview</a>
           </div>
         </article>
 
         <article class="game-card game-card-slot reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="images/game-six.jpg" alt="Game six cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-slot">Slot open</span>
           </div>
           <div class="game-card-body">
@@ -198,7 +310,6 @@
         <article class="game-card game-card-slot reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="images/game-seven.jpg" alt="Game seven cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-slot">Slot open</span>
           </div>
           <div class="game-card-body">
@@ -211,7 +322,6 @@
         <article class="game-card game-card-slot reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="images/game-eight.jpg" alt="Game eight cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-slot">Slot open</span>
           </div>
           <div class="game-card-body">
@@ -224,7 +334,6 @@
         <article class="game-card game-card-slot reveal">
           <div class="game-art">
             <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="images/game-nine.jpg" alt="Game nine cover art" loading="lazy" width="1280" height="720" onerror="this.remove()" />
             <span class="status-pill pill-slot">Slot open</span>
           </div>
           <div class="game-card-body">
