@@ -148,6 +148,9 @@ body.intro #status,body.intro #kit,body.intro #wavebar,body.intro #hint,body.int
 #oList li{padding:6px 0 6px 16px;border-top:1px solid var(--line);position:relative}
 #oList li:last-child{border-bottom:1px solid var(--line)}
 #oList li::before{content:"";position:absolute;left:0;top:13px;width:7px;height:7px;background:var(--teal)}
+.seg{display:flex;gap:6px;margin-bottom:9px}
+.seg button{flex:1;height:34px;font-size:12.5px;font-weight:600}
+.seg button.on{background:var(--teal);color:#F6F0E2;border-color:#0E4B47}
 #oBtn{width:100%;height:46px;font-size:15px;font-weight:700;background:var(--teal);color:#F6F0E2;border-color:#0E4B47}
 #oAlt{width:100%;height:34px;font-size:13px;font-weight:600;margin-top:7px;display:none}
 #oIntro{width:100%;height:32px;font-size:12.5px;font-weight:600;margin-top:7px;background:transparent;border-style:dashed}
@@ -200,10 +203,10 @@ body.intro #status,body.intro #kit,body.intro #wavebar,body.intro #hint,body.int
 <div id="inspect" class="panel">
   <div id="iName">Rail post</div>
   <div id="iPips"><i></i><i></i><i></i></div>
-  <div class="row"><span>Damage</span><b id="iDmg">11</b></div>
-  <div class="row"><span>Rate</span><b id="iRate">1.3/s</b></div>
-  <div class="row"><span>Range</span><b id="iRange">8.5</b></div>
-  <div class="row"><span>Kills</span><b id="iKills">0</b></div>
+  <div class="row"><span id="iL1">Damage</span><b id="iDmg">11</b></div>
+  <div class="row"><span id="iL2">Rate</span><b id="iRate">1.3/s</b></div>
+  <div class="row"><span id="iL3">Range</span><b id="iRange">8.5</b></div>
+  <div class="row"><span id="iL4">Kills</span><b id="iKills">0</b></div>
   <div class="row" id="iModeRow"><span>Targets</span><button id="bMode" class="mini">Leading</button></div>
   <div id="iBtns"><button id="bUp">Upgrade 55</button><button id="bSell">Sell 36</button></div>
 </div>
@@ -237,11 +240,18 @@ body.intro #status,body.intro #kit,body.intro #wavebar,body.intro #hint,body.int
       <li>Call the next wave in early for a bonus, if you think you can take it.</li>
       <li>Twenty waves. The core absorbs twenty hits, and no more.</li>
     </ul>
+    <div class="seg" id="oDiff">
+      <button data-d="steady" class="on">Steady run</button>
+      <button data-d="hard">Hard run</button>
+    </div>
     <button id="oBtn">Start the defence</button>
     <button id="oAlt">Keep going</button>
     <button id="oIntro">Watch the opening</button>
   </div>
 </div>
+
+<!-- Put Dustline.mp3 in the same folder as this file. Without it the game just runs silent. -->
+<audio id="bgm" src="Dustline.mp3" loop preload="auto"></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -256,6 +266,7 @@ if(!window.THREE){
 
 /* ============================ config ============================ */
 var CFG={cols:15,rows:11,tile:2.4,credits:230,integrity:20,maxWave:20};
+var DIFFS={steady:{hp:1,credits:230,label:"Steady"},hard:{hp:1.24,credits:205,label:"Hard"}};
 var COL={sand:0xE3D4B6,tileA:0xDCCBAB,tileB:0xD6C3A0,path:0xBFA47A,pathEdge:0xAD9068,ink:0x3A3630,teal:0x15655F};
 
 var TOWERS={
@@ -265,10 +276,12 @@ var TOWERS={
     lv:[{dmg:30,rate:.45,range:13,splash:3.0,up:100},{dmg:50,rate:.5,range:14,splash:3.5,up:190},{dmg:76,rate:.58,range:15,splash:4.1,up:0}]},
   cryo:{name:"Cryo vent",blurb:"Chills everything close",cost:85,colour:0x4FA8A2,key:"3",
     lv:[{dmg:5,rate:.9,range:6.5,slow:.40,dur:1.6,up:70},{dmg:9,rate:1.0,range:7.5,slow:.48,dur:1.9,up:135},{dmg:15,rate:1.1,range:8.5,slow:.56,dur:2.2,up:0}]},
+  mast:{name:"Relay mast",blurb:"Quickens nearby posts",cost:120,colour:0x7A6AA8,key:"5",support:true,
+    lv:[{dmg:0,rate:0,range:5.5,boost:.18,up:95},{dmg:0,rate:0,range:6.5,boost:.26,up:170},{dmg:0,rate:0,range:7.5,boost:.34,up:0}]},
   arc:{name:"Arc lance",blurb:"Lightning jumps targets",cost:165,colour:0x2F6F9E,key:"4",
     lv:[{dmg:20,rate:.75,range:10,chain:3,up:140},{dmg:31,rate:.9,range:11,chain:4,up:245},{dmg:46,rate:1.05,range:12,chain:5,up:0}]}
 };
-var TORDER=["rail","mortar","cryo","arc"];
+var TORDER=["rail","mortar","cryo","arc","mast"];
 
 var ENEMIES={
   scrap :{name:"Scrapper",hp:58 ,speed:2.7,armour:0,reward:9  ,leak:1,colour:0xC8563F,size:.95},
@@ -311,7 +324,7 @@ var WAVES=[
 
 /* ============================ state ============================ */
 var S={credits:CFG.credits,integrity:CFG.integrity,wave:0,cleared:0,running:false,over:false,won:false,
-       paused:false,speed:1,muted:false,picked:null,selected:null,started:false,patch:140};
+       paused:false,speed:1,muted:false,picked:null,selected:null,started:false,patch:140,diff:"steady"};
 
 var scene,camera,renderer,sun,ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 var grid=[],tiles=[],towers=[],enemies=[],shots=[],beams=[],pulses=[];
@@ -324,7 +337,11 @@ function lerp(a,b,t){return a+(b-a)*t;}
 
 /* ============================ audio ============================ */
 var actx=null;
-function audio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; } } return actx; }
+function audio(){
+  if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; } }
+  if(actx&&actx.state==="suspended"&&actx.resume) actx.resume();
+  return actx;
+}
 function tone(freq,dur,type,vol,slide){
   var c=audio(); if(!c||S.muted) return;
   var o=c.createOscillator(),g=c.createGain();
@@ -356,6 +373,56 @@ var SFX={
   wave:function(){tone(300,.12,"triangle",.07);setTimeout(function(){tone(450,.16,"triangle",.07);},110);},
   nope:function(){tone(180,.1,"square",.05,120);}
 };
+
+/* ============================ music ============================ */
+var MUS={el:null,on:false,gone:false,gain:null,filter:null,node:null,vol:0,cut:18000};
+function musicInit(){
+  MUS.el=$("bgm");
+  if(!MUS.el){ MUS.gone=true; return; }
+  MUS.el.addEventListener("error",function(){ MUS.gone=true; });
+}
+function musicStart(){
+  if(MUS.gone||!MUS.el||MUS.on) return;
+  var c=audio();
+  if(c&&!MUS.node){
+    try{
+      MUS.node=c.createMediaElementSource(MUS.el);
+      MUS.filter=c.createBiquadFilter(); MUS.filter.type="lowpass"; MUS.filter.frequency.value=18000;
+      MUS.gain=c.createGain(); MUS.gain.gain.value=0;
+      MUS.node.connect(MUS.filter); MUS.filter.connect(MUS.gain); MUS.gain.connect(c.destination);
+    }catch(e){ MUS.node=null; MUS.gain=null; MUS.filter=null; }
+  }
+  try{
+    var pr=MUS.el.play();
+    if(pr&&pr.catch) pr.catch(function(){ MUS.on=false; });
+  }catch(e){ return; }
+  MUS.on=true;
+}
+function musicStop(){
+  if(!MUS.el) return;
+  try{ MUS.el.pause(); }catch(e){}
+  MUS.on=false; MUS.vol=0;
+  if(MUS.gain) MUS.gain.gain.value=0;
+}
+// the mix follows the state of play: full while a wave is out, muffled between them
+function musicTarget(){
+  if(S.muted) return 0;
+  if(cine.on) return .62;
+  if(!S.started) return .5;
+  if(S.over) return .3;
+  if(S.paused) return .14;
+  return S.running?.46:.26;
+}
+function musicUpdate(dt){
+  if(!MUS.on) return;
+  var want=musicTarget(),k=Math.min(1,dt*1.7);
+  MUS.vol+=(want-MUS.vol)*k;
+  if(MUS.gain) MUS.gain.gain.value=MUS.vol;
+  else { try{ MUS.el.volume=clamp(MUS.vol,0,1); }catch(e){} }
+  var cut=(S.started&&!S.running&&!cine.on)||S.paused?1500:18000;
+  MUS.cut+=(cut-MUS.cut)*Math.min(1,dt*1.6);
+  if(MUS.filter) MUS.filter.frequency.value=MUS.cut;
+}
 
 /* ============================ board ============================ */
 function cellPos(c,r){ return {x:(c-(CFG.cols-1)/2)*CFG.tile, z:(r-(CFG.rows-1)/2)*CFG.tile}; }
@@ -606,7 +673,7 @@ function buildTowerMesh(kind,level,colour){
     }
     var cry=new THREE.Mesh(new THREE.IcosahedronGeometry(.3+level*.07,0),
       new THREE.MeshBasicMaterial({color:0x9BE6DE})); cry.name="crystal"; cry.position.y=1.85; body.add(cry);
-  }else{
+  }else if(kind==="arc"){
     var mast=new THREE.Mesh(new THREE.CylinderGeometry(.18,.3,2.3,7),mDark); mast.position.y=1.4; mast.castShadow=true; root.add(mast);
     var coil=new THREE.Mesh(new THREE.TorusGeometry(.46,.1,6,16),mMain); coil.name="coil";
     coil.position.y=2.1; coil.rotation.x=Math.PI/2; coil.castShadow=true; body.add(coil);
@@ -615,6 +682,18 @@ function buildTowerMesh(kind,level,colour){
       var prong=new THREE.Mesh(new THREE.ConeGeometry(.1,.55,5),new THREE.MeshBasicMaterial({color:0x9ED3F2}));
       prong.position.set(Math.cos(a2)*.42,2.55,Math.sin(a2)*.42); body.add(prong);
     }
+  }else{
+    var leg=new THREE.Mesh(new THREE.CylinderGeometry(.13,.26,2.7,6),mDark);
+    leg.position.y=1.55; leg.castShadow=true; root.add(leg);
+    for(var cb=0;cb<2;cb++){
+      var cross=new THREE.Mesh(new THREE.BoxGeometry(.95,.09,.09),mDark);
+      cross.position.y=1.25+cb*.75; cross.rotation.y=cb*.9; root.add(cross);
+    }
+    var dish=new THREE.Mesh(new THREE.ConeGeometry(.5+level*.07,.36,12,1,true),
+      new THREE.MeshLambertMaterial({color:colour,side:THREE.DoubleSide}));
+    dish.name="dish"; dish.position.y=3.05; dish.rotation.x=Math.PI*.84; dish.castShadow=true; body.add(dish);
+    var pin=new THREE.Mesh(new THREE.SphereGeometry(.1,8,6),new THREE.MeshBasicMaterial({color:0xE0D6F6}));
+    pin.position.set(0,2.84,.28); body.add(pin);
   }
   levelPips(root,level,colour);
   return root;
@@ -829,7 +908,7 @@ function leak(e){
 function Tower(kind,cell){
   var def=TOWERS[kind];
   this.kind=kind; this.def=def; this.level=1; this.cell=cell;
-  this.invested=def.cost; this.cool=0; this.kills=0; this.charge=0; this.mode=0;
+  this.invested=def.cost; this.cool=0; this.kills=0; this.charge=0; this.mode=0; this.boost=0; this.linked=0;
   this.root=buildTowerMesh(kind,1,def.colour);
   this.root.position.set(cell.x,0,cell.z);
   this.root.userData={kind:"tower",ref:this};
@@ -843,6 +922,42 @@ function Tower(kind,cell){
   this.syncRing();
 }
 Tower.prototype.stats=function(){ return this.def.lv[this.level-1]; };
+function recalcBoosts(){
+  var i,j;
+  for(i=0;i<towers.length;i++) towers[i].boost=0;
+  for(i=0;i<towers.length;i++){
+    var m=towers[i];
+    if(m.kind!=="mast") continue;
+    var st=m.stats(); m.linked=0;
+    for(j=0;j<towers.length;j++){
+      var t=towers[j];
+      if(t===m||t.kind==="mast") continue;
+      var dx=t.cell.x-m.cell.x,dz=t.cell.z-m.cell.z;
+      if(dx*dx+dz*dz<=st.range*st.range){ t.boost+=st.boost; m.linked++; }
+    }
+  }
+}
+var linkLines=null;
+function showLinks(t){
+  if(t&&linkLines&&linkLines.userData.src===t&&linkLines.userData.n===towers.length) return;
+  if(linkLines){ scene.remove(linkLines); linkLines.geometry.dispose(); linkLines.material.dispose(); linkLines=null; }
+  if(!t||t.kind!=="mast") return;
+  var pts=[],st=t.stats();
+  for(var i=0;i<towers.length;i++){
+    var o=towers[i];
+    if(o===t||o.kind==="mast") continue;
+    var dx=o.cell.x-t.cell.x,dz=o.cell.z-t.cell.z;
+    if(dx*dx+dz*dz<=st.range*st.range){
+      pts.push(new THREE.Vector3(t.cell.x,2.9,t.cell.z));
+      pts.push(new THREE.Vector3(o.cell.x,1.1,o.cell.z));
+    }
+  }
+  if(!pts.length) return;
+  linkLines=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:0xA18EE0,transparent:true,opacity:.7}));
+  linkLines.userData={src:t,n:towers.length};
+  scene.add(linkLines);
+}
 Tower.prototype.syncRing=function(){
   var r=this.stats().range;
   this.ring.scale.set(r,r,1);
@@ -857,7 +972,7 @@ Tower.prototype.upgrade=function(){
   this.root.userData={kind:"tower",ref:this};
   this.root.traverse(function(o){ o.userData.ref=this; }.bind(this));
   scene.add(this.root);
-  this.syncRing();
+  this.syncRing(); recalcBoosts();
   burst(new THREE.Vector3(this.cell.x,1.4,this.cell.z),this.def.colour,16,3.2);
   SFX.build(); updateHud(); openInspect(this);
   return true;
@@ -867,6 +982,7 @@ Tower.prototype.remove=function(){
   scene.remove(this.root); scene.remove(this.ring);
   this.cell.tower=null;
   var i=towers.indexOf(this); if(i>=0) towers.splice(i,1);
+  showLinks(null); recalcBoosts();
 };
 Tower.prototype.aimAt=function(target,dt){
   var body=this.root.getObjectByName("body");
@@ -882,6 +998,7 @@ Tower.prototype.update=function(dt){
   var body=this.root.getObjectByName("body");
   if(this.kind==="cryo"&&body){ var cry=body.getObjectByName("crystal"); if(cry){ cry.rotation.y+=dt*1.6; cry.position.y=1.85+Math.sin(performance.now()*.003)*.08; } }
   if(this.kind==="arc"&&body){ var coil=body.getObjectByName("coil"); if(coil) coil.rotation.z+=dt*(1.5+this.level); }
+  if(this.kind==="mast"){ if(body) body.rotation.y+=dt*.55; return; }
 
   if(this.kind==="cryo"){
     if(this.cool<=0){
@@ -892,7 +1009,7 @@ Tower.prototype.update=function(dt){
         var dx=e.pos.x-this.cell.x,dz=e.pos.z-this.cell.z;
         if(dx*dx+dz*dz<=st.range*st.range){ e.chill(st.slow,st.dur); e.hit(st.dmg,false); if(e.dead) this.kills++; any=true; }
       }
-      if(any){ this.cool=1/st.rate; addPulse(this.cell.x,this.cell.z,st.range,0x7FD8D0); SFX.chill(); }
+      if(any){ this.cool=1/(st.rate*(1+this.boost)); addPulse(this.cell.x,this.cell.z,st.range,0x7FD8D0); SFX.chill(); }
       else this.cool=.2;
     }
     return;
@@ -902,7 +1019,7 @@ Tower.prototype.update=function(dt){
   if(!target) return;
   this.aimAt(target,dt);
   if(this.cool>0) return;
-  this.cool=1/st.rate;
+  this.cool=1/(st.rate*(1+this.boost));
   if(this.kind==="rail"){
     shots.push(makeShot(this,target,"rail",st));
     var mz=new THREE.Vector3(this.cell.x,1.35,this.cell.z).lerp(target.pos,.13);
@@ -1039,7 +1156,9 @@ function waveDef(n){
   if(n%5===0) mix.push(["boss",1+Math.floor(over/3),2.4]);
   return mix;
 }
-function waveScale(n){ return {hp:1+(n-1)*0.205+Math.pow(Math.max(0,n-9),1.7)*0.03, reward:1+n*0.008}; }
+function waveScale(n){
+  return {hp:(1+(n-1)*0.205+Math.pow(Math.max(0,n-9),1.7)*0.03)*DIFFS[S.diff].hp, reward:1+n*0.008};
+}
 
 function earlyBonus(){ return Math.round(16+S.wave*4+enemies.length*1.4); }
 function pending(){
@@ -1130,7 +1249,7 @@ function startCine(){
   camera.fov=(window.innerWidth/window.innerHeight)<1?64:46;
   camera.updateProjectionMatrix();
   buildCineProps();
-  if(actx){ tone(68,4.5,"sine",.035); tone(101,4,"sine",.018); }
+  if(actx&&!MUS.on){ tone(68,4.5,"sine",.035); tone(101,4,"sine",.018); }
   setShot(0);
 }
 function setShot(i){
@@ -1194,15 +1313,23 @@ function updateCine(dt){
   if(cine.shot===SHOTS.length-1&&cine.t>.55&&!cine.titled){
     cine.titled=true;
     $("cineTitle").classList.add("show");
-    if(actx){ tone(294,.8,"triangle",.05); setTimeout(function(){ tone(392,1.2,"triangle",.042); },280); }
+    if(actx&&!MUS.on){ tone(294,.8,"triangle",.05); setTimeout(function(){ tone(392,1.2,"triangle",.042); },280); }
   }
   if(cine.t>=sh.d){
     if(cine.shot+1<SHOTS.length) setShot(cine.shot+1); else endCine();
   }
 }
+function beginPlay(){
+  S.started=true;
+  document.body.classList.remove("intro");
+  $("overlay").classList.add("hide");
+  clock.getDelta();
+  updateHud();
+}
 function endCine(noMenu){
   if(!cine.on) return;
   cine.on=false; cine.titled=false; markIntro();
+  var into=cine.thenPlay; cine.thenPlay=false;
   var c=$("cine");
   c.classList.add("out");
   $("cineCap").classList.remove("show");
@@ -1212,7 +1339,8 @@ function endCine(noMenu){
   for(var i=0;i<cine.props.length;i++) scene.remove(cine.props[i]);
   for(var j=0;j<cine.skims.length;j++) scene.remove(cine.skims[j]);
   cine.props.length=0; cine.skims.length=0;
-  if(!noMenu&&cine.ret) showMenu();
+  if(noMenu) return;
+  if(into) beginPlay(); else if(cine.ret) showMenu();
 }
 function showMenu(){
   document.body.classList.remove("intro");
@@ -1332,6 +1460,7 @@ function tryBuild(cell){
   S.credits-=def.cost;
   var t=new Tower(S.picked,cell);
   towers.push(t);
+  recalcBoosts();
   burst(new THREE.Vector3(cell.x,.6,cell.z),0xD8C7A4,12,2.6,.4);
   SFX.build(); updateHud(); hideGhost();
   if(S.credits<def.cost){ pickTool(null); }
@@ -1371,6 +1500,7 @@ function glyphFor(kind){
   if(kind==="rail")   return '<i style="width:4px;height:16px"></i>';
   if(kind==="mortar") return '<i style="width:14px;height:9px;transform:rotate(-20deg)"></i>';
   if(kind==="cryo")   return '<i style="width:12px;height:12px;border-radius:50%"></i>';
+  if(kind==="mast")   return '<i style="width:13px;height:13px;clip-path:polygon(50% 0,100% 100%,0 100%)"></i>';
   return '<i style="width:3px;height:16px;transform:skewX(-22deg)"></i>';
 }
 function renderKit(){
@@ -1411,20 +1541,27 @@ function openInspect(t){
   $("iName").textContent=t.def.name;
   var pips=$("iPips").children;
   for(var p=0;p<3;p++) pips[p].classList.toggle("on",p<t.level);
-  $("iDmg").textContent=t.kind==="cryo"?(st.dmg+" + "+Math.round(st.slow*100)+"% chill"):st.dmg;
-  $("iRate").textContent=st.rate.toFixed(2)+"/s";
+  var sup=t.kind==="mast";
+  $("iL1").textContent=sup?"Boost":"Damage";
+  $("iL2").textContent=sup?"Posts linked":"Rate";
+  $("iL4").textContent=sup?"Upkeep":"Kills";
+  $("iDmg").textContent=sup?("+"+Math.round(st.boost*100)+"% fire rate")
+    :(t.kind==="cryo"?(st.dmg+" + "+Math.round(st.slow*100)+"% chill"):st.dmg);
+  $("iRate").textContent=sup?t.linked
+    :((st.rate*(1+t.boost)).toFixed(2)+"/s"+(t.boost?(" +"+Math.round(t.boost*100)+"%"):""));
   $("iRange").textContent=st.range.toFixed(1)+(st.splash?(" \u00b7 blast "+st.splash):(st.chain?(" \u00b7 "+st.chain+" targets"):""));
-  $("iKills").textContent=t.kills;
+  $("iKills").textContent=sup?"none":t.kills;
+  showLinks(t);
   var up=$("bUp");
   if(st.up){ up.disabled=S.credits<st.up; up.textContent="Upgrade "+st.up; }
   else { up.disabled=true; up.textContent="Fully upgraded"; }
   $("bSell").textContent="Sell "+t.sellValue();
-  $("iModeRow").style.display=(t.kind==="cryo")?"none":"flex";
+  $("iModeRow").style.display=(t.kind==="cryo"||sup)?"none":"flex";
   $("bMode").textContent=MODES[t.mode].label;
   $("inspect").classList.add("show");
 }
 function closeInspect(){
-  S.selected=null;
+  S.selected=null; showLinks(null);
   for(var i=0;i<towers.length;i++) towers[i].ring.visible=false;
   $("inspect").classList.remove("show");
 }
@@ -1464,17 +1601,18 @@ function renderComp(n){
 }
 
 /* ============================ game flow ============================ */
-function bestRun(){ try{ return JSON.parse(localStorage.getItem("eon-dustline")||"null"); }catch(e){ return null; } }
+function bestKey(){ return "eon-dustline-"+S.diff; }
+function bestRun(){ try{ return JSON.parse(localStorage.getItem(bestKey())||"null"); }catch(e){ return null; } }
 function saveRun(){
   try{
     var b=bestRun();
     if(!b||S.cleared>b.waves||(S.cleared===b.waves&&S.integrity>b.core))
-      localStorage.setItem("eon-dustline",JSON.stringify({waves:S.cleared,core:S.integrity}));
+      localStorage.setItem(bestKey(),JSON.stringify({waves:S.cleared,core:S.integrity}));
   }catch(e){}
 }
 function showBest(){
   var b=bestRun();
-  $("oBest").textContent=b?("Best run so far: "+b.waves+" wave"+(b.waves===1?"":"s")+" cleared, core at "+b.core+"."):"";
+  $("oBest").textContent=b?("Best "+DIFFS[S.diff].label.toLowerCase()+" run so far: "+b.waves+" wave"+(b.waves===1?"":"s")+" cleared, core at "+b.core+"."):"";
 }
 function endGame(won){
   if(S.over) return;
@@ -1485,7 +1623,7 @@ function endGame(won){
     S.won=true;
     $("oTitle").textContent="The line held";
     $("oSub").textContent="Twenty waves turned back and the core is still drawing water. The flats are quiet, for now.";
-    $("oList").innerHTML="<li>Core integrity left: "+S.integrity+" of "+CFG.integrity+"</li>"+
+    $("oList").innerHTML="<li>"+DIFFS[S.diff].label+" run, core at "+S.integrity+" of "+CFG.integrity+"</li>"+
                          "<li>Posts standing: "+towers.length+"</li>"+
                          "<li>Credits unspent: "+S.credits+"</li>";
     $("oBtn").textContent="Play again";
@@ -1493,7 +1631,7 @@ function endGame(won){
   }else{
     $("oTitle").textContent="The core is dry";
     $("oSub").textContent="Too much got through. The reclamation core has stopped, and the scavengers are already stripping it.";
-    $("oList").innerHTML="<li>Waves cleared: "+S.cleared+" of "+CFG.maxWave+"</li>"+
+    $("oList").innerHTML="<li>"+DIFFS[S.diff].label+" run, "+S.cleared+" of "+CFG.maxWave+" waves cleared</li>"+
                          "<li>Posts standing: "+towers.length+"</li>"+
                          "<li>Credits unspent: "+S.credits+"</li>";
     $("oBtn").textContent="Try again";
@@ -1511,7 +1649,7 @@ function resetGame(){
   for(var p=pulses.length-1;p>=0;p--) scene.remove(pulses[p].obj);
   pulses.length=0;
   parts.length=0; spawners.length=0; clearFloaters();
-  S.credits=CFG.credits; S.integrity=CFG.integrity; S.wave=0; S.cleared=0; S.patch=140;
+  S.credits=DIFFS[S.diff].credits; S.integrity=CFG.integrity; S.wave=0; S.cleared=0; S.patch=140;
   S.running=false; S.over=false; S.won=false; S.paused=false; S.picked=null; S.selected=null;
   compCache=""; closeInspect(); hideGhost(); updateHud();
 }
@@ -1538,6 +1676,7 @@ function frame(){
   updateParticles(raw);
   updateDust(raw);
   updateFloaters(raw);
+  musicUpdate(raw);
   cam.shake*=Math.pow(.02,raw);
   if(cam.shake<.002) cam.shake=0;
   if(cine.on) updateCine(raw); else placeCamera();
@@ -1571,8 +1710,8 @@ function init(){
   scene.add(sun);
 
   buildGrid(); makeBoard(); makeCurve(); initParticles(); initDust(); initDecals();
-  renderKit(); updateHud(); placeCamera(); showBest();
-  if(seenIntro()) showMenu(); else startCine();
+  renderKit(); updateHud(); placeCamera(); showBest(); musicInit();
+  showMenu();
 
   canvas.addEventListener("pointerdown",onDown);
   window.addEventListener("pointermove",onMove);
@@ -1591,7 +1730,7 @@ function init(){
   });
 
   $("cine").addEventListener("click",function(){ endCine(); });
-  $("oIntro").addEventListener("click",function(){ audio(); startCine(); });
+  $("oIntro").addEventListener("click",function(){ audio(); musicStart(); cine.thenPlay=false; startCine(); });
   document.addEventListener("keydown",function(ev){
     if(cine.on){ endCine(); return; }
     if(ev.key==="Escape"){ pickTool(null); closeInspect(); }
@@ -1611,6 +1750,17 @@ function init(){
     burst(new THREE.Vector3(S.selected.cell.x,.8,S.selected.cell.z),0xD8C7A4,10,2.4,.5);
     S.selected.remove(); closeInspect(); SFX.sell(); updateHud();
   });
+  var dBtns=$("oDiff").children;
+  for(var d=0;d<dBtns.length;d++){
+    (function(btn){
+      btn.addEventListener("click",function(){
+        if(S.diff===btn.dataset.d) return;
+        S.diff=btn.dataset.d; showBest();
+        for(var q=0;q<dBtns.length;q++) dBtns[q].classList.toggle("on",dBtns[q].dataset.d===S.diff);
+        resetGame();
+      });
+    })(dBtns[d]);
+  }
   $("bMode").addEventListener("click",cycleMode);
   $("bPatch").addEventListener("click",function(){
     if(S.integrity>=CFG.integrity||S.credits<S.patch){ SFX.nope(); return; }
@@ -1633,14 +1783,13 @@ function init(){
     S.muted=!S.muted;
     $("bMute").textContent=S.muted?"Muted":"Sound";
     $("bMute").classList.toggle("on",!S.muted&&!!actx);
+    if(S.muted) musicStop(); else { audio(); musicStart(); }
   });
   $("oBtn").addEventListener("click",function(){
-    audio();
+    audio(); musicStart();
     if(S.over){ resetGame(); }
-    S.started=true;
-    if(cine.on) endCine(true);
-    $("overlay").classList.add("hide");
-    clock.getDelta();
+    if(!seenIntro()){ cine.thenPlay=true; startCine(); return; }
+    beginPlay();
   });
   $("oAlt").addEventListener("click",function(){
     if(S.integrity<=0) return;
