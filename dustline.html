@@ -246,7 +246,7 @@ body.intro #status,body.intro #kit,body.intro #wavebar,body.intro #hint,body.int
     </div>
     <button id="oBtn">Start the defence</button>
     <button id="oAlt">Keep going</button>
-    <button id="oIntro">Watch the opening</button>
+    <button id="oIntro">Skip the opening</button>
   </div>
 </div>
 
@@ -324,7 +324,7 @@ var WAVES=[
 
 /* ============================ state ============================ */
 var S={credits:CFG.credits,integrity:CFG.integrity,wave:0,cleared:0,running:false,over:false,won:false,
-       paused:false,speed:1,muted:false,picked:null,selected:null,started:false,patch:140,diff:"steady"};
+       paused:false,speed:1,muted:false,picked:null,selected:null,started:false,patch:140,diff:"steady",cardMode:"start"};
 
 var scene,camera,renderer,sun,ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 var grid=[],tiles=[],towers=[],enemies=[],shots=[],beams=[],pulses=[];
@@ -1224,64 +1224,74 @@ function placeCamera(){
 function shake(v){ cam.shake=Math.max(cam.shake,v); }
 
 /* ============================ opening sequence ============================ */
-var cine={on:false,shot:0,t:0,cap:false,titled:false,ret:true,p1:null,props:[],skims:[]};
+var cine={on:false,shot:-1,real:0,titled:false,ret:true,capText:null,thenPlay:false,p1:null,props:[],skims:[]};
 var _cl=new THREE.Vector3();
+/* Cut points sit on the downbeats of Dustline.mp3 (63.5bpm, bar = 3.78s).
+   The clock follows the audio element where it can, so every cut lands on the music. */
+var CUES=[0,4.67,8.45,12.23,14.12];
+var CINE_END=17.90, TITLE_AT=14.12;
 var SHOTS=[
- {d:2.7,p0:[41,3.0,-34],p1:[30,4.8,-25],l0:[11,3,-9],  l1:[2,2,-2],       cap:"Forty years since the water went."},
- {d:2.5,p0:[-31,2.8,-17],p1:[-13,3.3,-14.5],l0:[-20,1,-9.6],l1:[-2,1,-9.6], cap:"One haul road still crosses the flats."},
- {d:2.5,p0:[0,8,22],   p1:[-8,3.4,15.5], l0:[-12,2.4,9.6],l1:[-12,1.9,9.6],cap:"At the end of it, a core still drawing."},
- {d:2.6,p0:[-32,2.3,-1],p1:[-26,3.1,-6], l0:[-22,1.2,-9.6],l1:[-15,1.3,-9.6],cap:"Something has followed it in."},
- {d:3.0,p0:[-26,3.1,-6],p1:null,         l0:[-15,1.3,-9.6],l1:[0,.5,0],    cap:""}
+ {p0:[41,3.0,-34],  p1:[29,5.0,-24],  l0:[11,3,-9],     l1:[2,2,-2]},
+ {p0:[-31,2.8,-17], p1:[-13,3.3,-14.5],l0:[-20,1,-9.6], l1:[-2,1,-9.6]},
+ {p0:[0,8,22],      p1:[-8,3.4,15.5], l0:[-12,2.4,9.6], l1:[-12,1.9,9.6]},
+ {p0:[-33,2.2,-1],  p1:[-29,2.6,-4],  l0:[-22,1.2,-9.6],l1:[-17,1.2,-9.6]},
+ {p0:[-27,3.0,-7],  p1:null,          l0:[-14,1.3,-9],  l1:[0,.5,0]}
 ];
-function seenIntro(){ try{ return localStorage.getItem("eon-dustline-intro")==="1"; }catch(e){ return true; } }
-function markIntro(){ try{ localStorage.setItem("eon-dustline-intro","1"); }catch(e){} }
+var CAPS=[
+ {a:1.25,b:4.30,s:"Forty years since the water went."},
+ {a:5.15,b:8.10,s:"One haul road still crosses the flats."},
+ {a:8.95,b:11.90,s:"At the end of it, a core still drawing."},
+ {a:12.45,b:13.95,s:"Something has followed it in."}
+];
 
 function startCine(){
   if(cine.on) return;
-  cine.on=true; cine.titled=false;
+  cine.on=true; cine.titled=false; cine.shot=-1; cine.real=0; cine.capText=null;
   cine.ret=!(S.started&&$("overlay").classList.contains("hide"));
   document.body.classList.add("intro");
   $("overlay").classList.add("hide");
   var c=$("cine"); c.classList.add("on"); c.classList.remove("out");
   $("cineTitle").classList.remove("show");
+  $("cineCap").classList.remove("show");
   $("cineFade").classList.remove("clear");
   setTimeout(function(){ $("cineFade").classList.add("clear"); },70);
   camera.fov=(window.innerWidth/window.innerHeight)<1?64:46;
   camera.updateProjectionMatrix();
   buildCineProps();
-  if(actx&&!MUS.on){ tone(68,4.5,"sine",.035); tone(101,4,"sine",.018); }
+  // take the track back to the top so the edit stays locked to it
+  if(MUS.el&&!MUS.gone){ try{ MUS.el.currentTime=0; }catch(e){} }
+  musicStart();
+  if(actx&&!MUS.on){ tone(68,5,"sine",.035); tone(101,4.5,"sine",.018); }
   setShot(0);
 }
 function setShot(i){
-  cine.shot=i; cine.t=0;
-  if(cine.cap){ cine.cap=false; $("cineCap").classList.remove("show"); }
+  cine.shot=i;
   var sh=SHOTS[i];
   if(!sh) return;
   cine.p1=sh.p1||camVec(new THREE.Vector3()).toArray();
-  $("cineCap").textContent=sh.cap||"";
 }
 function buildCineProps(){
   var line=["scrap","scrap","hauler","runner","husk","scrap","runner"];
   for(var i=0;i<line.length;i++){
     var m=buildEnemyMesh(line[i],ENEMIES[line[i]]);
-    m.userData.d=2+i*4.4; m.userData.sp=1.5+Math.random()*.6;
-    scene.add(m); cine.props.push(m);
+    m.userData.d=8+i*3.0; m.userData.sp=1.5+Math.random()*.5;
+    m.visible=false; scene.add(m); cine.props.push(m);
   }
   for(var j=0;j<3;j++){
     var sk=buildEnemyMesh("skim",ENEMIES.skim),th=-0.85+j*0.3;
     sk.userData.a=new THREE.Vector3(-12+Math.cos(th)*44,4.3+j*.7,9.6+Math.sin(th)*44);
     sk.userData.b=new THREE.Vector3(-12,2.6,9.6);
-    sk.userData.k=-0.3-j*0.17;
+    sk.userData.k=-0.22-j*0.13;
     sk.userData.ang=Math.atan2(sk.userData.b.x-sk.userData.a.x,sk.userData.b.z-sk.userData.a.z);
     sk.visible=false; scene.add(sk); cine.skims.push(sk);
   }
 }
 function moveCineProps(dt){
-  var i,m,t;
+  var i,m,t,rolling=cine.shot>=3;
   for(i=0;i<cine.props.length;i++){
     m=cine.props[i];
-    m.visible=cine.shot>=3;
-    m.userData.d+=m.userData.sp*dt;
+    m.visible=rolling;
+    if(rolling) m.userData.d+=m.userData.sp*dt;
     t=clamp(m.userData.d/curveLen,0,1);
     curve.getPointAt(t,_cl); m.position.copy(_cl);
     curve.getPointAt(clamp(t+.004,0,1),_cl);
@@ -1289,7 +1299,7 @@ function moveCineProps(dt){
   }
   for(i=0;i<cine.skims.length;i++){
     m=cine.skims[i];
-    m.userData.k+=dt*.055;
+    m.userData.k+=dt*.05;
     m.visible=m.userData.k>0;
     m.position.lerpVectors(m.userData.a,m.userData.b,clamp(m.userData.k,0,1));
     m.position.y+=Math.sin(performance.now()*.003+i)*.2;
@@ -1297,26 +1307,35 @@ function moveCineProps(dt){
     for(var r=0;r<m.children.length;r++) if(m.children[r].name==="rotor") m.children[r].rotation.y+=dt*26;
   }
 }
+function cineClock(dt){
+  cine.real+=dt;
+  // the audio element is the master clock whenever it is actually running
+  if(MUS.on&&MUS.el&&MUS.el.currentTime>0.02) return MUS.el.currentTime;
+  return cine.real>1.5?cine.real-1.5:0;   // music blocked or missing: run on our own clock
+}
 function updateCine(dt){
-  var sh=SHOTS[cine.shot];
-  if(!sh){ endCine(); return; }
-  cine.t+=dt;
-  var k=clamp(cine.t/sh.d,0,1),e=k*k*(3-2*k),p1=cine.p1;
+  var now=cineClock(dt);
+  if(now>=CINE_END){ endCine(); return; }
+  var i=0;
+  while(i+1<CUES.length&&now>=CUES[i+1]) i++;
+  if(i!==cine.shot) setShot(i);
+  var sh=SHOTS[i],a=CUES[i],b=(i+1<CUES.length?CUES[i+1]:CINE_END);
+  var k=clamp((now-a)/(b-a),0,1),e=k*k*(3-2*k),p1=cine.p1;
   camera.position.set(lerp(sh.p0[0],p1[0],e),lerp(sh.p0[1],p1[1],e),lerp(sh.p0[2],p1[2],e));
   _cl.set(lerp(sh.l0[0],sh.l1[0],e),lerp(sh.l0[1],sh.l1[1],e),lerp(sh.l0[2],sh.l1[2],e));
   camera.lookAt(_cl);
   moveCineProps(dt);
-  if(sh.cap){
-    var want=cine.t>.35&&cine.t<sh.d-.6;
-    if(want!==cine.cap){ cine.cap=want; $("cineCap").classList.toggle("show",want); }
+  var want=null;
+  for(var c=0;c<CAPS.length;c++){ if(now>=CAPS[c].a&&now<CAPS[c].b){ want=CAPS[c].s; break; } }
+  if(want!==cine.capText){
+    cine.capText=want;
+    if(want){ $("cineCap").textContent=want; $("cineCap").classList.add("show"); }
+    else $("cineCap").classList.remove("show");
   }
-  if(cine.shot===SHOTS.length-1&&cine.t>.55&&!cine.titled){
+  if(now>=TITLE_AT&&!cine.titled){
     cine.titled=true;
     $("cineTitle").classList.add("show");
     if(actx&&!MUS.on){ tone(294,.8,"triangle",.05); setTimeout(function(){ tone(392,1.2,"triangle",.042); },280); }
-  }
-  if(cine.t>=sh.d){
-    if(cine.shot+1<SHOTS.length) setShot(cine.shot+1); else endCine();
   }
 }
 function beginPlay(){
@@ -1326,9 +1345,14 @@ function beginPlay(){
   clock.getDelta();
   updateHud();
 }
+function setCard(mode){
+  S.cardMode=mode;
+  $("oIntro").textContent=(mode==="start")?"Skip the opening":"Watch the opening";
+  if(mode==="start") $("oBtn").textContent="Start the defence";
+}
 function endCine(noMenu){
   if(!cine.on) return;
-  cine.on=false; cine.titled=false; markIntro();
+  cine.on=false; cine.titled=false;
   var into=cine.thenPlay; cine.thenPlay=false;
   var c=$("cine");
   c.classList.add("out");
@@ -1628,6 +1652,7 @@ function endGame(won){
                          "<li>Credits unspent: "+S.credits+"</li>";
     $("oBtn").textContent="Play again";
     $("oAlt").style.display="block"; $("oAlt").textContent="Keep going into the open waves";
+    setCard("end");
   }else{
     $("oTitle").textContent="The core is dry";
     $("oSub").textContent="Too much got through. The reclamation core has stopped, and the scavengers are already stripping it.";
@@ -1636,6 +1661,7 @@ function endGame(won){
                          "<li>Credits unspent: "+S.credits+"</li>";
     $("oBtn").textContent="Try again";
     $("oAlt").style.display="none";
+    setCard("end");
   }
 }
 function resetGame(){
@@ -1711,7 +1737,7 @@ function init(){
 
   buildGrid(); makeBoard(); makeCurve(); initParticles(); initDust(); initDecals();
   renderKit(); updateHud(); placeCamera(); showBest(); musicInit();
-  showMenu();
+  setCard("start"); showMenu();
 
   canvas.addEventListener("pointerdown",onDown);
   window.addEventListener("pointermove",onMove);
@@ -1730,7 +1756,11 @@ function init(){
   });
 
   $("cine").addEventListener("click",function(){ endCine(); });
-  $("oIntro").addEventListener("click",function(){ audio(); musicStart(); cine.thenPlay=false; startCine(); });
+  $("oIntro").addEventListener("click",function(){
+    audio();
+    if(S.cardMode==="start"){ musicStart(); beginPlay(); }   // straight to the board
+    else { cine.thenPlay=false; startCine(); }               // replay it from the card
+  });
   document.addEventListener("keydown",function(ev){
     if(cine.on){ endCine(); return; }
     if(ev.key==="Escape"){ pickTool(null); closeInspect(); }
@@ -1755,7 +1785,7 @@ function init(){
     (function(btn){
       btn.addEventListener("click",function(){
         if(S.diff===btn.dataset.d) return;
-        S.diff=btn.dataset.d; showBest();
+        S.diff=btn.dataset.d; showBest(); setCard("start");
         for(var q=0;q<dBtns.length;q++) dBtns[q].classList.toggle("on",dBtns[q].dataset.d===S.diff);
         resetGame();
       });
@@ -1786,10 +1816,10 @@ function init(){
     if(S.muted) musicStop(); else { audio(); musicStart(); }
   });
   $("oBtn").addEventListener("click",function(){
-    audio(); musicStart();
+    audio();
     if(S.over){ resetGame(); }
-    if(!seenIntro()){ cine.thenPlay=true; startCine(); return; }
-    beginPlay();
+    if(S.cardMode==="start"){ cine.thenPlay=true; startCine(); }
+    else { musicStart(); beginPlay(); }
   });
   $("oAlt").addEventListener("click",function(){
     if(S.integrity<=0) return;
