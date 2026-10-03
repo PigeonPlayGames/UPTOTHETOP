@@ -115,8 +115,31 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .toast.good{background:rgba(21,101,95,.94)}
 @keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 
+/* ---------- opening sequence ---------- */
+#cine{position:fixed;inset:0;z-index:35;display:none;cursor:pointer}
+#cine.on{display:block}
+#cine .bar{position:absolute;left:0;right:0;height:12vh;background:#211F1A;transition:height .7s ease}
+#cine .bar.top{top:0}
+#cine .bar.bot{bottom:0}
+#cine.out .bar{height:0}
+#cineFade{position:absolute;inset:0;background:#EFE4CC;opacity:1;transition:opacity 1.4s ease}
+#cineFade.clear{opacity:0}
+#cineCap{position:absolute;left:0;right:0;bottom:17vh;padding:0 9vw;text-align:center;
+  font-family:var(--display);font-weight:500;font-size:clamp(16px,2.2vw,25px);line-height:1.35;
+  color:#FBF4E6;text-shadow:0 2px 12px rgba(28,24,18,.7);opacity:0;transition:opacity .65s ease}
+#cineCap.show{opacity:1}
+#cineTitle{position:absolute;left:0;right:0;top:38%;text-align:center;font-family:var(--display);
+  font-weight:700;font-size:clamp(46px,10.5vw,116px);line-height:1;color:#FCF5E7;
+  letter-spacing:.3em;text-indent:.3em;opacity:0;text-shadow:0 5px 26px rgba(28,24,18,.5);
+  transition:opacity 1.1s ease,letter-spacing 1.9s cubic-bezier(.2,.7,.2,1)}
+#cineTitle.show{opacity:1;letter-spacing:.05em}
+#cineSkip{position:absolute;right:16px;bottom:calc(12vh + 14px);height:30px;padding:0 13px;
+  font-size:12.5px;font-weight:600;background:rgba(244,236,220,.92)}
+body.intro #status,body.intro #kit,body.intro #wavebar,body.intro #hint,body.intro #inspect{opacity:0;pointer-events:none}
+#status,#kit,#wavebar,#hint{transition:opacity .8s ease}
+
 /* ---------- overlay ---------- */
-#overlay{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(232,220,196,.82);backdrop-filter:blur(3px)}
+#overlay{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(232,220,196,.82);backdrop-filter:blur(3px);transition:opacity .7s ease}
 #overlay.hide{display:none}
 #card{max-width:430px;width:calc(100% - 36px);padding:26px 28px 24px;background:var(--paper);border:1px solid var(--line);box-shadow:0 4px 0 rgba(42,40,36,.16)}
 #oTitle{font-family:var(--display);font-size:38px;font-weight:700;line-height:.95;letter-spacing:-.02em;margin:0 0 10px}
@@ -127,10 +150,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
 #oList li::before{content:"";position:absolute;left:0;top:13px;width:7px;height:7px;background:var(--teal)}
 #oBtn{width:100%;height:46px;font-size:15px;font-weight:700;background:var(--teal);color:#F6F0E2;border-color:#0E4B47}
 #oAlt{width:100%;height:34px;font-size:13px;font-weight:600;margin-top:7px;display:none}
+#oIntro{width:100%;height:32px;font-size:12.5px;font-weight:600;margin-top:7px;background:transparent;border-style:dashed}
 
 @media (max-width:860px){
   #brand small{display:none}
-  #status{gap:9px;padding-left:9px;padding-right:5px;height:calc(46px + env(safe-area-inset-top,0px))}
+  #status{gap:8px;padding-left:8px;padding-right:5px;height:calc(46px + env(safe-area-inset-top,0px));white-space:nowrap}
   #brand{font-size:16px}
   .stat b{font-size:16px}
   .stat span{display:none}
@@ -148,10 +172,14 @@ button:disabled{opacity:.45;cursor:not-allowed}
   #hint{display:none}
   #oTitle{font-size:30px}
 }
+@media (max-width:430px){
+  #brand{display:none}
+  #tools button{min-width:29px;padding:0 5px}
+}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
 </style>
 </head>
-<body>
+<body class="intro">
 <div id="stage"><canvas id="scene"></canvas></div>
 
 <header id="status" class="panel" role="banner">
@@ -186,11 +214,19 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <button id="bPatch" style="display:none">Patch core</button>
   <button id="bWave">Send wave 1</button>
 </div>
-<div id="hint">Drag to orbit, scroll to zoom.<br>Keys 1&ndash;4 pick a post, Esc puts it back.</div>
+<div id="hint">Drag to orbit, scroll to zoom.<br>Keys 1&ndash;4 build, T retargets, space sends a wave.</div>
 <div id="floaters"></div>
 <div id="toasts"></div>
 
-<div id="overlay">
+<div id="cine">
+  <div id="cineFade"></div>
+  <div class="bar top"></div><div class="bar bot"></div>
+  <div id="cineTitle">Dust Line</div>
+  <div id="cineCap"></div>
+  <button id="cineSkip">Skip</button>
+</div>
+
+<div id="overlay" class="hide">
   <div id="card">
     <h1 id="oTitle">Dust Line</h1>
     <p id="oSub">A water reclamation core sits alone on the salt flats. Scavenger machines have found it, and they are already moving along the old haul road.</p>
@@ -198,10 +234,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <ul id="oList">
       <li>Build posts on the open ground either side of the road.</li>
       <li>Kills pay credits. Upgrade what is already working before you spread thin.</li>
+      <li>Call the next wave in early for a bonus, if you think you can take it.</li>
       <li>Twenty waves. The core absorbs twenty hits, and no more.</li>
     </ul>
     <button id="oBtn">Start the defence</button>
     <button id="oAlt">Keep going</button>
+    <button id="oIntro">Watch the opening</button>
   </div>
 </div>
 
@@ -209,7 +247,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <script>
 (function(){
 "use strict";
-if(!window.THREE){document.getElementById("oSub").textContent="The 3D library could not load. Check the connection and refresh.";return;}
+if(!window.THREE){
+  document.body.className="";
+  document.getElementById("overlay").classList.remove("hide");
+  document.getElementById("oSub").textContent="The 3D library could not load. Check the connection and refresh.";
+  return;
+}
 
 /* ============================ config ============================ */
 var CFG={cols:15,rows:11,tile:2.4,credits:230,integrity:20,maxWave:20};
@@ -1047,9 +1090,12 @@ function updateSpawning(dt){
 
 /* ============================ camera + input ============================ */
 var cam={az:-0.62,pol:0.95,dist:44,shake:0};
-function placeCamera(){
+function camVec(v){
   var sp=Math.sin(cam.pol),cp=Math.cos(cam.pol);
-  camera.position.set(Math.sin(cam.az)*sp*cam.dist, cp*cam.dist+2, Math.cos(cam.az)*sp*cam.dist);
+  return v.set(Math.sin(cam.az)*sp*cam.dist, cp*cam.dist+2, Math.cos(cam.az)*sp*cam.dist);
+}
+function placeCamera(){
+  camVec(camera.position);
   if(cam.shake>0){
     camera.position.x+=(Math.random()-.5)*cam.shake;
     camera.position.y+=(Math.random()-.5)*cam.shake;
@@ -1057,6 +1103,123 @@ function placeCamera(){
   camera.lookAt(0,0.5,0);
 }
 function shake(v){ cam.shake=Math.max(cam.shake,v); }
+
+/* ============================ opening sequence ============================ */
+var cine={on:false,shot:0,t:0,cap:false,titled:false,ret:true,p1:null,props:[],skims:[]};
+var _cl=new THREE.Vector3();
+var SHOTS=[
+ {d:2.7,p0:[41,3.0,-34],p1:[30,4.8,-25],l0:[11,3,-9],  l1:[2,2,-2],       cap:"Forty years since the water went."},
+ {d:2.5,p0:[-31,2.8,-17],p1:[-13,3.3,-14.5],l0:[-20,1,-9.6],l1:[-2,1,-9.6], cap:"One haul road still crosses the flats."},
+ {d:2.5,p0:[0,8,22],   p1:[-8,3.4,15.5], l0:[-12,2.4,9.6],l1:[-12,1.9,9.6],cap:"At the end of it, a core still drawing."},
+ {d:2.6,p0:[-32,2.3,-1],p1:[-26,3.1,-6], l0:[-22,1.2,-9.6],l1:[-15,1.3,-9.6],cap:"Something has followed it in."},
+ {d:3.0,p0:[-26,3.1,-6],p1:null,         l0:[-15,1.3,-9.6],l1:[0,.5,0],    cap:""}
+];
+function seenIntro(){ try{ return localStorage.getItem("eon-dustline-intro")==="1"; }catch(e){ return true; } }
+function markIntro(){ try{ localStorage.setItem("eon-dustline-intro","1"); }catch(e){} }
+
+function startCine(){
+  if(cine.on) return;
+  cine.on=true; cine.titled=false;
+  cine.ret=!(S.started&&$("overlay").classList.contains("hide"));
+  document.body.classList.add("intro");
+  $("overlay").classList.add("hide");
+  var c=$("cine"); c.classList.add("on"); c.classList.remove("out");
+  $("cineTitle").classList.remove("show");
+  $("cineFade").classList.remove("clear");
+  setTimeout(function(){ $("cineFade").classList.add("clear"); },70);
+  camera.fov=(window.innerWidth/window.innerHeight)<1?64:46;
+  camera.updateProjectionMatrix();
+  buildCineProps();
+  if(actx){ tone(68,4.5,"sine",.035); tone(101,4,"sine",.018); }
+  setShot(0);
+}
+function setShot(i){
+  cine.shot=i; cine.t=0;
+  if(cine.cap){ cine.cap=false; $("cineCap").classList.remove("show"); }
+  var sh=SHOTS[i];
+  if(!sh) return;
+  cine.p1=sh.p1||camVec(new THREE.Vector3()).toArray();
+  $("cineCap").textContent=sh.cap||"";
+}
+function buildCineProps(){
+  var line=["scrap","scrap","hauler","runner","husk","scrap","runner"];
+  for(var i=0;i<line.length;i++){
+    var m=buildEnemyMesh(line[i],ENEMIES[line[i]]);
+    m.userData.d=2+i*4.4; m.userData.sp=1.5+Math.random()*.6;
+    scene.add(m); cine.props.push(m);
+  }
+  for(var j=0;j<3;j++){
+    var sk=buildEnemyMesh("skim",ENEMIES.skim),th=-0.85+j*0.3;
+    sk.userData.a=new THREE.Vector3(-12+Math.cos(th)*44,4.3+j*.7,9.6+Math.sin(th)*44);
+    sk.userData.b=new THREE.Vector3(-12,2.6,9.6);
+    sk.userData.k=-0.3-j*0.17;
+    sk.userData.ang=Math.atan2(sk.userData.b.x-sk.userData.a.x,sk.userData.b.z-sk.userData.a.z);
+    sk.visible=false; scene.add(sk); cine.skims.push(sk);
+  }
+}
+function moveCineProps(dt){
+  var i,m,t;
+  for(i=0;i<cine.props.length;i++){
+    m=cine.props[i];
+    m.visible=cine.shot>=3;
+    m.userData.d+=m.userData.sp*dt;
+    t=clamp(m.userData.d/curveLen,0,1);
+    curve.getPointAt(t,_cl); m.position.copy(_cl);
+    curve.getPointAt(clamp(t+.004,0,1),_cl);
+    m.rotation.y=Math.atan2(_cl.x-m.position.x,_cl.z-m.position.z);
+  }
+  for(i=0;i<cine.skims.length;i++){
+    m=cine.skims[i];
+    m.userData.k+=dt*.055;
+    m.visible=m.userData.k>0;
+    m.position.lerpVectors(m.userData.a,m.userData.b,clamp(m.userData.k,0,1));
+    m.position.y+=Math.sin(performance.now()*.003+i)*.2;
+    m.rotation.y=m.userData.ang;
+    for(var r=0;r<m.children.length;r++) if(m.children[r].name==="rotor") m.children[r].rotation.y+=dt*26;
+  }
+}
+function updateCine(dt){
+  var sh=SHOTS[cine.shot];
+  if(!sh){ endCine(); return; }
+  cine.t+=dt;
+  var k=clamp(cine.t/sh.d,0,1),e=k*k*(3-2*k),p1=cine.p1;
+  camera.position.set(lerp(sh.p0[0],p1[0],e),lerp(sh.p0[1],p1[1],e),lerp(sh.p0[2],p1[2],e));
+  _cl.set(lerp(sh.l0[0],sh.l1[0],e),lerp(sh.l0[1],sh.l1[1],e),lerp(sh.l0[2],sh.l1[2],e));
+  camera.lookAt(_cl);
+  moveCineProps(dt);
+  if(sh.cap){
+    var want=cine.t>.35&&cine.t<sh.d-.6;
+    if(want!==cine.cap){ cine.cap=want; $("cineCap").classList.toggle("show",want); }
+  }
+  if(cine.shot===SHOTS.length-1&&cine.t>.55&&!cine.titled){
+    cine.titled=true;
+    $("cineTitle").classList.add("show");
+    if(actx){ tone(294,.8,"triangle",.05); setTimeout(function(){ tone(392,1.2,"triangle",.042); },280); }
+  }
+  if(cine.t>=sh.d){
+    if(cine.shot+1<SHOTS.length) setShot(cine.shot+1); else endCine();
+  }
+}
+function endCine(noMenu){
+  if(!cine.on) return;
+  cine.on=false; cine.titled=false; markIntro();
+  var c=$("cine");
+  c.classList.add("out");
+  $("cineCap").classList.remove("show");
+  $("cineTitle").classList.remove("show");
+  setTimeout(function(){ c.classList.remove("on"); c.classList.remove("out"); },750);
+  camera.fov=46; camera.updateProjectionMatrix();
+  for(var i=0;i<cine.props.length;i++) scene.remove(cine.props[i]);
+  for(var j=0;j<cine.skims.length;j++) scene.remove(cine.skims[j]);
+  cine.props.length=0; cine.skims.length=0;
+  if(!noMenu&&cine.ret) showMenu();
+}
+function showMenu(){
+  document.body.classList.remove("intro");
+  var o=$("overlay");
+  o.style.opacity="0"; o.classList.remove("hide");
+  setTimeout(function(){ o.style.opacity="1"; },30);
+}
 
 var pointers={},dragging=false,moved=0,lastP={x:0,y:0},pinch=0,downOnCanvas=false;
 function onDown(ev){
@@ -1377,7 +1540,7 @@ function frame(){
   updateFloaters(raw);
   cam.shake*=Math.pow(.02,raw);
   if(cam.shake<.002) cam.shake=0;
-  placeCamera();
+  if(cine.on) updateCine(raw); else placeCamera();
   renderer.render(scene,camera);
 }
 
@@ -1409,6 +1572,7 @@ function init(){
 
   buildGrid(); makeBoard(); makeCurve(); initParticles(); initDust(); initDecals();
   renderKit(); updateHud(); placeCamera(); showBest();
+  if(seenIntro()) showMenu(); else startCine();
 
   canvas.addEventListener("pointerdown",onDown);
   window.addEventListener("pointermove",onMove);
@@ -1426,7 +1590,10 @@ function init(){
     renderer.setSize(window.innerWidth,window.innerHeight);
   });
 
+  $("cine").addEventListener("click",function(){ endCine(); });
+  $("oIntro").addEventListener("click",function(){ audio(); startCine(); });
   document.addEventListener("keydown",function(ev){
+    if(cine.on){ endCine(); return; }
     if(ev.key==="Escape"){ pickTool(null); closeInspect(); }
     for(var i=0;i<TORDER.length;i++){ if(ev.key===TOWERS[TORDER[i]].key){ pickTool(S.picked===TORDER[i]?null:TORDER[i]); } }
     if(ev.key===" "){ ev.preventDefault(); if(S.started&&!S.over) startWave(); }
@@ -1471,6 +1638,7 @@ function init(){
     audio();
     if(S.over){ resetGame(); }
     S.started=true;
+    if(cine.on) endCine(true);
     $("overlay").classList.add("hide");
     clock.getDelta();
   });
