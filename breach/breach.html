@@ -87,6 +87,40 @@ body{
 #traceVal{font-size:12px;width:44px;font-variant-numeric:tabular-nums;color:var(--paper)}
 .stat{font-size:12px;color:var(--dim);letter-spacing:.08em;white-space:nowrap}
 .stat b{color:var(--paper);font-variant-numeric:tabular-nums;font-weight:600}
+#streakStat b{color:#5bff9e}
+
+/* rig shop on the briefing */
+.shop{margin:0 0 18px}
+.shoplabel{font-size:9.5px;letter-spacing:.22em;color:var(--dim);text-transform:uppercase;
+  margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.shopgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:7px}
+.up{text-align:left;padding:9px 11px;background:#0a141d;border:1px solid var(--line);
+  color:var(--paper);cursor:pointer;font-family:var(--mono)}
+.up:hover:not(:disabled){border-color:var(--ice)}
+.up b{display:block;font-family:var(--display);font-size:11.5px;letter-spacing:.11em;font-weight:600}
+.up span{display:block;font-size:10.5px;color:var(--dim);line-height:1.45;margin-top:3px}
+.up em{display:block;font-style:normal;font-size:10.5px;margin-top:5px;color:var(--amber);
+  letter-spacing:.06em}
+.up:disabled{cursor:not-allowed}
+.up:disabled:not(.owned){opacity:.42}
+.up.owned{border-color:#1f5b4a;background:#07160f}
+.up.owned em{color:#5bff9e}
+
+/* brute force tumblers */
+.tumblers{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+.tumbler{width:58px;cursor:pointer;background:#07121a;border:1px solid var(--line);
+  padding:7px 0 5px;text-align:center;user-select:none}
+.tumbler:hover:not(.locked){border-color:var(--ice)}
+.ttarget{font-size:15px;font-weight:600;color:var(--amber);line-height:1.1}
+.tcap{font-size:8px;letter-spacing:.14em;color:var(--dim);margin-bottom:4px}
+.treel{height:66px;overflow:hidden;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;border-top:1px solid var(--line);margin-top:5px;padding-top:3px}
+.treel span{display:block;font-size:13px;color:#24495a;line-height:1.55}
+.treel .tcur{font-size:23px;color:var(--paper);line-height:1.2}
+.tumbler.locked{border-color:#1f5b4a;background:#07160f}
+.tumbler.locked .tcur{color:#5bff9e}
+.tumbler.locked .treel span:not(.tcur){opacity:0}
+.tumbler.miss{border-color:var(--blood);background:rgba(255,47,110,.12)}
 .iconbtn{background:transparent;border:1px solid var(--line);color:var(--dim);
   font-family:var(--mono);font-size:12px;width:30px;height:28px;cursor:pointer}
 .iconbtn:hover{color:var(--ice);border-color:var(--ice)}
@@ -180,10 +214,20 @@ body{
 .cell{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);
   font-size:15px;font-weight:600;background:#07121a}
 .cell.active{border-color:var(--ice)}
-.fb{display:flex;gap:3px;width:42px}
-.fb i{width:8px;height:8px;border-radius:50%;background:#13303a;display:block}
-.fb i.exact{background:var(--ice)}
-.fb i.near{background:var(--amber)}
+.cipherlegend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:10.5px;
+  color:var(--dim);letter-spacing:.03em;padding-bottom:2px;border-bottom:1px dashed rgba(22,50,63,.7);
+  width:100%}
+.cipherlegend span{display:flex;align-items:center;gap:5px}
+.cipherlegend i{width:8px;height:8px;border-radius:50%;display:block}
+.cipherlegend i.exact{background:var(--ice)}
+.cipherlegend i.near{background:var(--amber)}
+.tally{display:flex;gap:9px;width:92px;justify-content:flex-start;font-size:12.5px;
+  font-variant-numeric:tabular-nums;color:var(--dim)}
+.tally b{font-weight:600}
+.tally .exact{color:var(--ice)}
+.tally .near{color:var(--amber)}
+.key:disabled{opacity:.22;cursor:not-allowed}
+.minor:disabled{opacity:.35;cursor:not-allowed}
 .keys{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
 .key{width:40px;height:38px;border:1px solid var(--line);background:#0b1620;color:var(--paper);
   font-family:var(--mono);font-size:15px;font-weight:600;cursor:pointer}
@@ -209,10 +253,12 @@ body{
 .routekey{font-size:10.5px;letter-spacing:.08em;color:var(--dim);text-align:center}
 .routekey b{color:var(--ice);font-weight:600}
 .routekey i{color:var(--amber);font-style:normal;font-weight:600}
-.tile.src::before,.tile.snk::after{content:"";position:absolute;top:0;bottom:0;width:4px;z-index:2}
-.tile.src::before{left:0;background:var(--ice);box-shadow:0 0 11px rgba(58,231,208,.85)}
-.tile.snk::after{right:0;background:var(--amber);box-shadow:0 0 11px rgba(255,162,58,.85)}
-.tile.snk.live::after{background:#5bff9e;box-shadow:0 0 13px rgba(91,255,158,.9)}
+.port{aspect-ratio:1;position:relative}
+.port svg{width:100%;height:100%;display:block}
+.port path{stroke-width:13;fill:none;stroke-linecap:square}
+.port.inport path{stroke:var(--ice);filter:drop-shadow(0 0 6px rgba(58,231,208,.7))}
+.port.outport path{stroke:#6b4a22}
+.port.outport.live path{stroke:#5bff9e;filter:drop-shadow(0 0 7px rgba(91,255,158,.85))}
 
 /* signal */
 .pads{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-width:300px;margin:0 auto}
@@ -299,6 +345,7 @@ body{
         <span id="traceVal">0%</span>
       </div>
       <div class="stat">CR <b id="credits">0</b></div>
+      <div class="stat" id="streakStat" hidden>STREAK <b id="streak">×1.00</b></div>
       <div class="stat">NODES <b id="nodeCount">0/0</b></div>
       <button class="iconbtn" id="muteBtn" title="Sound on/off" aria-label="Sound on/off">♪</button>
     </div>
@@ -378,7 +425,7 @@ const SFX = {
 /* ================= node taxonomy ================= */
 const TYPES = {
   gateway:  {label:'GATEWAY',  color:0x5bff9e, diff:0, cr:0,   game:null,        note:'Your entry point. Exfiltrate here when the core is yours.'},
-  relay:    {label:'RELAY',    color:0x3ae7d0, diff:1, cr:30,  game:'sweep',     note:'Low-value routing hop. Fast to crack, opens new paths.'},
+  relay:    {label:'RELAY',    color:0x3ae7d0, diff:1, cr:30,  game:'mixed',     note:'Low-value routing hop. Fast to crack, opens new paths.'},
   datastore:{label:'DATASTORE',color:0x5fa8ff, diff:2, cr:95,  game:'cipher',    note:'Encrypted records. The payday nodes of any run.'},
   firewall: {label:'FIREWALL', color:0xffa23a, diff:3, cr:55,  game:'route',     note:'Packet inspection wall. Reroute traffic to slip through.'},
   sentry:   {label:'SENTRY',   color:0xff2f6e, diff:3, cr:70,  game:'signal',    note:'Spawns ICE while it stands. Taking it stops the bleeding.'},
@@ -386,7 +433,9 @@ const TYPES = {
   core:     {label:'CORE',     color:0xa46bff, diff:4, cr:260, game:'dual',      note:'Mission objective. Two protocols stand between you and root.'}
 };
 const EXPOSED_HONEY = {label:'HONEYPOT', color:0xff2f6e, note:'Bait. Breaching this dumps your session straight into their trace log.'};
-const GAMENAME = {sweep:'PORT SWEEP', cipher:'CIPHER BREAK', route:'PACKET ROUTE', signal:'SIGNAL MIRROR'};
+const GAMENAME = {sweep:'PORT SWEEP', cipher:'CIPHER BREAK', route:'PACKET ROUTE',
+  signal:'SIGNAL MIRROR', brute:'BRUTE FORCE'};
+const ALLGAMES = ['sweep','cipher','route','signal','brute'];
 
 const MISSIONS = [
   {code:'GRIDPOINT', name:'Gridpoint Relay', layers:3, width:2, iceMax:0, iceEvery:99, tracePerSec:0.55,
@@ -406,8 +455,27 @@ const G = {
   phase:'title', mission:0, credits:0, score:0,
   nodes:[], links:[], player:0, trace:0,
   ice:[], iceTimer:0, exfil:false, rooted:false,
-  selected:null, time:0, best:0
+  selected:null, time:0, best:0,
+  rig:{}, streak:0, freePatch:false
 };
+
+/* permanent kit, bought between contracts and carried for the rest of the career */
+const RIG = [
+  {id:'damp',   name:'TRACE DAMPENER', cost:150, desc:'Passive trace climbs 25% slower.'},
+  {id:'probe',  name:'DEEP PROBE',     cost:140, desc:'Honeypots never wear a disguise.'},
+  {id:'cryo',   name:'CRYO BUFFER',    cost:170, desc:'Every breach protocol gets 8 more seconds.'},
+  {id:'market', name:'BLACK MARKET',   cost:160, desc:'Field tools cost 40% less.'},
+  {id:'patch',  name:'AUTOPATCH',      cost:190, desc:'First failed breach each run costs no trace.'},
+  {id:'ghost',  name:'GHOSTWALK',      cost:210, desc:'ICE crawls the graph 40% slower.'}
+];
+const ICEKIND = {
+  tracer: {label:'TRACER', color:0xff2f6e, hop:2.6, size:1.5, hit:22},
+  hunter: {label:'HUNTER', color:0xff9a3a, hop:1.45, size:1.15, hit:15}
+};
+function bestScore(){ try{ return parseInt(localStorage.getItem('blackice.best')||'0',10)||0; }catch(e){ return 0; } }
+function saveBest(v){ try{ if(v>bestScore()) localStorage.setItem('blackice.best', String(v)); }catch(e){} }
+function toolCost(i){ return Math.round(TOOLS[i].cost * (G.rig.market ? 0.6 : 1)); }
+function streakMult(){ return 1 + Math.min(Math.max(0,G.streak-1), 5) * 0.12; }
 
 /* ================= three.js ================= */
 const canvas = $('scene');
@@ -592,6 +660,7 @@ function makeNode(id, type, pos, layer, mi){
     links:[], owned:type==='gateway', known:type==='gateway', exposed:false,
     diff: clamp(TYPES[type].diff + Math.floor(mi/2), 1, 5),
     credits: Math.round(T.cr * (1 + mi*0.22)),
+    game: T.game==='mixed' ? pick(['sweep','brute']) : T.game,
     spin: rnd(0.1,0.35), phase: rnd(0,6.28)
   };
   G.nodes.push(node);
@@ -601,6 +670,7 @@ function retype(node, type){
   node.type = type;
   node.diff = clamp(TYPES[type].diff + Math.floor(G.mission/2), 1, 5);
   node.credits = Math.round(TYPES[type].cr * (1 + G.mission*0.22));
+  node.game = TYPES[type].game==='mixed' ? pick(['sweep','brute']) : TYPES[type].game;
 }
 function addLink(a,b){
   if(a===b) return;
@@ -715,15 +785,23 @@ function hud(){
   $('objective').textContent = G.exfil
     ? 'ROOT ACQUIRED — return to GATEWAY·00 to exfiltrate'
     : 'Breach the CORE node, then exfiltrate through the gateway';
-  TOOLS.forEach((t,i)=>{ $('t'+i).disabled = (G.phase!=='run') || G.credits < t.cost; });
+  const st = $('streakStat');
+  st.hidden = G.streak < 2;
+  $('streak').textContent = '×' + streakMult().toFixed(2);
+  TOOLS.forEach((t,i)=>{ $('t'+i).disabled = (G.phase!=='run') || G.credits < toolCost(i); });
+}
+function paintTools(){
+  TOOLS.forEach((t,i)=>{
+    $('t'+i).querySelector('.tc').textContent = toolCost(i) + ' CR · ' + t.blurb;
+  });
 }
 
 /* ================= tools ================= */
 const TOOLS = [
-  {name:'SCRUB LOGS', cost:40, run(){
+  {name:'SCRUB LOGS', cost:40, blurb:'−25% trace', run(){
     G.trace = Math.max(0, G.trace-25); toast('LOGS SCRUBBED  −25% TRACE'); log('log scrubber flushed audit trail','good'); SFX.ok();
   }},
-  {name:'EMP BURST', cost:60, run(){
+  {name:'EMP BURST', cost:60, blurb:'clear ICE', run(){
     const near = new Set([G.player, ...G.nodes[G.player].links]);
     const before = G.ice.length;
     G.ice = G.ice.filter(ic=>{ const hit = near.has(ic.at)||near.has(ic.to);
@@ -732,11 +810,11 @@ const TOOLS = [
     toast(n ? 'EMP — '+n+' ICE DESTROYED' : 'EMP — NOTHING IN RANGE', !n);
     log('emp discharge, '+n+' countermeasure(s) down', n?'good':null); SFX.bad();
   }},
-  {name:'DEEP SCAN', cost:35, run(){
+  {name:'DEEP SCAN', cost:35, blurb:'map network', run(){
     G.nodes.forEach(n=>{ n.known = true; n.exposed = true; });
     refreshKnown(); toast('NETWORK MAPPED'); log('deep scan: full topology resolved','good'); SFX.great();
   }},
-  {name:'EXPLOIT KIT', cost:130, run(){
+  {name:'EXPLOIT KIT', cost:130, blurb:'auto-breach', run(){
     const n = G.selected!=null ? G.nodes[G.selected] : null;
     if(!n || n.owned || !inReach(n.id)){ toast('SELECT AN ADJACENT TARGET', true); return false; }
     log('exploit kit burned on '+TYPES[n.type].label,'good');
@@ -745,10 +823,10 @@ const TOOLS = [
 ];
 function useTool(i){
   if(G.phase!=='run') return;
-  const t = TOOLS[i];
-  if(G.credits < t.cost){ toast('INSUFFICIENT CREDITS', true); return; }
-  const res = t.run();
-  if(res !== false){ G.credits -= t.cost; hud(); }
+  const price = toolCost(i);
+  if(G.credits < price){ toast('INSUFFICIENT CREDITS', true); return; }
+  const res = TOOLS[i].run();
+  if(res !== false){ G.credits -= price; hud(); }
 }
 TOOLS.forEach((t,i)=> $('t'+i).addEventListener('click', ()=>useTool(i)));
 
@@ -776,7 +854,7 @@ function select(id){
     btn.textContent = here ? 'YOU ARE HERE' : inReach(n.id) ? 'JACK IN' : 'NOT ADJACENT';
     btn.disabled = here || !inReach(n.id);
   } else if(inReach(id)){
-    btn.textContent = 'BREACH · ' + (TYPES[n.type].game==='dual' ? '2 PROTOCOLS' : GAMENAME[TYPES[n.type].game]);
+    btn.textContent = 'BREACH · ' + (n.game==='dual' ? '2 PROTOCOLS' : GAMENAME[n.game]);
     btn.disabled = false;
   } else {
     btn.textContent = 'OUT OF REACH';
@@ -801,12 +879,11 @@ function hopTo(id){
 
 /* ================= breaching ================= */
 function beginBreach(n){
-  const kind = TYPES[n.type].game;
+  const kind = n.game;
   if(kind==='dual'){
     const two = [];
-    const pool = ['sweep','cipher','route','signal'];
-    two.push(pick(pool));
-    let second = pick(pool); while(second===two[0]) second = pick(pool);
+    two.push(pick(ALLGAMES));
+    let second = pick(ALLGAMES); while(second===two[0]) second = pick(ALLGAMES);
     two.push(second);
     runMinigame(two[0], n, ok=>{
       if(!ok) return failBreach(n);
@@ -818,18 +895,26 @@ function beginBreach(n){
   }
 }
 function failBreach(n){
-  G.trace += 12;
+  G.streak = 0;
   flash();
   SFX.bad();
-  log('breach rejected on host '+String(n.id).padStart(2,'0')+' — trace +12%','hot');
-  toast('BREACH FAILED  TRACE +12%', true);
-  if(Math.random()<0.6 && MISSIONS[G.mission].iceMax>0) spawnIce();
+  if(G.freePatch){
+    G.freePatch = false;
+    log('autopatch absorbed the rejection — no trace','good');
+    toast('AUTOPATCH ABSORBED IT');
+  } else {
+    G.trace += 12;
+    log('breach rejected on host '+String(n.id).padStart(2,'0')+' — trace +12%','hot');
+    toast('BREACH FAILED  TRACE +12%', true);
+    if(Math.random()<0.6 && MISSIONS[G.mission].iceMax>0) spawnIce();
+  }
   hud(); checkLoss();
 }
 function capture(n, silent){
   if(n.type==='honeypot'){
     n.exposed = true;
     G.trace += 30;
+    G.streak = 0;
     flash(); SFX.alarm();
     log('HONEYPOT. session fingerprinted — trace +30%','hot');
     toast('HONEYPOT  TRACE +30%', true);
@@ -839,11 +924,14 @@ function capture(n, silent){
     return;
   }
   n.owned = true;
-  G.credits += n.credits;
-  G.score += n.credits;
+  G.streak++;
+  const mult = streakMult();
+  const paid = Math.round(n.credits * mult);
+  G.credits += paid;
+  G.score += paid;
   if(!silent) SFX.great();
-  log('root on '+TYPES[n.type].label+'·'+String(n.id).padStart(2,'0')+' — +'+n.credits+' CR','good');
-  toast('HOST ROOTED  +' + n.credits + ' CR');
+  log('root on '+TYPES[n.type].label+'·'+String(n.id).padStart(2,'0')+' — +'+paid+' CR','good');
+  toast('HOST ROOTED  +' + paid + ' CR' + (mult>1 ? '  ×'+mult.toFixed(2) : ''));
   if(n.type==='core'){
     G.exfil = true; G.rooted = true;
     log('CORE COMPROMISED. trace acceleration detected.','hot');
@@ -865,16 +953,19 @@ function spawnIce(){
   const sources = G.nodes.filter(n=>!n.owned && (n.type==='sentry'||n.type==='core'));
   const src = sources.length ? pick(sources) : G.nodes[G.nodes.length-1];
   if(!src || src.owned) return;
+  const kind = (G.mission>=2 && Math.random()<0.4) ? 'hunter' : 'tracer';
+  const K = ICEKIND[kind];
   const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.TetrahedronGeometry(1.5),
-    new THREE.MeshBasicMaterial({color:0xff2f6e, wireframe:true}));
-  group.add(body, makeGlow(0xff2f6e, 7));
+  const body = new THREE.Mesh(new THREE.TetrahedronGeometry(K.size),
+    new THREE.MeshBasicMaterial({color:K.color, wireframe:true}));
+  group.add(body, makeGlow(K.color, kind==='hunter' ? 5.5 : 7));
   group.position.copy(src.pos);
   world.add(group);
-  const ic = {at:src.id, to:null, t:0, group, body, hop:2.6};
+  const ic = {at:src.id, to:null, t:0, group, body, kind,
+    hop: K.hop * (G.rig.ghost ? 1.65 : 1), hit:K.hit};
   G.ice.push(ic);
   routeIce(ic);
-  log('ICE instantiated at host '+String(src.id).padStart(2,'0'),'hot');
+  log(K.label + ' instantiated at host '+String(src.id).padStart(2,'0'),'hot');
   SFX.alarm();
 }
 function routeIce(ic){
@@ -885,7 +976,8 @@ function routeIce(ic){
 function updateIce(dt){
   for(let i=G.ice.length-1;i>=0;i--){
     const ic = G.ice[i];
-    ic.body.rotation.x += dt*2.4; ic.body.rotation.y += dt*1.7;
+    const spin = ic.kind==='hunter' ? 2 : 1;
+    ic.body.rotation.x += dt*2.4*spin; ic.body.rotation.y += dt*1.7*spin;
     if(ic.to===null){ routeIce(ic); continue; }
     ic.t += dt / ic.hop;
     const a = G.nodes[ic.at].pos, b = G.nodes[ic.to].pos;
@@ -893,9 +985,10 @@ function updateIce(dt){
     if(ic.t >= 1){
       ic.at = ic.to;
       if(ic.at === G.player){
-        G.trace += 22; flash(); SFX.alarm();
-        log('ICE made contact — session partially burned, trace +22%','hot');
-        toast('ICE CONTACT  TRACE +22%', true);
+        const dmg = ic.hit;
+        G.trace += dmg; G.streak = 0; flash(); SFX.alarm();
+        log(ICEKIND[ic.kind].label+' made contact — trace +'+dmg+'%','hot');
+        toast(ICEKIND[ic.kind].label + ' CONTACT  TRACE +' + dmg + '%', true);
         world.remove(ic.group); G.ice.splice(i,1);
         hud(); checkLoss();
         continue;
@@ -913,6 +1006,7 @@ function missionLost(){
   G.phase = 'over';
   $('inspect').hidden = true;
   SFX.bad();
+  saveBest(G.score);
   showScreen(`
     <div class="card">
       <div class="eyebrow">Connection severed</div>
@@ -935,6 +1029,8 @@ function missionWon(){
   SFX.great();
   const timeBonus = Math.max(0, Math.round((100-G.trace)*4));
   G.score += timeBonus;
+  G.credits += timeBonus;
+  saveBest(G.score);
   const last = G.mission === MISSIONS.length-1;
   showScreen(`
     <div class="card">
@@ -952,7 +1048,7 @@ function missionWon(){
       <button class="go" id="next">${last ? 'START A NEW CAREER' : 'NEXT CONTRACT ▸ ' + MISSIONS[G.mission+1].code}</button>
     </div>`);
   $('next').onclick = ()=>{
-    if(last){ G.score = 0; G.credits = 0; briefScreen(0); }
+    if(last){ G.score = 0; G.credits = 0; G.rig = {}; briefScreen(0); }
     else briefScreen(G.mission+1);
   };
 }
@@ -979,7 +1075,9 @@ function titleScreen(){
         <li><b>Watch the trace.</b> It climbs the whole time you are inside and jumps every time you fumble a breach. At 100% they have your address.</li>
         <li><b>ICE hunts you.</b> Countermeasures spawn from sentries and walk the graph toward whichever host you are sitting on.</li>
         <li><b>Root the core, then leave.</b> Taking the core is only half a run — you still have to jack back to the gateway with the trace climbing twice as fast.</li>
+        <li><b>Spend what you steal.</b> Credits buy field tools mid-run and permanent rig upgrades between contracts. Clean breaches in a row pay a rising multiplier.</li>
       </ul>
+      ${bestScore() ? `<div class="specs"><div class="spec"><label>Best career score</label><b>${bestScore()}</b></div></div>` : ''}
       <button class="go" id="begin">JACK IN</button>
       <button class="ghost" id="howto">DRAG TO ORBIT · SCROLL TO ZOOM · TAP A HOST</button>
     </div>`);
@@ -990,6 +1088,13 @@ function titleScreen(){
 function briefScreen(mi){
   G.phase = 'brief';
   const m = MISSIONS[mi];
+  const shop = RIG.map(u=>{
+    const owned = !!G.rig[u.id];
+    const afford = G.credits >= u.cost;
+    return `<button class="up${owned?' owned':''}" data-rig="${u.id}" ${owned||!afford?'disabled':''}>
+      <b>${u.name}</b><span>${u.desc}</span>
+      <em>${owned ? '✓ INSTALLED' : u.cost + ' CR'}</em></button>`;
+  }).join('');
   showScreen(`
     <div class="card">
       <div class="eyebrow">Contract ${mi+1} of ${MISSIONS.length}</div>
@@ -999,20 +1104,37 @@ function briefScreen(mi){
         <div class="spec"><label>Depth</label><b>${m.layers} layers</b></div>
         <div class="spec"><label>Countermeasures</label><b>${m.iceMax ? 'ICE ×'+m.iceMax : 'none'}</b></div>
         <div class="spec"><label>Trace rate</label><b>${m.tracePerSec.toFixed(2)}%/s</b></div>
-        <div class="spec"><label>Credits</label><b>${G.credits}</b></div>
+        <div class="spec"><label>Credits</label><b id="shopCr">${G.credits}</b></div>
+      </div>
+      <div class="shop">
+        <div class="shoplabel"><span>Rig upgrades — permanent, carried between contracts</span></div>
+        <div class="shopgrid" id="shopGrid">${shop}</div>
       </div>
       <button class="go" id="deploy">OPEN THE SOCKET</button>
     </div>`);
+  $('shopGrid').addEventListener('click', e=>{
+    const b = e.target.closest('[data-rig]');
+    if(!b) return;
+    const u = RIG.find(r=>r.id===b.dataset.rig);
+    if(!u || G.rig[u.id] || G.credits < u.cost) return;
+    G.credits -= u.cost;
+    G.rig[u.id] = true;
+    SFX.great();
+    briefScreen(mi);
+  });
   $('deploy').onclick = ()=>{ SFX.boot(); SFX.ok(); startMission(mi); };
 }
 
 function startMission(mi){
   G.mission = mi;
   G.trace = 0; G.exfil = false; G.rooted = false; G.iceTimer = 0; G.time = 0;
-  G.selected = null;
+  G.selected = null; G.streak = 0;
+  G.freePatch = !!G.rig.patch;
   $('log').innerHTML = '';
   $('missionName').textContent = MISSIONS[mi].name;
   genNetwork(mi);
+  if(G.rig.probe) G.nodes.forEach(n=>{ if(n.type==='honeypot') n.exposed = true; });
+  paintTools();
   G.player = G.nodes.findIndex(n=>n.type==='gateway');
   refreshKnown();
   cam.target.copy(G.nodes[G.player].pos);
@@ -1042,8 +1164,9 @@ function runMinigame(kind, node, done){
   if(kind==='cipher') mgCipher(d);
   if(kind==='route')  mgRoute(d);
   if(kind==='signal') mgSignal(d);
+  if(kind==='brute')  mgBrute(d);
 }
-function mgSetTime(sec){ mgTime = sec; mgMax = sec; }
+function mgSetTime(sec){ const t = sec + (G.rig.cryo ? 8 : 0); mgTime = t; mgMax = t; }
 function mgEnd(ok){
   mgCleanup.forEach(f=>{ try{ f(); }catch(e){} });
   mgCleanup = []; mgUpdate = null;
@@ -1143,18 +1266,24 @@ function mgSweep(diff){
 
 /* ---- CIPHER BREAK ---- */
 function mgCipher(diff){
-  const SYM = ['0','3','7','9','A','C','E','F'].slice(0, diff>=4 ? 8 : 6);
+  const SYM = ['0','3','7','9','A','C','E'].slice(0, diff>=4 ? 7 : 6);
   const len = 4;
-  const tries = Math.max(4, 7-diff);
-  const code = Array.from({length:len}, ()=>pick(SYM));
+  const tries = Math.max(6, 9-diff);
+  // the key never repeats a symbol, and neither can a guess — that keeps it deducible
+  const bag = SYM.slice(), code = [];
+  for(let i=0;i<len;i++) code.push(bag.splice(Math.floor(Math.random()*bag.length),1)[0]);
   let guess = [], used = 0;
-  mgSetTime(70);
+  mgSetTime(75);
 
-  $('mgHint').textContent = 'Deduce the ' + len + '-symbol key. A filled dot means right symbol, right slot. A hollow one means right symbol, wrong slot.';
+  $('mgHint').textContent = 'The key is four different symbols — none repeat. The tally says how many you got right, never which column they are in.';
   const wrap = document.createElement('div');
   wrap.className = 'cipher';
-  wrap.innerHTML = `<div class="attempts" id="attempts"></div>
-    <div class="att"><div class="cells" id="slots"></div><div class="fb"></div></div>
+  wrap.innerHTML = `<div class="cipherlegend">
+      <span><i class="exact"></i> right symbol, right slot</span>
+      <span><i class="near"></i> right symbol, wrong slot</span>
+    </div>
+    <div class="attempts" id="attempts"></div>
+    <div class="att"><div class="cells" id="slots"></div><div class="tally" id="liveTally"></div></div>
     <div class="keys" id="keys"></div>
     <div class="rowbtns">
       <button class="minor" id="clr">CLEAR</button>
@@ -1162,20 +1291,24 @@ function mgCipher(diff){
     </div>`;
   $('mgBody').appendChild(wrap);
 
-  SYM.forEach(s=>{
+  const keyEls = SYM.map(s=>{
     const b = document.createElement('button');
-    b.className='key'; b.textContent=s;
-    b.onclick = ()=>{ if(guess.length<len){ guess.push(s); SFX.blip(); slots(); } };
+    b.className = 'key'; b.textContent = s;
+    b.onclick = ()=>{ if(guess.length<len && !guess.includes(s)){ guess.push(s); SFX.blip(); slots(); } };
     $('keys').appendChild(b);
+    return b;
   });
   function slots(){
-    const el = $('slots'); el.innerHTML='';
+    const el = $('slots'); el.innerHTML = '';
     for(let i=0;i<len;i++){
       const c = document.createElement('div');
       c.className = 'cell' + (i===guess.length ? ' active' : '');
       c.textContent = guess[i] || '·';
       el.appendChild(c);
     }
+    keyEls.forEach((b,i)=>{ b.disabled = guess.includes(SYM[i]); });
+    $('sub').disabled = guess.length < len;
+    $('liveTally').textContent = guess.length < len ? (len - guess.length) + ' to go' : '';
   }
   function score(g){
     let exact = 0, near = 0;
@@ -1192,31 +1325,104 @@ function mgCipher(diff){
     used++;
     const row = document.createElement('div');
     row.className = 'att';
-    const cells = guess.map(s=>`<div class="cell">${s}</div>`).join('');
-    let dots = '';
-    for(let i=0;i<len;i++){
-      dots += i<r.exact ? '<i class="exact"></i>' : i<r.exact+r.near ? '<i class="near"></i>' : '<i></i>';
-    }
-    row.innerHTML = `<div class="cells">${cells}</div><div class="fb">${dots}</div>`;
+    row.innerHTML = `<div class="cells">${guess.map(s=>`<div class="cell">${s}</div>`).join('')}</div>
+      <div class="tally"><b class="exact">◆ ${r.exact}</b><b class="near">◇ ${r.near}</b></div>`;
     $('attempts').appendChild(row);
-    $('attempts').scrollTop = 9999;
+    $('attempts').scrollTop = 99999;
     guess = []; slots();
     if(r.exact===len){ SFX.great(); mgEnd(true); return; }
     SFX.blip();
     if(used>=tries){ SFX.bad(); mgEnd(false); return; }
-    $('mgHint').textContent = (tries-used) + ' transmission' + (tries-used===1?'':'s') + ' left before the host resets the key.';
+    $('mgHint').textContent = (tries-used) + ' attempt' + (tries-used===1?'':'s') + ' left. The key does not change — every tally above still holds.';
   }
   $('clr').onclick = ()=>{ guess=[]; slots(); };
   $('sub').onclick = submit;
   const key = e=>{
     const u = e.key.toUpperCase();
-    if(SYM.includes(u) && guess.length<len){ guess.push(u); SFX.blip(); slots(); }
+    if(SYM.includes(u) && guess.length<len && !guess.includes(u)){ guess.push(u); SFX.blip(); slots(); }
     else if(e.key==='Backspace'){ guess.pop(); slots(); }
     else if(e.key==='Enter'){ submit(); }
   };
   addEventListener('keydown', key);
   mgCleanup.push(()=>removeEventListener('keydown', key));
   slots();
+}
+
+/* ---- BRUTE FORCE ---- */
+function mgBrute(diff){
+  const HEX = '0123456789ABCDEF'.split('');
+  const count = Math.min(5, 3 + Math.floor(diff/2));
+  let strikes = 0;
+  const maxStrikes = 2;
+  mgSetTime(34);
+  $('mgHint').textContent = 'Each register is spinning. Stop every one of them on its amber target digit. '
+    + (maxStrikes+1) + ' bad stops and the key resets.';
+
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `<div class="mgstatus" id="bfStatus">0 / ${count} REGISTERS LOCKED</div>
+    <div class="tumblers" id="tumblers"></div>`;
+  $('mgBody').appendChild(wrap);
+
+  const tum = [];
+  for(let i=0;i<count;i++){
+    const el = document.createElement('div');
+    el.className = 'tumbler';
+    el.innerHTML = `<div class="tcap">TARGET</div><div class="ttarget"></div>
+      <div class="treel"><span class="tprev"></span><span class="tcur"></span><span class="tnext"></span></div>`;
+    $('tumblers').appendChild(el);
+    const t = {
+      target: Math.floor(Math.random()*16),
+      pos: Math.random()*16,
+      speed: 2.6 + i*0.75 + diff*0.55,
+      locked: false, el,
+      tgtEl: el.querySelector('.ttarget'),
+      prevEl: el.querySelector('.tprev'),
+      curEl: el.querySelector('.tcur'),
+      nextEl: el.querySelector('.tnext')
+    };
+    t.tgtEl.textContent = HEX[t.target];
+    el.addEventListener('click', ()=>stop(i));
+    tum.push(t);
+  }
+
+  function stop(i){
+    const t = tum[i];
+    if(t.locked || G.phase!=='minigame') return;
+    if(Math.floor(t.pos)%16 === t.target){
+      t.locked = true;
+      SFX.ok();
+      t.el.classList.add('locked');
+      const got = tum.filter(x=>x.locked).length;
+      $('bfStatus').textContent = got + ' / ' + count + ' REGISTERS LOCKED';
+      if(got===count){ SFX.great(); mgEnd(true); }
+    } else {
+      strikes++;
+      SFX.bad();
+      t.el.classList.add('miss');
+      const h = setTimeout(()=>t.el.classList.remove('miss'), 260);
+      mgCleanup.push(()=>clearTimeout(h));
+      t.speed += 0.5;
+      $('bfStatus').textContent = 'BAD STOP — ' + (maxStrikes+1-strikes) + ' LEFT';
+      if(strikes>maxStrikes){ mgEnd(false); }
+    }
+  }
+
+  const key = e=>{
+    const n = parseInt(e.key,10);
+    if(n>=1 && n<=count){ e.preventDefault(); stop(n-1); }
+  };
+  addEventListener('keydown', key);
+  mgCleanup.push(()=>removeEventListener('keydown', key));
+
+  mgUpdate = dt=>{
+    tum.forEach(t=>{
+      if(!t.locked) t.pos = (t.pos + t.speed*dt) % 16;
+      const c = Math.floor(t.pos)%16;
+      t.prevEl.textContent = HEX[(c+15)%16];
+      t.curEl.textContent = HEX[c];
+      t.nextEl.textContent = HEX[(c+1)%16];
+    });
+  };
 }
 
 /* ---- PACKET ROUTE ---- */
@@ -1287,26 +1493,50 @@ function mgRoute(diff){
     if(Math.random()<0.34) continue;
     tiles[y][x] = {shape: Math.random()<0.5 ? 'straight' : 'elbow', rot: Math.floor(Math.random()*4)};
   }
-  // scramble
+  // scramble — every tile on the solution route must land in a genuinely wrong orientation,
+  // so no piece (least of all the exit) is ever already correct when the puzzle opens
+  const onPath = new Set(path.map(([x,y])=>y*cols+x));
   for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
-    if(tiles[y][x].shape) tiles[y][x].rot += 1 + Math.floor(Math.random()*3);
+    const t = tiles[y][x];
+    if(!t.shape) continue;
+    if(onPath.has(y*cols+x)){
+      const right = rotMask(CANON[t.shape], t.rot);
+      let r = t.rot;
+      for(let guard=0; guard<12; guard++){
+        r = t.rot + 1 + Math.floor(Math.random()*3);
+        if(rotMask(CANON[t.shape], r) !== right) break;
+      }
+      t.rot = r;
+    } else {
+      t.rot += Math.floor(Math.random()*4);
+    }
   }
 
+  const PORT = '<svg viewBox="0 0 100 100"><path d="M0 50 H100"/></svg>';
   const wrap = document.createElement('div');
   wrap.className = 'routewrap';
-  wrap.innerHTML = `<div class="grid" id="rgrid" style="grid-template-columns:repeat(${cols},minmax(0,1fr));width:min(${cols*58}px,72vw)"></div>
-    <div class="routekey">packet enters at the <b>teal edge</b> · leaves at the <i>amber edge</i></div>`;
+  wrap.innerHTML = `<div class="grid" id="rgrid" style="grid-template-columns:repeat(${cols+2},minmax(0,1fr));width:min(${(cols+2)*52}px,80vw)"></div>
+    <div class="routekey">the packet arrives at the <b>teal port</b> — get it out through the <i>amber port</i></div>`;
   $('mgBody').appendChild(wrap);
   const grid = $('rgrid');
 
   const els = [];
+  let outEl = null;
   for(let y=0;y<rows;y++){
     els.push([]);
-    for(let x=0;x<cols;x++){
-      const t = tiles[y][x];
+    for(let gx=0; gx<cols+2; gx++){
+      // the two outer columns are the inbound and outbound cables, not playable tiles
+      if(gx===0 || gx===cols+1){
+        const isIn = gx===0, live = isIn ? y===sr : y===kr;
+        const d = document.createElement('div');
+        d.className = 'port' + (live ? (isIn ? ' inport' : ' outport') : '');
+        if(live){ d.innerHTML = PORT; if(!isIn) outEl = d; }
+        grid.appendChild(d);
+        continue;
+      }
+      const x = gx-1, t = tiles[y][x];
       const d = document.createElement('div');
-      d.className = 'tile' + (t.shape ? '' : ' empty')
-        + (x===0 && y===sr ? ' src' : '') + (x===cols-1 && y===kr ? ' snk' : '');
+      d.className = 'tile' + (t.shape ? '' : ' empty');
       if(t.shape){
         d.innerHTML = `<div class="rot">${SHAPES[t.shape]}</div>`;
         d.addEventListener('click', ()=>{ t.rot++; render(); SFX.blip(); });
@@ -1345,7 +1575,8 @@ function mgRoute(diff){
       d.querySelector('.rot').style.transform = 'rotate(' + (t.rot*90) + 'deg)';
       d.classList.toggle('live', live.has(y*cols+x));
     }
-    if(win){ SFX.great(); const h = setTimeout(()=>mgEnd(true), 420); mgCleanup.push(()=>clearTimeout(h)); }
+    if(outEl) outEl.classList.toggle('live', win);
+    if(win){ SFX.great(); const h = setTimeout(()=>mgEnd(true), 480); mgCleanup.push(()=>clearTimeout(h)); }
   }
   render();
 }
@@ -1546,7 +1777,8 @@ function tick(){
   if(G.phase==='run' || G.phase==='minigame'){
     const cfg = MISSIONS[G.mission];
     G.time += dt;
-    const rate = cfg.tracePerSec * (G.exfil ? 2.6 : 1) + G.ice.length*0.16;
+    const rate = (cfg.tracePerSec * (G.exfil ? 2.6 : 1) + G.ice.length*0.16)
+      * (G.rig.damp ? 0.75 : 1);
     G.trace += rate*dt;
     if(G.phase==='run'){
       updateIce(dt);
@@ -1582,13 +1814,14 @@ function boot(saved){
   if(saved && typeof saved.mission === 'number' && saved.mission > 0){
     G.credits = saved.credits || 0;
     G.score = saved.score || 0;
+    G.rig = saved.rig || {};
     briefScreen(clamp(saved.mission, 0, MISSIONS.length-1));
   } else {
     titleScreen();
   }
 }
 try{
-  window.claude?.hot?.snapshot?.(()=>({mission:G.mission, credits:G.credits, score:G.score}));
+  window.claude?.hot?.snapshot?.(()=>({mission:G.mission, credits:G.credits, score:G.score, rig:G.rig}));
 }catch(e){}
 if(window.claude?.hot?.ready) window.claude.hot.ready(boot);
 else boot(window.claude?.hot?.data);
