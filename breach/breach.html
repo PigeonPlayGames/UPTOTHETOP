@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Black Ice — Eon Games</title>
+<meta name="description" content="Black Ice — a 3D cyber-infiltration game. Breach a live network graph host by host before the trace catches you. An Eon Games original.">
+<meta name="theme-color" content="#04070c">
+<meta property="og:title" content="Black Ice — Eon Games">
+<meta property="og:description" content="A 3D hacking game: orbit a live network graph, breach each host with a different protocol puzzle, and get out before the trace lands.">
+<meta property="og:type" content="website">
+<style>
+/* baseline reset — mirrors the sandbox the game was authored against */
+:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#04070c}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed 3D viewport inside a HUD frame — status rail on top,
+   tool rail on the bottom, telemetry log left, node inspector right.
+   Single-theme by design: this is a terminal, it is dark everywhere. */
+:root{
+  --void:#04070c;
+  --ink:#080f17;
+  --panel:#0b1620;
+  --line:#16323f;
+  --ice:#3ae7d0;
+  --amber:#ffa23a;
+  --blood:#ff2f6e;
+  --violet:#a46bff;
+  --paper:#cfe6ea;
+  --dim:#587b88;
+  --display:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--void);
+  color:var(--paper);
+  font-family:var(--mono);
+  font-size:14px;
+  overflow:hidden;
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior:none;
+}
+#app{position:relative;width:100%;height:100%;overflow:hidden;background:var(--void)}
+#scene{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* atmosphere */
+#vignette{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 45%,transparent 35%,rgba(2,5,9,.85) 100%)}
+#scan{position:absolute;inset:0;pointer-events:none;opacity:.35;
+  background:repeating-linear-gradient(to bottom,rgba(58,231,208,.045) 0 1px,transparent 1px 3px)}
+#flash{position:absolute;inset:0;pointer-events:none;background:var(--blood);opacity:0;
+  transition:opacity .35s ease}
+#flash.hit{opacity:.3;transition:opacity 0s}
+
+/* ---------- top rail ---------- */
+#rail{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+  flex-wrap:wrap;padding:10px 14px;z-index:6;
+  background:linear-gradient(to bottom,rgba(4,7,12,.92),rgba(4,7,12,0));
+  pointer-events:none}
+#rail>*{pointer-events:auto}
+.brand{font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:.14em;
+  color:var(--paper);white-space:nowrap}
+.brand b{color:var(--ice)}
+.railsep{width:1px;height:22px;background:var(--line)}
+#missionName{font-family:var(--display);font-size:12px;letter-spacing:.18em;color:var(--dim);
+  text-transform:uppercase;white-space:nowrap}
+#objective{flex:1;min-width:0;font-size:12px;color:var(--ice);letter-spacing:.04em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meters{display:flex;align-items:center;gap:12px;margin-left:auto}
+.trace{display:flex;align-items:center;gap:8px}
+.trace label{font-size:10px;letter-spacing:.2em;color:var(--dim)}
+.bar{width:130px;height:9px;border:1px solid var(--line);background:#06101a;position:relative;
+  overflow:hidden}
+.bar i{display:block;height:100%;width:0%;background:var(--ice);transition:width .25s linear}
+.bar.warn i{background:var(--amber)}
+.bar.crit i{background:var(--blood);animation:thrum .7s steps(2,end) infinite}
+@keyframes thrum{50%{opacity:.4}}
+#traceVal{font-size:12px;width:44px;font-variant-numeric:tabular-nums;color:var(--paper)}
+.stat{font-size:12px;color:var(--dim);letter-spacing:.08em;white-space:nowrap}
+.stat b{color:var(--paper);font-variant-numeric:tabular-nums;font-weight:600}
+.iconbtn{background:transparent;border:1px solid var(--line);color:var(--dim);
+  font-family:var(--mono);font-size:12px;width:30px;height:28px;cursor:pointer}
+.iconbtn:hover{color:var(--ice);border-color:var(--ice)}
+.iconbtn:focus-visible,button:focus-visible{outline:2px solid var(--ice);outline-offset:2px}
+
+/* ---------- telemetry log ---------- */
+#log{position:absolute;left:14px;bottom:88px;width:min(330px,42vw);z-index:5;
+  pointer-events:none;display:flex;flex-direction:column;gap:3px;justify-content:flex-end}
+#log div{font-size:11px;color:var(--dim);letter-spacing:.02em;line-height:1.35;
+  text-shadow:0 0 8px rgba(0,0,0,.9);animation:fadein .3s ease}
+#log div.hot{color:var(--blood)}
+#log div.good{color:var(--ice)}
+@keyframes fadein{from{opacity:0;transform:translateX(-6px)}}
+
+/* ---------- inspector ---------- */
+#inspect{position:absolute;right:14px;top:72px;width:252px;z-index:6;
+  border:1px solid var(--line);background:rgba(8,15,23,.93);backdrop-filter:blur(6px)}
+#inspect .ihead{padding:9px 12px;border-bottom:1px solid var(--line);display:flex;
+  align-items:baseline;justify-content:space-between;gap:8px}
+#insName{font-family:var(--display);font-size:14px;letter-spacing:.1em;font-weight:600}
+#insType{font-size:10px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.irow{display:flex;justify-content:space-between;padding:6px 12px;font-size:11.5px;
+  border-bottom:1px dashed rgba(22,50,63,.6)}
+.irow span{color:var(--dim)}
+.irow b{font-weight:500;font-variant-numeric:tabular-nums}
+#insNote{padding:8px 12px;font-size:11px;color:var(--dim);line-height:1.5}
+#insAct{display:block;width:calc(100% - 20px);margin:0 10px 10px;padding:10px;
+  font-family:var(--display);font-size:13px;letter-spacing:.14em;font-weight:600;
+  background:var(--ice);color:#02130f;border:0;cursor:pointer}
+#insAct:hover{background:#6bfbe6}
+#insAct:disabled{background:#12262e;color:var(--dim);cursor:not-allowed}
+
+/* ---------- tool rail ---------- */
+#tools{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;gap:8px;
+  padding:10px 14px;justify-content:center;flex-wrap:wrap;
+  background:linear-gradient(to top,rgba(4,7,12,.92),rgba(4,7,12,0))}
+.tool{min-width:116px;padding:7px 11px;background:rgba(11,22,32,.9);border:1px solid var(--line);
+  color:var(--paper);cursor:pointer;text-align:left;font-family:var(--mono)}
+.tool:hover:not(:disabled){border-color:var(--ice)}
+.tool:disabled{opacity:.4;cursor:not-allowed}
+.tool .tk{display:block;font-family:var(--display);font-size:11.5px;letter-spacing:.14em;
+  font-weight:600}
+.tool .tc{display:block;font-size:10px;color:var(--amber);margin-top:2px;letter-spacing:.05em}
+.tool kbd{float:right;font-family:var(--mono);font-size:9px;color:var(--dim);border:1px solid var(--line);
+  padding:0 3px;line-height:14px}
+
+/* ---------- toast ---------- */
+#toast{position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:9;
+  pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center}
+#toast div{font-family:var(--display);font-size:13px;letter-spacing:.14em;padding:7px 16px;
+  border:1px solid var(--ice);background:rgba(4,20,22,.92);color:var(--ice);
+  animation:pop .3s ease}
+#toast div.bad{border-color:var(--blood);color:var(--blood);background:rgba(26,4,12,.92)}
+@keyframes pop{from{opacity:0;transform:translateY(-8px)}}
+
+/* ---------- modal / minigames ---------- */
+#modal{position:absolute;inset:0;z-index:20;display:grid;place-items:center;
+  background:rgba(2,5,9,.82);padding:16px}
+.mg{width:min(460px,100%);max-height:100%;overflow:auto;border:1px solid var(--ice);
+  background:var(--ink);box-shadow:0 0 60px rgba(58,231,208,.12)}
+.mg-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 14px;border-bottom:1px solid var(--line)}
+#mgKind{font-family:var(--display);font-size:14px;letter-spacing:.18em;font-weight:700;
+  color:var(--ice);display:block}
+#mgTarget{font-size:10.5px;letter-spacing:.14em;color:var(--dim);display:block;margin-top:2px}
+#mgAbort{background:transparent;border:1px solid var(--line);color:var(--dim);
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;padding:5px 9px;cursor:pointer}
+#mgAbort:hover{color:var(--blood);border-color:var(--blood)}
+.mg-timer{height:3px;background:#0d1d26}
+.mg-timer i{display:block;height:100%;width:100%;background:var(--ice)}
+.mg-timer i.low{background:var(--blood)}
+#mgBody{padding:16px 14px}
+#mgHint{padding:0 14px 13px;font-size:11px;color:var(--dim);line-height:1.5;text-align:center}
+
+/* port sweep */
+.sweepwrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+#sweepCv{width:min(300px,78vw);height:auto;aspect-ratio:1;display:block}
+.fire{font-family:var(--display);letter-spacing:.2em;font-weight:700;font-size:14px;
+  padding:11px 34px;background:var(--ice);color:#02130f;border:0;cursor:pointer}
+.fire:hover{background:#6bfbe6}
+.pips{display:flex;gap:6px}
+.pips i{width:16px;height:5px;background:#13303a;display:block}
+.pips i.on{background:var(--ice)}
+.pips i.bad{background:var(--blood)}
+
+/* cipher */
+.cipher{display:flex;flex-direction:column;gap:12px;align-items:center}
+.attempts{display:flex;flex-direction:column;gap:5px;width:100%;max-height:150px;overflow:auto}
+.att{display:flex;align-items:center;gap:8px;justify-content:center}
+.att .cells{display:flex;gap:5px}
+.cell{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);
+  font-size:15px;font-weight:600;background:#07121a}
+.cell.active{border-color:var(--ice)}
+.fb{display:flex;gap:3px;width:42px}
+.fb i{width:8px;height:8px;border-radius:50%;background:#13303a;display:block}
+.fb i.exact{background:var(--ice)}
+.fb i.near{background:var(--amber)}
+.keys{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.key{width:40px;height:38px;border:1px solid var(--line);background:#0b1620;color:var(--paper);
+  font-family:var(--mono);font-size:15px;font-weight:600;cursor:pointer}
+.key:hover{border-color:var(--ice);color:var(--ice)}
+.rowbtns{display:flex;gap:8px}
+.minor{font-family:var(--display);letter-spacing:.14em;font-size:12px;padding:8px 16px;
+  background:transparent;border:1px solid var(--line);color:var(--paper);cursor:pointer}
+.minor:hover{border-color:var(--ice);color:var(--ice)}
+.minor.primary{background:var(--ice);color:#02130f;border-color:var(--ice)}
+.minor.primary:hover{background:#6bfbe6}
+
+/* packet route */
+.grid{display:grid;gap:3px;justify-content:center;margin:0 auto}
+.tile{width:100%;aspect-ratio:1;background:#07121a;border:1px solid #102531;position:relative;
+  cursor:pointer;overflow:hidden}
+.tile.empty{cursor:default;background:#050d13}
+.tile .rot{position:absolute;inset:0;transition:transform .16s ease}
+.tile svg{width:100%;height:100%;display:block}
+.tile path{stroke:#2a5566;stroke-width:13;fill:none;stroke-linecap:square}
+.tile.live path{stroke:var(--ice);filter:drop-shadow(0 0 5px rgba(58,231,208,.75))}
+.tile:hover:not(.empty){border-color:var(--ice)}
+.routewrap{display:flex;flex-direction:column;align-items:center;gap:11px}
+.routekey{font-size:10.5px;letter-spacing:.08em;color:var(--dim);text-align:center}
+.routekey b{color:var(--ice);font-weight:600}
+.routekey i{color:var(--amber);font-style:normal;font-weight:600}
+.tile.src::before,.tile.snk::after{content:"";position:absolute;top:0;bottom:0;width:4px;z-index:2}
+.tile.src::before{left:0;background:var(--ice);box-shadow:0 0 11px rgba(58,231,208,.85)}
+.tile.snk::after{right:0;background:var(--amber);box-shadow:0 0 11px rgba(255,162,58,.85)}
+.tile.snk.live::after{background:#5bff9e;box-shadow:0 0 13px rgba(91,255,158,.9)}
+
+/* signal */
+.pads{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-width:300px;margin:0 auto}
+.pad{aspect-ratio:1;border:1px solid var(--line);background:#07121a;font-size:26px;
+  display:grid;place-items:center;cursor:pointer;color:#2c5162;transition:none}
+.pad.lit{background:rgba(58,231,208,.18);border-color:var(--ice);color:var(--ice);
+  box-shadow:inset 0 0 20px rgba(58,231,208,.25)}
+.pad.wrong{background:rgba(255,47,110,.2);border-color:var(--blood);color:var(--blood)}
+.mgstatus{text-align:center;font-size:11.5px;letter-spacing:.1em;color:var(--dim);
+  margin-bottom:12px;min-height:16px}
+
+/* ---------- full screens ---------- */
+#screen{position:absolute;inset:0;z-index:30;display:grid;place-items:center;padding:20px;
+  background:radial-gradient(ellipse at 50% 40%,#071219 0%,#03060a 70%);overflow:auto}
+.card{width:min(560px,100%);border:1px solid var(--line);background:rgba(8,15,23,.9);
+  padding:26px 24px}
+.eyebrow{font-size:10.5px;letter-spacing:.3em;color:var(--ice);text-transform:uppercase;
+  margin-bottom:10px}
+.card h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,8vw,54px);
+  letter-spacing:.1em;margin:0 0 6px;line-height:1;text-wrap:balance}
+.card h1 em{font-style:normal;color:var(--ice)}
+.card h2{font-family:var(--display);font-weight:600;font-size:clamp(20px,5vw,28px);
+  letter-spacing:.1em;margin:0 0 10px;text-wrap:balance}
+.card p{font-size:13px;line-height:1.65;color:var(--dim);margin:0 0 14px;max-width:62ch}
+.card p strong{color:var(--paper);font-weight:500}
+.rules{list-style:none;padding:0;margin:0 0 20px;display:flex;flex-direction:column;gap:9px}
+.rules li{font-size:12.5px;line-height:1.5;color:var(--dim);padding-left:18px;position:relative}
+.rules li::before{content:"▸";position:absolute;left:0;color:var(--ice)}
+.rules li b{color:var(--paper);font-weight:600}
+.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);margin:0 0 20px}
+.spec{background:var(--ink);padding:10px 12px}
+.spec label{display:block;font-size:9.5px;letter-spacing:.18em;color:var(--dim);
+  text-transform:uppercase;margin-bottom:4px}
+.spec b{font-family:var(--display);font-size:17px;letter-spacing:.06em;font-weight:600;
+  font-variant-numeric:tabular-nums}
+.go{font-family:var(--display);font-size:15px;letter-spacing:.2em;font-weight:700;
+  padding:14px 30px;background:var(--ice);color:#02130f;border:0;cursor:pointer;width:100%}
+.go:hover{background:#6bfbe6}
+.go.danger{background:var(--blood);color:#1a0208}
+.go.danger:hover{background:#ff5b8b}
+.ghost{margin-top:9px;width:100%;background:transparent;border:1px solid var(--line);
+  color:var(--dim);font-family:var(--display);letter-spacing:.16em;font-size:12px;
+  padding:10px;cursor:pointer}
+.ghost:hover{color:var(--ice);border-color:var(--ice)}
+
+[hidden]{display:none!important}
+
+@media (max-width:760px){
+  #log{display:none}
+  #inspect{right:8px;left:8px;width:auto;top:auto;bottom:74px}
+  #rail{gap:8px;padding:8px 10px}
+  .brand{font-size:14px}
+  .railsep,#missionName{display:none}
+  #objective{flex-basis:100%;order:3}
+  .bar{width:84px}
+  #tools{gap:6px;padding:8px 8px}
+  .tool{min-width:0;flex:1 1 calc(50% - 6px);padding:6px 8px}
+  .tool kbd{display:none}
+  #toast{top:70px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001s!important;transition-duration:.001s!important}
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div id="vignette"></div>
+  <div id="scan"></div>
+  <div id="flash"></div>
+
+  <header id="rail">
+    <div class="brand">BLACK<b>ICE</b></div>
+    <div class="railsep"></div>
+    <div id="missionName">—</div>
+    <div id="objective">—</div>
+    <div class="meters">
+      <div class="trace">
+        <label>TRACE</label>
+        <div class="bar" id="traceBar"><i id="traceFill"></i></div>
+        <span id="traceVal">0%</span>
+      </div>
+      <div class="stat">CR <b id="credits">0</b></div>
+      <div class="stat">NODES <b id="nodeCount">0/0</b></div>
+      <button class="iconbtn" id="muteBtn" title="Sound on/off" aria-label="Sound on/off">♪</button>
+    </div>
+  </header>
+
+  <div id="log"></div>
+
+  <aside id="inspect" hidden>
+    <div class="ihead">
+      <div>
+        <div id="insName">—</div>
+        <div id="insType">—</div>
+      </div>
+    </div>
+    <div class="irow"><span>Encryption</span><b id="insDiff">—</b></div>
+    <div class="irow"><span>Payload</span><b id="insData">—</b></div>
+    <div class="irow"><span>Status</span><b id="insStatus">—</b></div>
+    <div id="insNote"></div>
+    <button id="insAct">JACK IN</button>
+  </aside>
+
+  <footer id="tools">
+    <button class="tool" id="t0"><span class="tk">SCRUB LOGS<kbd>1</kbd></span><span class="tc">40 CR · −25% trace</span></button>
+    <button class="tool" id="t1"><span class="tk">EMP BURST<kbd>2</kbd></span><span class="tc">60 CR · clear ICE</span></button>
+    <button class="tool" id="t2"><span class="tk">DEEP SCAN<kbd>3</kbd></span><span class="tc">35 CR · map network</span></button>
+    <button class="tool" id="t3"><span class="tk">EXPLOIT KIT<kbd>4</kbd></span><span class="tc">130 CR · auto-breach</span></button>
+  </footer>
+
+  <div id="toast"></div>
+
+  <div id="modal" hidden>
+    <div class="mg" role="dialog" aria-modal="true" aria-labelledby="mgKind">
+      <div class="mg-head">
+        <div><span id="mgKind">—</span><small id="mgTarget">—</small></div>
+        <button id="mgAbort">ABORT</button>
+      </div>
+      <div class="mg-timer"><i id="mgTimerFill"></i></div>
+      <div id="mgBody"></div>
+      <div id="mgHint"></div>
+    </div>
+  </div>
+
+  <section id="screen"></section>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const rnd = (a,b) => a + Math.random()*(b-a);
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ================= audio ================= */
+const SFX = {
+  ctx:null, on:true,
+  boot(){ if(!this.ctx){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } },
+  tone(f,d=.08,type='square',g=.045,slide=0){
+    if(!this.on||!this.ctx) return;
+    const c=this.ctx, o=c.createOscillator(), v=c.createGain();
+    o.type=type; o.frequency.setValueAtTime(f,c.currentTime);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,f+slide),c.currentTime+d);
+    v.gain.setValueAtTime(g,c.currentTime);
+    v.gain.exponentialRampToValueAtTime(.0001,c.currentTime+d);
+    o.connect(v); v.connect(c.destination); o.start(); o.stop(c.currentTime+d+.02);
+  },
+  blip(){ this.tone(880,.05,'square',.03); },
+  ok(){ this.tone(520,.09,'square',.05); setTimeout(()=>this.tone(780,.12,'square',.05),80); },
+  great(){ [440,660,880,1180].forEach((f,i)=>setTimeout(()=>this.tone(f,.13,'triangle',.05),i*85)); },
+  bad(){ this.tone(190,.3,'sawtooth',.05,-120); },
+  alarm(){ this.tone(140,.5,'sawtooth',.07,-60); },
+  hum(){ this.tone(300,.06,'sine',.03); }
+};
+
+/* ================= node taxonomy ================= */
+const TYPES = {
+  gateway:  {label:'GATEWAY',  color:0x5bff9e, diff:0, cr:0,   game:null,        note:'Your entry point. Exfiltrate here when the core is yours.'},
+  relay:    {label:'RELAY',    color:0x3ae7d0, diff:1, cr:30,  game:'sweep',     note:'Low-value routing hop. Fast to crack, opens new paths.'},
+  datastore:{label:'DATASTORE',color:0x5fa8ff, diff:2, cr:95,  game:'cipher',    note:'Encrypted records. The payday nodes of any run.'},
+  firewall: {label:'FIREWALL', color:0xffa23a, diff:3, cr:55,  game:'route',     note:'Packet inspection wall. Reroute traffic to slip through.'},
+  sentry:   {label:'SENTRY',   color:0xff2f6e, diff:3, cr:70,  game:'signal',    note:'Spawns ICE while it stands. Taking it stops the bleeding.'},
+  honeypot: {label:'DATASTORE',color:0x5fa8ff, diff:1, cr:0,   game:'cipher',    note:'Encrypted records. The payday nodes of any run.'},
+  core:     {label:'CORE',     color:0xa46bff, diff:4, cr:260, game:'dual',      note:'Mission objective. Two protocols stand between you and root.'}
+};
+const EXPOSED_HONEY = {label:'HONEYPOT', color:0xff2f6e, note:'Bait. Breaching this dumps your session straight into their trace log.'};
+const GAMENAME = {sweep:'PORT SWEEP', cipher:'CIPHER BREAK', route:'PACKET ROUTE', signal:'SIGNAL MIRROR'};
+
+const MISSIONS = [
+  {code:'GRIDPOINT', name:'Gridpoint Relay', layers:3, width:2, iceMax:0, iceEvery:99, tracePerSec:0.55,
+   brief:'A municipal traffic relay with budget security and no monitoring contract. Walk the graph, breach the core, walk back out. Nobody is watching — yet.'},
+  {code:'HELIX', name:'Helix Biotech', layers:4, width:2, iceMax:2, iceEvery:26, tracePerSec:0.7,
+   brief:'Sequencing data worth more than the building it sits in. Helix runs live countermeasures, so expect ICE in the graph once you make noise.'},
+  {code:'VERTEX', name:'Vertex Clearing', layers:5, width:3, iceMax:3, iceEvery:20, tracePerSec:0.85,
+   brief:'A clearing house that knows it is a target. Their security team salts the network with honeypots dressed as datastores. Scan before you breach.'},
+  {code:'ORBITAL', name:'Orbital Comms', layers:5, width:3, iceMax:4, iceEvery:16, tracePerSec:1.0,
+   brief:'Ground station for a satellite constellation. Hardened, sentry-heavy, and the trace desk is staffed around the clock. Move fast.'},
+  {code:'BLACKSITE', name:'The Blacksite', layers:6, width:3, iceMax:6, iceEvery:12, tracePerSec:1.25,
+   brief:'No registered owner, no published range, no legal existence. Whoever runs black ice built this. Get in, take root, and do not linger.'}
+];
+
+/* ================= game state ================= */
+const G = {
+  phase:'title', mission:0, credits:0, score:0,
+  nodes:[], links:[], player:0, trace:0,
+  ice:[], iceTimer:0, exfil:false, rooted:false,
+  selected:null, time:0, best:0
+};
+
+/* ================= three.js ================= */
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04070c, 0.0062);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2000);
+const world = new THREE.Group();      // nodes, links, ice
+scene.add(world);
+
+// ambient decor
+(function decor(){
+  const g = new THREE.BufferGeometry();
+  const n = 1400, p = new Float32Array(n*3);
+  for(let i=0;i<n;i++){
+    const r = rnd(160,520), t = rnd(0,Math.PI*2), u = Math.acos(rnd(-1,1));
+    p[i*3] = r*Math.sin(u)*Math.cos(t);
+    p[i*3+1] = r*Math.cos(u)*0.6;
+    p[i*3+2] = r*Math.sin(u)*Math.sin(t);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(p,3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({color:0x1d4a5c, size:1.5, sizeAttenuation:true})));
+  const grid = new THREE.GridHelper(900, 70, 0x0c2a38, 0x071a24);
+  grid.position.y = -58;
+  if (grid.material.transparent !== undefined){ grid.material.transparent = true; grid.material.opacity = .5; }
+  scene.add(grid);
+})();
+
+// shared geometry + textures
+const GEO = {
+  gateway:   new THREE.OctahedronGeometry(2.3),
+  relay:     new THREE.IcosahedronGeometry(1.9, 0),
+  datastore: new THREE.BoxGeometry(2.9,2.9,2.9),
+  firewall:  new THREE.TorusGeometry(2.0,0.62,6,10),
+  sentry:    new THREE.ConeGeometry(2.0,3.4,5),
+  honeypot:  new THREE.BoxGeometry(2.9,2.9,2.9),
+  core:      new THREE.DodecahedronGeometry(3.3),
+  unknown:   new THREE.SphereGeometry(1.5, 8, 6)
+};
+const GLOWTEX = (function(){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64,64,0,64,64,64);
+  grad.addColorStop(0,'rgba(255,255,255,1)');
+  grad.addColorStop(.25,'rgba(255,255,255,.42)');
+  grad.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+})();
+
+function makeGlow(color, size){
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map:GLOWTEX, color, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:.85
+  }));
+  s.scale.set(size,size,1);
+  return s;
+}
+function makeLabel(){
+  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 72;
+  const tex = new THREE.CanvasTexture(cv);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthWrite:false, depthTest:false}));
+  spr.scale.set(9.6, 2.16, 1);
+  spr.renderOrder = 10;
+  spr.userData = {cv, tex};
+  return spr;
+}
+function setLabel(spr, text, hex){
+  const {cv, tex} = spr.userData;
+  const g = cv.getContext('2d');
+  g.clearRect(0,0,cv.width,cv.height);
+  g.font = '600 34px "IBM Plex Mono", monospace';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(2,6,10,.72)';
+  const w = g.measureText(text).width + 22;
+  g.fillRect(160 - w/2, 18, w, 36);
+  g.fillStyle = hex;
+  g.fillText(text, 160, 37);
+  tex.needsUpdate = true;
+}
+
+/* player ring + camera */
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(4.3, 0.16, 8, 48),
+  new THREE.MeshBasicMaterial({color:0x5bff9e, transparent:true, opacity:.9})
+);
+ring.visible = false;
+scene.add(ring);
+
+const cam = {theta:0.9, phi:1.12, dist:78, target:new THREE.Vector3(), goal:new THREE.Vector3()};
+
+/* ================= network generation ================= */
+function clearWorld(){
+  while(world.children.length){
+    const c = world.children.pop();
+    c.traverse && c.traverse(o=>{ if(o.material && o.material.map && o.material.map !== GLOWTEX) o.material.map.dispose(); });
+    world.remove(c);
+  }
+  G.nodes = []; G.links = []; G.ice = [];
+}
+
+function genNetwork(mi){
+  clearWorld();
+  const cfg = MISSIONS[mi];
+  const layerIds = [];
+  let id = 0;
+
+  for(let L=0; L<cfg.layers; L++){
+    const count = (L===0 || L===cfg.layers-1) ? 1 : 2 + Math.floor(Math.random()*cfg.width);
+    const arr = [];
+    for(let i=0;i<count;i++){
+      const ang = (i/count)*Math.PI*2 + L*0.8 + rnd(-.25,.25);
+      const rad = count===1 ? 0 : rnd(11,19);
+      const pos = new THREE.Vector3(
+        Math.cos(ang)*rad,
+        Math.sin(ang)*rad*0.62 + rnd(-4,4),
+        -L*22 + rnd(-3,3)
+      );
+      let type;
+      if(L===0) type = 'gateway';
+      else if(L===cfg.layers-1) type = 'core';
+      else {
+        const pool = ['relay','relay','datastore','datastore','firewall'];
+        if(mi>=1) pool.push('sentry');
+        if(mi>=2) pool.push('honeypot','sentry');
+        if(mi>=3) pool.push('sentry','firewall','honeypot');
+        type = pick(pool);
+      }
+      arr.push(makeNode(id++, type, pos, L, mi));
+    }
+    layerIds.push(arr.map(n=>n.id));
+  }
+
+  // guarantee at least one real datastore per run
+  if(!G.nodes.some(n=>n.type==='datastore')){
+    const mid = G.nodes.find(n=>n.layer>0 && n.layer<cfg.layers-1);
+    if(mid) retype(mid,'datastore');
+  }
+
+  // links: every node reaches back one layer, plus occasional sibling ties
+  for(let L=1; L<layerIds.length; L++){
+    const prev = layerIds[L-1], cur = layerIds[L];
+    const used = new Set();
+    cur.forEach(nid=>{
+      const a = prev[Math.floor(Math.random()*prev.length)];
+      addLink(nid, a); used.add(a);
+      if(prev.length>1 && Math.random()<0.4){
+        const b = prev[Math.floor(Math.random()*prev.length)];
+        if(b!==a) { addLink(nid,b); used.add(b); }
+      }
+    });
+    prev.forEach(p=>{ if(!used.has(p)) addLink(p, cur[Math.floor(Math.random()*cur.length)]); });
+    if(cur.length>2 && Math.random()<0.55) addLink(cur[0], cur[1]);
+  }
+
+  // centre the graph on the origin
+  const c = new THREE.Vector3();
+  G.nodes.forEach(n=>c.add(n.pos));
+  c.divideScalar(G.nodes.length);
+  G.nodes.forEach(n=>{ n.pos.sub(c); n.group.position.copy(n.pos); });
+  rebuildLinkGeometry();
+}
+
+function makeNode(id, type, pos, layer, mi){
+  const T = TYPES[type];
+  const group = new THREE.Group();
+  group.position.copy(pos);
+
+  const shell = new THREE.Mesh(GEO.unknown, new THREE.MeshBasicMaterial({color:0x2d4d5a, wireframe:true, transparent:true, opacity:.95}));
+  const solid = new THREE.Mesh(GEO.unknown, new THREE.MeshBasicMaterial({color:0x04070c}));
+  solid.scale.setScalar(0.97);
+  const spark = new THREE.Mesh(new THREE.SphereGeometry(0.42,8,6), new THREE.MeshBasicMaterial({color:0x2d4d5a}));
+  const glow = makeGlow(0x2d4d5a, 9);
+  const label = makeLabel();
+  label.position.y = 5.4;
+
+  group.add(solid, shell, spark, glow, label);
+  world.add(group);
+
+  const node = {
+    id, type, layer, pos:pos.clone(), group, shell, solid, spark, glow, label,
+    links:[], owned:type==='gateway', known:type==='gateway', exposed:false,
+    diff: clamp(TYPES[type].diff + Math.floor(mi/2), 1, 5),
+    credits: Math.round(T.cr * (1 + mi*0.22)),
+    spin: rnd(0.1,0.35), phase: rnd(0,6.28)
+  };
+  G.nodes.push(node);
+  return node;
+}
+function retype(node, type){
+  node.type = type;
+  node.diff = clamp(TYPES[type].diff + Math.floor(G.mission/2), 1, 5);
+  node.credits = Math.round(TYPES[type].cr * (1 + G.mission*0.22));
+}
+function addLink(a,b){
+  if(a===b) return;
+  if(G.links.some(l=>(l.a===a&&l.b===b)||(l.a===b&&l.b===a))) return;
+  G.links.push({a,b,line:null,packet:0});
+  G.nodes[a].links.push(b);
+  G.nodes[b].links.push(a);
+}
+function rebuildLinkGeometry(){
+  G.links.forEach(l=>{
+    const g = new THREE.BufferGeometry().setFromPoints([G.nodes[l.a].pos, G.nodes[l.b].pos]);
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({color:0x123a49, transparent:true, opacity:.8}));
+    l.line = line; world.add(line);
+    const p = makeGlow(0x1d6b7d, 1.5); p.visible = false;
+    l.pk = p; world.add(p);
+    l.packet = Math.random();
+  });
+}
+
+/* visual refresh of a node */
+function dressNode(n){
+  const honeyExposed = (n.type==='honeypot' && n.exposed);
+  const T = honeyExposed ? {label:EXPOSED_HONEY.label, color:EXPOSED_HONEY.color} : TYPES[n.type];
+  if(!n.known){
+    n.shell.geometry = GEO.unknown; n.solid.geometry = GEO.unknown;
+    n.shell.material.color.setHex(0x244250);
+    n.spark.material.color.setHex(0x1b3542);
+    n.glow.material.color.setHex(0x1b3542);
+    n.glow.material.opacity = .32;
+    n.glow.scale.set(5,5,1);
+    setLabel(n.label, '███', '#3c5f6d');
+    return;
+  }
+  const geoKey = (n.type==='honeypot' && !n.exposed) ? 'datastore' : n.type;
+  n.shell.geometry = GEO[geoKey]; n.solid.geometry = GEO[geoKey];
+  const col = T.color;
+  n.shell.material.color.setHex(col);
+  n.shell.material.opacity = n.owned ? 1 : .72;
+  n.spark.material.color.setHex(col);
+  n.glow.material.color.setHex(col);
+  n.glow.material.opacity = n.owned ? .95 : .5;
+  n.glow.scale.setScalar(n.owned ? 13 : 8);
+  const hex = '#' + col.toString(16).padStart(6,'0');
+  const tag = T.label + '·' + String(n.id).padStart(2,'0');
+  setLabel(n.label, n.owned ? tag : tag + ' ▸' + n.diff, n.owned ? '#cfe6ea' : hex);
+}
+function refreshKnown(){
+  G.nodes.forEach(n=>{
+    if(n.owned) n.known = true;
+    else if(n.links.some(l=>G.nodes[l].owned)) n.known = true;
+  });
+  G.nodes.forEach(dressNode);
+  updateLinkColors();
+}
+function updateLinkColors(){
+  G.links.forEach(l=>{
+    const both = G.nodes[l.a].owned && G.nodes[l.b].owned;
+    const one = G.nodes[l.a].owned || G.nodes[l.b].owned;
+    l.line.material.color.setHex(both ? 0x2c8c95 : one ? 0x1a5768 : 0x0f2b36);
+    l.line.material.opacity = both ? .95 : one ? .7 : .35;
+    l.pk.visible = one;
+  });
+}
+
+/* ================= graph search ================= */
+function bfsPath(from, to){
+  if(from===to) return [from];
+  const prev = new Map([[from,null]]);
+  const q = [from];
+  while(q.length){
+    const cur = q.shift();
+    for(const nb of G.nodes[cur].links){
+      if(prev.has(nb)) continue;
+      prev.set(nb, cur);
+      if(nb===to){
+        const path = [nb]; let p = cur;
+        while(p!==null){ path.unshift(p); p = prev.get(p); }
+        return path;
+      }
+      q.push(nb);
+    }
+  }
+  return null;
+}
+
+/* ================= HUD ================= */
+function log(text, cls){
+  const box = $('log');
+  const d = document.createElement('div');
+  if(cls) d.className = cls;
+  d.textContent = '> ' + text;
+  box.appendChild(d);
+  while(box.children.length>6) box.removeChild(box.firstChild);
+}
+let toastTimer = [];
+function toast(text, bad){
+  const t = document.createElement('div');
+  if(bad) t.className = 'bad';
+  t.textContent = text;
+  $('toast').appendChild(t);
+  const h = setTimeout(()=>t.remove(), 2600);
+  toastTimer.push(h);
+}
+function hud(){
+  const bar = $('traceBar');
+  $('traceFill').style.width = Math.min(100,G.trace) + '%';
+  $('traceVal').textContent = Math.floor(G.trace) + '%';
+  bar.className = 'bar' + (G.trace>75 ? ' crit' : G.trace>45 ? ' warn' : '');
+  $('credits').textContent = G.credits;
+  const owned = G.nodes.filter(n=>n.owned).length;
+  $('nodeCount').textContent = owned + '/' + G.nodes.length;
+  $('objective').textContent = G.exfil
+    ? 'ROOT ACQUIRED — return to GATEWAY·00 to exfiltrate'
+    : 'Breach the CORE node, then exfiltrate through the gateway';
+  TOOLS.forEach((t,i)=>{ $('t'+i).disabled = (G.phase!=='run') || G.credits < t.cost; });
+}
+
+/* ================= tools ================= */
+const TOOLS = [
+  {name:'SCRUB LOGS', cost:40, run(){
+    G.trace = Math.max(0, G.trace-25); toast('LOGS SCRUBBED  −25% TRACE'); log('log scrubber flushed audit trail','good'); SFX.ok();
+  }},
+  {name:'EMP BURST', cost:60, run(){
+    const near = new Set([G.player, ...G.nodes[G.player].links]);
+    const before = G.ice.length;
+    G.ice = G.ice.filter(ic=>{ const hit = near.has(ic.at)||near.has(ic.to);
+      if(hit) world.remove(ic.group); return !hit; });
+    const n = before-G.ice.length;
+    toast(n ? 'EMP — '+n+' ICE DESTROYED' : 'EMP — NOTHING IN RANGE', !n);
+    log('emp discharge, '+n+' countermeasure(s) down', n?'good':null); SFX.bad();
+  }},
+  {name:'DEEP SCAN', cost:35, run(){
+    G.nodes.forEach(n=>{ n.known = true; n.exposed = true; });
+    refreshKnown(); toast('NETWORK MAPPED'); log('deep scan: full topology resolved','good'); SFX.great();
+  }},
+  {name:'EXPLOIT KIT', cost:130, run(){
+    const n = G.selected!=null ? G.nodes[G.selected] : null;
+    if(!n || n.owned || !inReach(n.id)){ toast('SELECT AN ADJACENT TARGET', true); return false; }
+    log('exploit kit burned on '+TYPES[n.type].label,'good');
+    capture(n, true); return true;
+  }}
+];
+function useTool(i){
+  if(G.phase!=='run') return;
+  const t = TOOLS[i];
+  if(G.credits < t.cost){ toast('INSUFFICIENT CREDITS', true); return; }
+  const res = t.run();
+  if(res !== false){ G.credits -= t.cost; hud(); }
+}
+TOOLS.forEach((t,i)=> $('t'+i).addEventListener('click', ()=>useTool(i)));
+
+/* ================= selection / inspector ================= */
+/* you can only hit what is wired to the host you are sitting on */
+function inReach(id){ return G.nodes[G.player].links.includes(id); }
+
+function select(id){
+  G.selected = id;
+  const n = G.nodes[id];
+  const honeyExposed = n.type==='honeypot' && n.exposed;
+  const T = honeyExposed ? EXPOSED_HONEY : TYPES[n.type];
+  $('inspect').hidden = false;
+  $('insName').textContent = (n.known ? T.label : 'UNKNOWN') + '·' + String(n.id).padStart(2,'0');
+  $('insType').textContent = n.owned ? 'under your control' : n.known ? 'hostile host' : 'unmapped host';
+  $('insDiff').textContent = n.known ? '◆'.repeat(n.diff) + '◇'.repeat(5-n.diff) : '— — —';
+  $('insData').textContent = n.owned ? 'extracted' : n.known ? (honeyExposed ? 'none' : n.credits + ' CR') : 'unknown';
+  $('insStatus').textContent = n.owned ? 'ROOTED' : inReach(id) ? 'IN REACH' : 'NO ROUTE';
+  $('insNote').textContent = n.known
+    ? (honeyExposed ? EXPOSED_HONEY.note : TYPES[n.type].note)
+    : 'Unmapped. Root one of its neighbours to probe it.';
+  const btn = $('insAct');
+  if(n.owned){
+    const here = n.id===G.player;
+    btn.textContent = here ? 'YOU ARE HERE' : inReach(n.id) ? 'JACK IN' : 'NOT ADJACENT';
+    btn.disabled = here || !inReach(n.id);
+  } else if(inReach(id)){
+    btn.textContent = 'BREACH · ' + (TYPES[n.type].game==='dual' ? '2 PROTOCOLS' : GAMENAME[TYPES[n.type].game]);
+    btn.disabled = false;
+  } else {
+    btn.textContent = 'OUT OF REACH';
+    btn.disabled = true;
+  }
+  cam.goal.copy(n.pos);
+}
+$('insAct').addEventListener('click', ()=>{
+  if(G.selected==null || G.phase!=='run') return;
+  const n = G.nodes[G.selected];
+  if(n.owned){ if(n.id!==G.player && inReach(n.id)) hopTo(n.id); }
+  else if(inReach(n.id)){ beginBreach(n); }
+});
+
+function hopTo(id){
+  G.player = id;
+  SFX.hum();
+  log('session migrated to host ' + String(id).padStart(2,'0'));
+  if(G.exfil && G.nodes[id].type==='gateway') missionWon();
+  select(id); hud();
+}
+
+/* ================= breaching ================= */
+function beginBreach(n){
+  const kind = TYPES[n.type].game;
+  if(kind==='dual'){
+    const two = [];
+    const pool = ['sweep','cipher','route','signal'];
+    two.push(pick(pool));
+    let second = pick(pool); while(second===two[0]) second = pick(pool);
+    two.push(second);
+    runMinigame(two[0], n, ok=>{
+      if(!ok) return failBreach(n);
+      toast('LAYER 1 DOWN · 1 REMAINING');
+      setTimeout(()=>runMinigame(two[1], n, ok2=> ok2 ? capture(n) : failBreach(n)), 450);
+    });
+  } else {
+    runMinigame(kind, n, ok => ok ? capture(n) : failBreach(n));
+  }
+}
+function failBreach(n){
+  G.trace += 12;
+  flash();
+  SFX.bad();
+  log('breach rejected on host '+String(n.id).padStart(2,'0')+' — trace +12%','hot');
+  toast('BREACH FAILED  TRACE +12%', true);
+  if(Math.random()<0.6 && MISSIONS[G.mission].iceMax>0) spawnIce();
+  hud(); checkLoss();
+}
+function capture(n, silent){
+  if(n.type==='honeypot'){
+    n.exposed = true;
+    G.trace += 30;
+    flash(); SFX.alarm();
+    log('HONEYPOT. session fingerprinted — trace +30%','hot');
+    toast('HONEYPOT  TRACE +30%', true);
+    n.owned = true;
+    refreshKnown(); hud(); checkLoss();
+    if(G.selected===n.id) select(n.id);
+    return;
+  }
+  n.owned = true;
+  G.credits += n.credits;
+  G.score += n.credits;
+  if(!silent) SFX.great();
+  log('root on '+TYPES[n.type].label+'·'+String(n.id).padStart(2,'0')+' — +'+n.credits+' CR','good');
+  toast('HOST ROOTED  +' + n.credits + ' CR');
+  if(n.type==='core'){
+    G.exfil = true; G.rooted = true;
+    log('CORE COMPROMISED. trace acceleration detected.','hot');
+    toast('ROOT ACQUIRED — GET OUT');
+  }
+  hopTo(n.id);
+  refreshKnown(); hud();
+}
+function flash(){
+  const f = $('flash');
+  f.classList.add('hit');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>f.classList.remove('hit')));
+}
+
+/* ================= ICE ================= */
+function spawnIce(){
+  const cfg = MISSIONS[G.mission];
+  if(G.ice.length >= cfg.iceMax) return;
+  const sources = G.nodes.filter(n=>!n.owned && (n.type==='sentry'||n.type==='core'));
+  const src = sources.length ? pick(sources) : G.nodes[G.nodes.length-1];
+  if(!src || src.owned) return;
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.TetrahedronGeometry(1.5),
+    new THREE.MeshBasicMaterial({color:0xff2f6e, wireframe:true}));
+  group.add(body, makeGlow(0xff2f6e, 7));
+  group.position.copy(src.pos);
+  world.add(group);
+  const ic = {at:src.id, to:null, t:0, group, body, hop:2.6};
+  G.ice.push(ic);
+  routeIce(ic);
+  log('ICE instantiated at host '+String(src.id).padStart(2,'0'),'hot');
+  SFX.alarm();
+}
+function routeIce(ic){
+  const path = bfsPath(ic.at, G.player);
+  ic.to = (path && path.length>1) ? path[1] : null;
+  ic.t = 0;
+}
+function updateIce(dt){
+  for(let i=G.ice.length-1;i>=0;i--){
+    const ic = G.ice[i];
+    ic.body.rotation.x += dt*2.4; ic.body.rotation.y += dt*1.7;
+    if(ic.to===null){ routeIce(ic); continue; }
+    ic.t += dt / ic.hop;
+    const a = G.nodes[ic.at].pos, b = G.nodes[ic.to].pos;
+    ic.group.position.lerpVectors(a, b, Math.min(1, ic.t));
+    if(ic.t >= 1){
+      ic.at = ic.to;
+      if(ic.at === G.player){
+        G.trace += 22; flash(); SFX.alarm();
+        log('ICE made contact — session partially burned, trace +22%','hot');
+        toast('ICE CONTACT  TRACE +22%', true);
+        world.remove(ic.group); G.ice.splice(i,1);
+        hud(); checkLoss();
+        continue;
+      }
+      routeIce(ic);
+    }
+  }
+}
+
+/* ================= loss / win ================= */
+function checkLoss(){
+  if(G.trace >= 100 && G.phase==='run'){ missionLost(); }
+}
+function missionLost(){
+  G.phase = 'over';
+  $('inspect').hidden = true;
+  SFX.bad();
+  showScreen(`
+    <div class="card">
+      <div class="eyebrow">Connection severed</div>
+      <h2>TRACE COMPLETE</h2>
+      <p>Their trace desk walked the route back to your box before you cleared it. The session is dead and everything you pulled on this run is gone with it.</p>
+      <div class="specs">
+        <div class="spec"><label>Mission</label><b>${MISSIONS[G.mission].code}</b></div>
+        <div class="spec"><label>Hosts rooted</label><b>${G.nodes.filter(n=>n.owned).length}</b></div>
+        <div class="spec"><label>Banked score</label><b>${G.score}</b></div>
+      </div>
+      <button class="go danger" id="retry">RUN IT AGAIN</button>
+      <button class="ghost" id="abortRun">BACK TO TITLE</button>
+    </div>`);
+  $('retry').onclick = ()=>startMission(G.mission);
+  $('abortRun').onclick = titleScreen;
+}
+function missionWon(){
+  G.phase = 'over';
+  $('inspect').hidden = true;
+  SFX.great();
+  const timeBonus = Math.max(0, Math.round((100-G.trace)*4));
+  G.score += timeBonus;
+  const last = G.mission === MISSIONS.length-1;
+  showScreen(`
+    <div class="card">
+      <div class="eyebrow">Clean exit</div>
+      <h2>${last ? 'BLACKSITE IS YOURS' : 'EXFILTRATION COMPLETE'}</h2>
+      <p>${last
+        ? 'You walked out of a network that does not officially exist, with root in your pocket and a trace log that ends at a dead relay in another hemisphere. There is nothing left on this continent worth breaking into.'
+        : 'Session closed from the gateway before the trace resolved. The payload is yours and their logs end at a borrowed IP.'}</p>
+      <div class="specs">
+        <div class="spec"><label>Final trace</label><b>${Math.floor(G.trace)}%</b></div>
+        <div class="spec"><label>Clean bonus</label><b>+${timeBonus}</b></div>
+        <div class="spec"><label>Credits</label><b>${G.credits}</b></div>
+        <div class="spec"><label>Total score</label><b>${G.score}</b></div>
+      </div>
+      <button class="go" id="next">${last ? 'START A NEW CAREER' : 'NEXT CONTRACT ▸ ' + MISSIONS[G.mission+1].code}</button>
+    </div>`);
+  $('next').onclick = ()=>{
+    if(last){ G.score = 0; G.credits = 0; briefScreen(0); }
+    else briefScreen(G.mission+1);
+  };
+}
+
+/* ================= screens ================= */
+function showScreen(html){
+  const s = $('screen');
+  s.innerHTML = html;
+  s.hidden = false;
+}
+function hideScreen(){ $('screen').hidden = true; }
+
+function titleScreen(){
+  G.phase = 'title';
+  $('inspect').hidden = true;
+  $('log').innerHTML = '';
+  showScreen(`
+    <div class="card">
+      <div class="eyebrow">Intrusion simulator</div>
+      <h1>BLACK <em>ICE</em></h1>
+      <p>Five networks. Each one is a graph of live hosts floating in the dark, and you own exactly one of them — the gateway you came in through. Every other host has to be broken into by hand.</p>
+      <ul class="rules">
+        <li><b>Breach outward.</b> You can only hit hosts wired to something you already control. Each type runs a different protocol, so each one is a different puzzle.</li>
+        <li><b>Watch the trace.</b> It climbs the whole time you are inside and jumps every time you fumble a breach. At 100% they have your address.</li>
+        <li><b>ICE hunts you.</b> Countermeasures spawn from sentries and walk the graph toward whichever host you are sitting on.</li>
+        <li><b>Root the core, then leave.</b> Taking the core is only half a run — you still have to jack back to the gateway with the trace climbing twice as fast.</li>
+      </ul>
+      <button class="go" id="begin">JACK IN</button>
+      <button class="ghost" id="howto">DRAG TO ORBIT · SCROLL TO ZOOM · TAP A HOST</button>
+    </div>`);
+  $('begin').onclick = ()=>{ SFX.boot(); SFX.ok(); briefScreen(0); };
+  $('howto').onclick = ()=>{ SFX.boot(); SFX.ok(); briefScreen(0); };
+}
+
+function briefScreen(mi){
+  G.phase = 'brief';
+  const m = MISSIONS[mi];
+  showScreen(`
+    <div class="card">
+      <div class="eyebrow">Contract ${mi+1} of ${MISSIONS.length}</div>
+      <h2>${m.name.toUpperCase()}</h2>
+      <p>${m.brief}</p>
+      <div class="specs">
+        <div class="spec"><label>Depth</label><b>${m.layers} layers</b></div>
+        <div class="spec"><label>Countermeasures</label><b>${m.iceMax ? 'ICE ×'+m.iceMax : 'none'}</b></div>
+        <div class="spec"><label>Trace rate</label><b>${m.tracePerSec.toFixed(2)}%/s</b></div>
+        <div class="spec"><label>Credits</label><b>${G.credits}</b></div>
+      </div>
+      <button class="go" id="deploy">OPEN THE SOCKET</button>
+    </div>`);
+  $('deploy').onclick = ()=>{ SFX.boot(); SFX.ok(); startMission(mi); };
+}
+
+function startMission(mi){
+  G.mission = mi;
+  G.trace = 0; G.exfil = false; G.rooted = false; G.iceTimer = 0; G.time = 0;
+  G.selected = null;
+  $('log').innerHTML = '';
+  $('missionName').textContent = MISSIONS[mi].name;
+  genNetwork(mi);
+  G.player = G.nodes.findIndex(n=>n.type==='gateway');
+  refreshKnown();
+  cam.target.copy(G.nodes[G.player].pos);
+  cam.goal.copy(G.nodes[G.player].pos);
+  cam.dist = 86; cam.theta = 0.9; cam.phi = 1.12;
+  ring.visible = true;
+  hideScreen();
+  G.phase = 'run';
+  select(G.player);
+  log('socket open on ' + MISSIONS[mi].code.toLowerCase() + '.net');
+  log('gateway rooted. ' + (G.nodes.length-1) + ' hosts unmapped');
+  hud();
+}
+
+/* ================= minigame shell ================= */
+let mgUpdate = null, mgTime = 0, mgMax = 1, mgDone = null, mgCleanup = [];
+
+function runMinigame(kind, node, done){
+  G.phase = 'minigame';
+  mgDone = done; mgCleanup = []; mgUpdate = null;
+  $('modal').hidden = false;
+  $('mgKind').textContent = GAMENAME[kind];
+  $('mgTarget').textContent = (node.type==='honeypot'?'DATASTORE':TYPES[node.type].label) + '·' + String(node.id).padStart(2,'0') + '  ·  ENCRYPTION ' + node.diff + '/5';
+  $('mgBody').innerHTML = '';
+  const d = node.diff;
+  if(kind==='sweep')  mgSweep(d);
+  if(kind==='cipher') mgCipher(d);
+  if(kind==='route')  mgRoute(d);
+  if(kind==='signal') mgSignal(d);
+}
+function mgSetTime(sec){ mgTime = sec; mgMax = sec; }
+function mgEnd(ok){
+  mgCleanup.forEach(f=>{ try{ f(); }catch(e){} });
+  mgCleanup = []; mgUpdate = null;
+  $('modal').hidden = true;
+  $('mgBody').innerHTML = '';
+  G.phase = 'run';
+  const cb = mgDone; mgDone = null;
+  if(cb) cb(ok);
+}
+$('mgAbort').addEventListener('click', ()=>{
+  if(G.phase!=='minigame') return;
+  G.trace += 5;
+  log('breach aborted — trace +5%','hot');
+  mgEnd(false);
+});
+
+/* ---- PORT SWEEP ---- */
+function mgSweep(diff){
+  const need = Math.min(5, 2 + diff);
+  let hits = 0, strikes = 0, maxStrikes = 2;
+  let angle = 0, speed = 1.5 + diff*0.42;
+  let arcStart = Math.random()*Math.PI*2;
+  let arcWidth = 1.0 - diff*0.105;
+  mgSetTime(26);
+
+  $('mgHint').textContent = 'Fire when the sweep crosses an open port. ' + need + ' locks to break the handshake, ' + (maxStrikes+1) + ' misses and the host drops you.';
+  const wrap = document.createElement('div');
+  wrap.className = 'sweepwrap';
+  wrap.innerHTML = `<canvas id="sweepCv" width="340" height="340"></canvas>
+    <div class="pips" id="sweepPips"></div>
+    <button class="fire" id="fireBtn">LOCK</button>`;
+  $('mgBody').appendChild(wrap);
+  const cv = $('sweepCv'), g = cv.getContext('2d');
+
+  function pips(){
+    const p = $('sweepPips');
+    p.innerHTML = '';
+    for(let i=0;i<need;i++){ const e=document.createElement('i'); if(i<hits) e.className='on'; p.appendChild(e); }
+    for(let i=0;i<maxStrikes+1;i++){ const e=document.createElement('i'); if(i<strikes) e.className='bad'; p.appendChild(e); }
+  }
+  pips();
+
+  function draw(){
+    g.clearRect(0,0,340,340);
+    const cx=170, cy=170, R=138;
+    g.strokeStyle='#143441'; g.lineWidth=1;
+    g.beginPath(); g.arc(cx,cy,R,0,Math.PI*2); g.stroke();
+    g.beginPath(); g.arc(cx,cy,R-26,0,Math.PI*2); g.stroke();
+    for(let i=0;i<48;i++){
+      const a=i/48*Math.PI*2, r1=R, r2=R-(i%4?6:12);
+      g.beginPath(); g.moveTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
+      g.lineTo(cx+Math.cos(a)*r2, cy+Math.sin(a)*r2); g.stroke();
+    }
+    g.strokeStyle='#3ae7d0'; g.lineWidth=18; g.lineCap='butt';
+    g.beginPath(); g.arc(cx,cy,R-13,arcStart,arcStart+arcWidth); g.stroke();
+    g.strokeStyle='rgba(58,231,208,.25)'; g.lineWidth=2;
+    g.beginPath(); g.arc(cx,cy,R-40,arcStart,arcStart+arcWidth); g.stroke();
+    const inZone = isIn();
+    g.strokeStyle = inZone ? '#5bff9e' : '#ff2f6e'; g.lineWidth=2.5;
+    g.beginPath(); g.moveTo(cx,cy);
+    g.lineTo(cx+Math.cos(angle)*(R-4), cy+Math.sin(angle)*(R-4)); g.stroke();
+    g.fillStyle = inZone ? '#5bff9e' : '#1d4350';
+    g.beginPath(); g.arc(cx,cy,6,0,Math.PI*2); g.fill();
+    g.fillStyle='#587b88'; g.font='600 13px "IBM Plex Mono", monospace'; g.textAlign='center';
+    g.fillText('PORT ' + (1000+Math.floor(angle*180/Math.PI)), cx, cy+74);
+    g.fillStyle='#cfe6ea'; g.font='600 30px "Chakra Petch", sans-serif';
+    g.fillText(hits + ' / ' + need, cx, cy-44);
+  }
+  function isIn(){
+    let d = (angle - arcStart) % (Math.PI*2);
+    if(d<0) d += Math.PI*2;
+    return d <= arcWidth;
+  }
+  function fire(){
+    if(G.phase!=='minigame') return;
+    if(isIn()){
+      hits++; SFX.ok();
+      arcWidth = Math.max(0.2, arcWidth*0.88);
+      speed += 0.38;
+      arcStart = (arcStart + rnd(1.6, 4.6)) % (Math.PI*2);
+      pips();
+      if(hits>=need){ mgEnd(true); return; }
+    } else {
+      strikes++; SFX.bad(); pips();
+      if(strikes>maxStrikes){ mgEnd(false); return; }
+    }
+    draw();
+  }
+  $('fireBtn').addEventListener('click', fire);
+  const key = e => { if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); fire(); } };
+  addEventListener('keydown', key);
+  mgCleanup.push(()=>removeEventListener('keydown', key));
+
+  mgUpdate = dt => { angle = (angle + speed*dt) % (Math.PI*2); draw(); };
+  draw();
+}
+
+/* ---- CIPHER BREAK ---- */
+function mgCipher(diff){
+  const SYM = ['0','3','7','9','A','C','E','F'].slice(0, diff>=4 ? 8 : 6);
+  const len = 4;
+  const tries = Math.max(4, 7-diff);
+  const code = Array.from({length:len}, ()=>pick(SYM));
+  let guess = [], used = 0;
+  mgSetTime(70);
+
+  $('mgHint').textContent = 'Deduce the ' + len + '-symbol key. A filled dot means right symbol, right slot. A hollow one means right symbol, wrong slot.';
+  const wrap = document.createElement('div');
+  wrap.className = 'cipher';
+  wrap.innerHTML = `<div class="attempts" id="attempts"></div>
+    <div class="att"><div class="cells" id="slots"></div><div class="fb"></div></div>
+    <div class="keys" id="keys"></div>
+    <div class="rowbtns">
+      <button class="minor" id="clr">CLEAR</button>
+      <button class="minor primary" id="sub">TRANSMIT</button>
+    </div>`;
+  $('mgBody').appendChild(wrap);
+
+  SYM.forEach(s=>{
+    const b = document.createElement('button');
+    b.className='key'; b.textContent=s;
+    b.onclick = ()=>{ if(guess.length<len){ guess.push(s); SFX.blip(); slots(); } };
+    $('keys').appendChild(b);
+  });
+  function slots(){
+    const el = $('slots'); el.innerHTML='';
+    for(let i=0;i<len;i++){
+      const c = document.createElement('div');
+      c.className = 'cell' + (i===guess.length ? ' active' : '');
+      c.textContent = guess[i] || '·';
+      el.appendChild(c);
+    }
+  }
+  function score(g){
+    let exact = 0, near = 0;
+    const cRest = [], gRest = [];
+    for(let i=0;i<len;i++){
+      if(g[i]===code[i]) exact++; else { cRest.push(code[i]); gRest.push(g[i]); }
+    }
+    gRest.forEach(s=>{ const k = cRest.indexOf(s); if(k>=0){ near++; cRest.splice(k,1); } });
+    return {exact, near};
+  }
+  function submit(){
+    if(guess.length<len){ SFX.bad(); return; }
+    const r = score(guess);
+    used++;
+    const row = document.createElement('div');
+    row.className = 'att';
+    const cells = guess.map(s=>`<div class="cell">${s}</div>`).join('');
+    let dots = '';
+    for(let i=0;i<len;i++){
+      dots += i<r.exact ? '<i class="exact"></i>' : i<r.exact+r.near ? '<i class="near"></i>' : '<i></i>';
+    }
+    row.innerHTML = `<div class="cells">${cells}</div><div class="fb">${dots}</div>`;
+    $('attempts').appendChild(row);
+    $('attempts').scrollTop = 9999;
+    guess = []; slots();
+    if(r.exact===len){ SFX.great(); mgEnd(true); return; }
+    SFX.blip();
+    if(used>=tries){ SFX.bad(); mgEnd(false); return; }
+    $('mgHint').textContent = (tries-used) + ' transmission' + (tries-used===1?'':'s') + ' left before the host resets the key.';
+  }
+  $('clr').onclick = ()=>{ guess=[]; slots(); };
+  $('sub').onclick = submit;
+  const key = e=>{
+    const u = e.key.toUpperCase();
+    if(SYM.includes(u) && guess.length<len){ guess.push(u); SFX.blip(); slots(); }
+    else if(e.key==='Backspace'){ guess.pop(); slots(); }
+    else if(e.key==='Enter'){ submit(); }
+  };
+  addEventListener('keydown', key);
+  mgCleanup.push(()=>removeEventListener('keydown', key));
+  slots();
+}
+
+/* ---- PACKET ROUTE ---- */
+const N=1,E=2,S=4,W=8;
+const CANON = {straight:N|S, elbow:N|E, tee:N|E|S, cross:15};
+const SHAPES = {
+  straight:'<svg viewBox="0 0 100 100"><path d="M50 0 V100"/></svg>',
+  elbow:'<svg viewBox="0 0 100 100"><path d="M50 0 V50 H100"/></svg>',
+  tee:'<svg viewBox="0 0 100 100"><path d="M50 0 V100 M50 50 H100"/></svg>',
+  cross:'<svg viewBox="0 0 100 100"><path d="M50 0 V100 M0 50 H100"/></svg>'
+};
+function rotMask(m,r){ r=((r%4)+4)%4; for(let i=0;i<r;i++) m=((m<<1)|(m>>3))&15; return m; }
+function maskOf(dirs){ return dirs.reduce((a,b)=>a|b,0); }
+
+function mgRoute(diff){
+  const cols = diff>=3 ? 5 : 4, rows = 4;
+  mgSetTime(Math.max(28, 58 - diff*5));
+  $('mgHint').textContent = 'Tap the conduits to rotate them. Build one unbroken line from the inbound packet on the left to the outbound port on the right.';
+
+  const sr = Math.floor(Math.random()*rows), kr = Math.floor(Math.random()*rows);
+  const tiles = [];
+  for(let y=0;y<rows;y++){ tiles.push([]); for(let x=0;x<cols;x++) tiles[y].push({shape:null, rot:0}); }
+
+  // carve a guaranteed solution with a randomized DFS
+  const visited = new Set();
+  const path = [];
+  (function dfs(x,y){
+    if(visited.has(y*cols+x)) return false;
+    visited.add(y*cols+x);
+    path.push([x,y]);
+    if(x===cols-1 && y===kr) return true;
+    // weighted shuffle: head east by preference so routes stay readable
+    const pool = [[1,0,6],[0,1,2],[0,-1,2],[-1,0,0.5]];
+    const dirs = [];
+    while(pool.length){
+      let tot = 0; pool.forEach(d=>tot+=d[2]);
+      let r = Math.random()*tot, k = 0;
+      while(k < pool.length-1 && r > pool[k][2]){ r -= pool[k][2]; k++; }
+      dirs.push(pool.splice(k,1)[0]);
+    }
+    for(const [dx,dy] of dirs){
+      const nx=x+dx, ny=y+dy;
+      if(nx<0||ny<0||nx>=cols||ny>=rows) continue;
+      if(dfs(nx,ny)) return true;
+    }
+    path.pop();
+    return false;
+  })(0, sr);
+
+  const dirBetween = (a,b)=>{
+    if(b[0]>a[0]) return E; if(b[0]<a[0]) return W;
+    if(b[1]>a[1]) return S; return N;
+  };
+  path.forEach(([x,y],i)=>{
+    const ins = i===0 ? W : dirBetween(path[i], path[i-1]);
+    const outs = i===path.length-1 ? E : dirBetween(path[i], path[i+1]);
+    const want = maskOf([ins,outs]);
+    for(const shape of ['straight','elbow','tee','cross']){
+      for(let r=0;r<4;r++){
+        if(rotMask(CANON[shape], r) === want){ tiles[y][x] = {shape, rot:r}; return; }
+      }
+    }
+    tiles[y][x] = {shape:'cross', rot:0};
+  });
+  // decoys
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    if(tiles[y][x].shape) continue;
+    if(Math.random()<0.34) continue;
+    tiles[y][x] = {shape: Math.random()<0.5 ? 'straight' : 'elbow', rot: Math.floor(Math.random()*4)};
+  }
+  // scramble
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    if(tiles[y][x].shape) tiles[y][x].rot += 1 + Math.floor(Math.random()*3);
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'routewrap';
+  wrap.innerHTML = `<div class="grid" id="rgrid" style="grid-template-columns:repeat(${cols},minmax(0,1fr));width:min(${cols*58}px,72vw)"></div>
+    <div class="routekey">packet enters at the <b>teal edge</b> · leaves at the <i>amber edge</i></div>`;
+  $('mgBody').appendChild(wrap);
+  const grid = $('rgrid');
+
+  const els = [];
+  for(let y=0;y<rows;y++){
+    els.push([]);
+    for(let x=0;x<cols;x++){
+      const t = tiles[y][x];
+      const d = document.createElement('div');
+      d.className = 'tile' + (t.shape ? '' : ' empty')
+        + (x===0 && y===sr ? ' src' : '') + (x===cols-1 && y===kr ? ' snk' : '');
+      if(t.shape){
+        d.innerHTML = `<div class="rot">${SHAPES[t.shape]}</div>`;
+        d.addEventListener('click', ()=>{ t.rot++; render(); SFX.blip(); });
+      }
+      grid.appendChild(d);
+      els[y].push(d);
+    }
+  }
+
+  function maskAt(x,y){ const t=tiles[y][x]; return t.shape ? rotMask(CANON[t.shape], t.rot) : 0; }
+  function solve(){
+    const live = new Set();
+    if(!(maskAt(0,sr) & W)) return {live, win:false};
+    const q = [[0,sr]]; live.add(sr*cols);
+    while(q.length){
+      const [x,y] = q.shift();
+      const m = maskAt(x,y);
+      const steps = [[N,0,-1,S],[E,1,0,W],[S,0,1,N],[W,-1,0,E]];
+      for(const [bit,dx,dy,opp] of steps){
+        if(!(m & bit)) continue;
+        const nx=x+dx, ny=y+dy;
+        if(nx<0||ny<0||nx>=cols||ny>=rows) continue;
+        if(live.has(ny*cols+nx)) continue;
+        if(!(maskAt(nx,ny) & opp)) continue;
+        live.add(ny*cols+nx); q.push([nx,ny]);
+      }
+    }
+    const win = live.has(kr*cols + (cols-1)) && (maskAt(cols-1,kr) & E);
+    return {live, win:!!win};
+  }
+  function render(){
+    const {live, win} = solve();
+    for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+      const t = tiles[y][x], d = els[y][x];
+      if(!t.shape) continue;
+      d.querySelector('.rot').style.transform = 'rotate(' + (t.rot*90) + 'deg)';
+      d.classList.toggle('live', live.has(y*cols+x));
+    }
+    if(win){ SFX.great(); const h = setTimeout(()=>mgEnd(true), 420); mgCleanup.push(()=>clearTimeout(h)); }
+  }
+  render();
+}
+
+/* ---- SIGNAL MIRROR ---- */
+function mgSignal(diff){
+  const GLYPHS = ['◈','▲','⬣','◆','●','✦'];
+  const rounds = diff>=3 ? 3 : 2;
+  let round = 0, seq = [], input = 0, playing = true;
+  mgSetTime(16 + rounds*14);
+  $('mgHint').textContent = 'The host broadcasts a handshake. Watch it, then mirror it back in order. One wrong pad and the socket closes.';
+
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `<div class="mgstatus" id="sigStatus">LISTENING…</div><div class="pads" id="pads"></div>`;
+  $('mgBody').appendChild(wrap);
+  const pads = GLYPHS.map((gl,i)=>{
+    const b = document.createElement('button');
+    b.className = 'pad'; b.textContent = gl;
+    b.addEventListener('click', ()=>tap(i));
+    $('pads').appendChild(b);
+    return b;
+  });
+
+  function litOn(i, cls){ pads[i].classList.add(cls||'lit'); }
+  function litOff(i){ pads[i].classList.remove('lit','wrong'); }
+
+  function playSeq(){
+    playing = true;
+    $('sigStatus').textContent = 'ROUND ' + (round+1) + ' / ' + rounds + ' — LISTENING…';
+    let i = 0;
+    const step = ()=>{
+      if(i>0) litOff(seq[i-1]);
+      if(i>=seq.length){
+        playing = false;
+        $('sigStatus').textContent = 'MIRROR IT BACK';
+        return;
+      }
+      litOn(seq[i]);
+      SFX.tone(330 + seq[i]*95, .18, 'triangle', .05);
+      i++;
+      const h = setTimeout(step, REDUCED ? 260 : 440);
+      mgCleanup.push(()=>clearTimeout(h));
+    };
+    const h0 = setTimeout(step, 450);
+    mgCleanup.push(()=>clearTimeout(h0));
+  }
+  function nextRound(){
+    const len = 2 + Math.min(diff,3) + round;
+    seq = Array.from({length:len}, ()=>Math.floor(Math.random()*6));
+    input = 0;
+    playSeq();
+  }
+  function tap(i){
+    if(playing || G.phase!=='minigame') return;
+    if(seq[input] === i){
+      litOn(i); SFX.tone(330 + i*95, .12, 'triangle', .05);
+      const h = setTimeout(()=>litOff(i), 150); mgCleanup.push(()=>clearTimeout(h));
+      input++;
+      if(input >= seq.length){
+        round++;
+        if(round >= rounds){ SFX.great(); mgEnd(true); return; }
+        $('sigStatus').textContent = 'HANDSHAKE ACCEPTED';
+        const h2 = setTimeout(nextRound, 700); mgCleanup.push(()=>clearTimeout(h2));
+      }
+    } else {
+      litOn(i,'wrong'); SFX.bad();
+      const h = setTimeout(()=>mgEnd(false), 400); mgCleanup.push(()=>clearTimeout(h));
+      playing = true;
+    }
+  }
+  nextRound();
+}
+
+/* ================= input ================= */
+const raycaster = new THREE.Raycaster();
+const pointers = new Map();
+let dragging = false, moved = 0, lastX = 0, lastY = 0, pinchDist = 0;
+
+canvas.addEventListener('pointerdown', e=>{
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pointers.size===1){ dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; }
+  if(pointers.size===2){
+    const [a,b] = [...pointers.values()];
+    pinchDist = Math.hypot(a.x-b.x, a.y-b.y);
+  }
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pointers.size===2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y);
+    if(pinchDist) cam.dist = clamp(cam.dist * (pinchDist/d), 26, 190);
+    pinchDist = d; moved += 10;
+    return;
+  }
+  if(!dragging) return;
+  const dx = e.clientX-lastX, dy = e.clientY-lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  moved += Math.abs(dx)+Math.abs(dy);
+  cam.theta -= dx*0.006;
+  cam.phi = clamp(cam.phi - dy*0.006, 0.25, 2.65);
+});
+function endPointer(e){
+  if(pointers.size===1 && dragging && moved < 7) pickAt(e.clientX, e.clientY);
+  pointers.delete(e.pointerId);
+  if(pointers.size<2) pinchDist = 0;
+  if(pointers.size===0) dragging = false;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', e=>{ pointers.delete(e.pointerId); dragging = pointers.size>0; });
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  cam.dist = clamp(cam.dist * (1 + Math.sign(e.deltaY)*0.09), 26, 190);
+}, {passive:false});
+
+function pickAt(cx, cy){
+  if(G.phase!=='run') return;
+  const r = canvas.getBoundingClientRect();
+  const m = new THREE.Vector2(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+  raycaster.setFromCamera(m, camera);
+  const hits = raycaster.intersectObjects(G.nodes.map(n=>n.shell), false);
+  if(hits.length){
+    const node = G.nodes.find(n=>n.shell===hits[0].object);
+    if(node){ select(node.id); SFX.blip(); }
+  }
+}
+addEventListener('keydown', e=>{
+  if(G.phase==='run' && e.key>='1' && e.key<='4'){ useTool(+e.key-1); }
+  if(e.key==='Escape' && G.phase==='minigame'){ $('mgAbort').click(); }
+});
+$('muteBtn').addEventListener('click', ()=>{
+  SFX.boot();
+  SFX.on = !SFX.on;
+  $('muteBtn').textContent = SFX.on ? '♪' : '✕';
+  $('muteBtn').style.color = SFX.on ? '' : 'var(--blood)';
+});
+
+/* ================= resize + loop ================= */
+function resize(){
+  const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
+  if(canvas.width !== Math.floor(w*renderer.getPixelRatio()) || camera.aspect !== w/h){
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+  }
+}
+addEventListener('resize', resize);
+
+const clock = new THREE.Clock();
+let hudClock = 0;
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(0.05, clock.getDelta());
+  resize();
+
+  // camera
+  cam.target.lerp(cam.goal, 1 - Math.pow(0.002, dt));
+  const sp = Math.sin(cam.phi), cp = Math.cos(cam.phi);
+  camera.position.set(
+    cam.target.x + cam.dist*sp*Math.cos(cam.theta),
+    cam.target.y + cam.dist*cp,
+    cam.target.z + cam.dist*sp*Math.sin(cam.theta)
+  );
+  camera.lookAt(cam.target);
+
+  // node idle motion
+  const t = performance.now()/1000;
+  G.nodes.forEach(n=>{
+    if(!REDUCED){
+      n.shell.rotation.y += n.spin*dt;
+      n.shell.rotation.x += n.spin*0.45*dt;
+    }
+    const pulse = n.owned ? 1 + Math.sin(t*2 + n.phase)*0.07 : 1;
+    n.spark.scale.setScalar(pulse);
+    n.glow.material.opacity = (n.owned ? .85 : n.known ? .45 : .28) + Math.sin(t*1.6+n.phase)*0.08;
+  });
+
+  // link packets
+  G.links.forEach(l=>{
+    if(!l.pk.visible) return;
+    l.packet = (l.packet + dt*0.33) % 1;
+    l.pk.position.lerpVectors(G.nodes[l.a].pos, G.nodes[l.b].pos, l.packet);
+  });
+
+  // player ring
+  if(G.nodes[G.player]){
+    ring.position.copy(G.nodes[G.player].pos);
+    ring.lookAt(camera.position);
+    if(!REDUCED) ring.rotation.z += dt*0.8;
+    const s = 1 + Math.sin(t*2.4)*0.05;
+    ring.scale.setScalar(s);
+    ring.material.color.setHex(G.exfil ? 0xffa23a : 0x5bff9e);
+  }
+
+  // sim
+  if(G.phase==='run' || G.phase==='minigame'){
+    const cfg = MISSIONS[G.mission];
+    G.time += dt;
+    const rate = cfg.tracePerSec * (G.exfil ? 2.6 : 1) + G.ice.length*0.16;
+    G.trace += rate*dt;
+    if(G.phase==='run'){
+      updateIce(dt);
+      if(cfg.iceMax>0){
+        G.iceTimer += dt;
+        const every = cfg.iceEvery * (G.exfil ? 0.5 : 1);
+        if(G.iceTimer > every){ G.iceTimer = 0; spawnIce(); }
+      }
+    }
+    hudClock += dt;
+    if(hudClock > 0.2){ hudClock = 0; hud(); }
+    if(G.trace>=100 && G.phase==='run') missionLost();
+  }
+
+  // minigame clock
+  if(G.phase==='minigame'){
+    if(mgUpdate) mgUpdate(dt);
+    mgTime -= dt;
+    const frac = clamp(mgTime/mgMax, 0, 1);
+    const fill = $('mgTimerFill');
+    fill.style.width = (frac*100) + '%';
+    fill.className = frac < 0.25 ? 'low' : '';
+    if(mgTime <= 0){ SFX.bad(); mgEnd(false); }
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* ================= boot ================= */
+function boot(saved){
+  resize();
+  tick();
+  if(saved && typeof saved.mission === 'number' && saved.mission > 0){
+    G.credits = saved.credits || 0;
+    G.score = saved.score || 0;
+    briefScreen(clamp(saved.mission, 0, MISSIONS.length-1));
+  } else {
+    titleScreen();
+  }
+}
+try{
+  window.claude?.hot?.snapshot?.(()=>({mission:G.mission, credits:G.credits, score:G.score}));
+}catch(e){}
+if(window.claude?.hot?.ready) window.claude.hot.ready(boot);
+else boot(window.claude?.hot?.data);
+</script>
+</body>
+</html>
