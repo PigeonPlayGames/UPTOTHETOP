@@ -112,15 +112,44 @@
   #splash.gone{opacity:0;pointer-events:none;transition:opacity .9s}
 
   /* ---- touch ---- */
+  /* ---- touch controls ---- */
   #touch{position:absolute;inset:0;display:none}
   #touch.on{display:block}
-  .tbtn{position:absolute;pointer-events:auto;width:52px;height:52px;border:1px solid var(--edge);
-    background:var(--panel);border-radius:50%;color:var(--cyan);font-family:'Orbitron';font-size:13px;
-    display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
-  #stick{position:absolute;width:118px;height:118px;border:1px solid rgba(93,227,255,.3);border-radius:50%;
-    display:none;pointer-events:none}
-  #stickN{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;
-    border-radius:50%;background:rgba(93,227,255,.22);border:1px solid var(--cyan)}
+  .tbtn{pointer-events:auto;width:50px;height:50px;border:1px solid var(--edge);
+    background:var(--panel);border-radius:50%;color:var(--cyan);font-family:'Orbitron';font-size:14px;
+    display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);padding:0;transition:background .08s,transform .08s}
+  .tbtn:active{background:var(--cyan);color:var(--ink);transform:scale(.92)}
+  #tpad{position:absolute;right:18px;bottom:18px;display:grid;gap:8px;
+    grid-template-columns:repeat(3,50px);grid-template-rows:repeat(2,50px)}
+  #stick{position:absolute;width:122px;height:122px;border:1px solid rgba(93,227,255,.34);
+    border-radius:50%;pointer-events:none;opacity:.55;transition:opacity .15s;
+    background:radial-gradient(circle,rgba(93,227,255,.07) 0%,transparent 70%)}
+  #stick.live{opacity:1;border-color:var(--cyan)}
+  #stickN{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;
+    border-radius:50%;background:rgba(93,227,255,.24);border:1px solid var(--cyan)}
+  #stickLbl,#lookLbl{position:absolute;font-family:'Orbitron';font-size:9.5px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--muted);pointer-events:none;transition:opacity .6s}
+  #lookLbl{right:26px;top:50%;transform:translateY(-50%)}
+  #touch.settled #lookLbl{opacity:0}
+
+  /* ---- rotate prompt ---- */
+  #rotate{position:fixed;inset:0;z-index:44;display:none;align-items:center;justify-content:center;
+    background:#05070e;padding:26px;text-align:center}
+  #rotate.on{display:flex}
+  .rbox{max-width:420px}
+  .rbox h3{font-family:'Orbitron';font-size:17px;letter-spacing:.17em;color:#fff;margin:20px 0 10px;
+    text-transform:uppercase}
+  .rbox p{color:#8fadbc;font-size:14.5px;line-height:1.55;margin:0 0 22px}
+  .rbox button{display:block;width:100%;margin:8px 0;padding:13px;cursor:pointer;
+    background:transparent;border:1px solid var(--cyan);color:var(--cyan);font-family:'Orbitron';
+    font-size:12.5px;letter-spacing:.2em;text-transform:uppercase}
+  .rbox button.ghost{border-color:rgba(93,227,255,.22);color:var(--muted)}
+  .rphone{width:62px;height:104px;border:2px solid var(--cyan);border-radius:9px;margin:0 auto;
+    position:relative;animation:tilt 2.4s ease-in-out infinite}
+  .rphone i{position:absolute;left:50%;bottom:7px;width:20px;height:2px;margin-left:-10px;
+    background:rgba(93,227,255,.5);border-radius:2px}
+  @keyframes tilt{0%,38%{transform:rotate(0)}62%,100%{transform:rotate(-90deg)}}
 
   #err{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;
     background:var(--ink);padding:30px;text-align:center;font-size:15px;color:#e5a0a0}
@@ -214,7 +243,7 @@
   #quickBtns button:hover{background:var(--cyan);color:var(--ink)}
 
   @media (max-width:820px){
-    #quickBtns{left:auto;right:14px;top:auto;bottom:212px;transform:none;flex-direction:column}
+    #helpPanel{display:none}
     #toast{top:auto;bottom:38%;background:rgba(5,9,16,.8);padding:5px 14px;
       border:1px solid var(--edge);font-size:11px}
     #menuInner{margin-left:auto;text-align:center}
@@ -234,7 +263,46 @@
     .big{font-size:16px}
     .lbl .d{display:none}
   }
-  @media (max-height:470px){ #infoFacts{display:none} }
+  @media (max-height:380px){ #infoFacts{display:none} }
+
+  /* ---- compact HUD wherever the controls are thumbs ----
+     keyed to the input device, not the viewport width: a landscape
+     phone is 844px wide and would miss every max-width rule. */
+  body.touchui #helpPanel{display:none}
+  body.touchui #infoBlurb{display:none}
+  body.touchui #cross{display:none}
+  body.touchui #timePanel{top:8px;left:8px;min-width:0;padding:6px 10px;font-size:12px}
+  body.touchui #timePanel .big{font-size:14px}
+  body.touchui #timePanel h3{margin-bottom:4px}
+  body.touchui #infoPanel{top:8px;right:8px;width:174px;max-height:46vh;overflow:auto;
+    padding:7px 9px;font-size:11.5px}
+  body.touchui #infoName{font-size:14px}
+  body.touchui #infoFacts .row{font-size:11px}
+  body.touchui #flightPanel{left:50%;right:auto;transform:translateX(-50%);bottom:10px;
+    width:min(310px,46vw);min-width:0;padding:7px 11px;font-size:12px}
+  body.touchui #flightPanel .big{font-size:16px}
+  body.touchui #flightPanel .row{font-size:11.5px}
+  body.touchui #quickBtns{top:8px;left:50%;right:auto;bottom:auto;transform:translateX(-50%);
+    flex-direction:row}
+  body.touchui #toast{top:auto;bottom:auto;top:54px;background:rgba(5,9,16,.82);
+    border:1px solid var(--edge);padding:5px 13px;font-size:10.5px;max-width:74vw}
+  body.touchui #flightPanel h3,
+  body.touchui #flightPanel #speedBar,
+  body.touchui #flightPanel .r-cap,
+  body.touchui #flightPanel .r-lt,
+  body.touchui #flightPanel .pill{display:none}
+  body.touchui #flightPanel > div:last-child{display:none}
+  body.touchui #flightPanel .big{font-size:17px;margin-bottom:2px}
+  body.touchui #lookLbl{top:auto;bottom:146px;right:26px;transform:none}
+
+  /* portrait is the fallback after 'continue anyway': stack the HUD
+     so nothing lands under a thumb */
+  @media (orientation:portrait){
+    body.touchui #quickBtns{left:8px;right:auto;top:106px;transform:none;flex-direction:row}
+    body.touchui #flightPanel{bottom:206px;width:min(320px,88vw)}
+    body.touchui #infoPanel{max-height:34vh}
+    body.touchui #toast{top:auto;bottom:34%}
+  }
 </style>
 </head>
 <body>
@@ -247,6 +315,7 @@
   <div id="tgtArrow"></div>
   <div id="quickBtns">
     <button id="btnPause" title="Menu (Esc)">&#9776;</button>
+    <button id="btnFull" title="Fullscreen">&#9974;</button>
     <button id="btnMute" title="Sound">&#9834;</button>
   </div>
 
@@ -272,10 +341,10 @@
       <div id="thrLadder"></div><div id="thrName">AUTO</div>
     </div>
     <div id="govNote"></div>
-    <div class="row"><span>Speed limit</span><span id="capTxt" class="mono">—</span></div>
-    <div class="row"><span>Range to target</span><span id="rngTxt" class="mono">—</span></div>
-    <div class="row"><span>Light delay</span><span id="ltTxt" class="mono">—</span></div>
-    <div class="row"><span>Speed relative to</span><span id="frameTxt">the Sun</span></div>
+    <div class="row r-cap"><span>Speed limit</span><span id="capTxt" class="mono">—</span></div>
+    <div class="row r-rng"><span>Range to target</span><span id="rngTxt" class="mono">—</span></div>
+    <div class="row r-lt"><span>Light delay</span><span id="ltTxt" class="mono">—</span></div>
+    <div class="row r-frame"><span>Speed relative to</span><span id="frameTxt">the Sun</span></div>
     <div>
       <span class="pill on" id="pillAssist">Assist</span><span class="pill" id="pillAuto">Autopilot</span><span class="pill" id="pillOrbit">Orbits</span>
     </div>
@@ -307,10 +376,16 @@
 
   <div id="touch">
     <div id="stick"><div id="stickN"></div></div>
-    <div class="tbtn" id="tUp" style="right:14px;bottom:150px">▲</div>
-    <div class="tbtn" id="tDn" style="right:14px;bottom:88px">▼</div>
-    <div class="tbtn" id="tNext" style="right:78px;bottom:88px">⟳</div>
-    <div class="tbtn" id="tGo" style="right:78px;bottom:150px">GO</div>
+    <div id="stickLbl">Move</div>
+    <div id="lookLbl">Drag to look</div>
+    <div id="tpad">
+      <button class="tbtn" id="tNext" aria-label="Next target">&#10227;</button>
+      <button class="tbtn" id="tThrUp" aria-label="Throttle up">+</button>
+      <button class="tbtn" id="tUp" aria-label="Ascend">&#9650;</button>
+      <button class="tbtn" id="tGo" aria-label="Autopilot">GO</button>
+      <button class="tbtn" id="tThrDn" aria-label="Throttle down">&#8722;</button>
+      <button class="tbtn" id="tDn" aria-label="Descend">&#9660;</button>
+    </div>
   </div>
 </div>
 
@@ -329,6 +404,16 @@
   <button id="skip">Skip &#9654;</button>
 </div>
 <div id="fade"></div>
+
+<div id="rotate">
+  <div class="rbox">
+    <div class="rphone"><i></i></div>
+    <h3>Turn your device sideways</h3>
+    <p>Eon Orrery is built for a landscape screen &mdash; you get the full flight controls and a far better view of the system.</p>
+    <button id="rotateFull">Go fullscreen &amp; rotate</button>
+    <button id="rotateSkip" class="ghost">Continue in portrait</button>
+  </div>
+</div>
 
 <div id="menu">
   <div id="menuInner">
@@ -1615,59 +1700,119 @@ canvas.addEventListener('wheel', e => {
 }, { passive: false });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-/* --- touch --- */
+/* --- touch ---------------------------------------------------
+   Left half drives a visible joystick (it recentres under your
+   thumb); the rest of the screen looks around; a tap without a drag
+   picks whatever you tapped as the target.                       */
 const touchAxes = { fwd: 0, side: 0, up: 0 };
 let stickId = null, lookId = null, stickOx = 0, stickOy = 0, lookX = 0, lookY = 0;
-const stickEl = $('stick');
-if (isTouch) {
-  $('touch').classList.add('on');
-  const hud = $('touch');
-  const bind = (el, on, off) => {
-    el.addEventListener('touchstart', e => { if (state.mode !== 'fly') return; e.preventDefault(); e.stopPropagation(); on(); }, { passive: false });
-    el.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); off && off(); }, { passive: false });
+let lookMoved = 0, lookT0 = 0, lookSx = 0, lookSy = 0;
+const stickEl = $('stick'), stickNub = $('stickN');
+const hasTouch = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+
+function stickHome() {
+  stickEl.style.left = '26px';
+  stickEl.style.top = (innerHeight - 148) + 'px';
+  $('stickLbl').style.left = '68px';
+  $('stickLbl').style.top = (innerHeight - 24) + 'px';
+}
+function stickRelease() {
+  stickId = null;
+  touchAxes.fwd = touchAxes.side = 0;
+  stickNub.style.transform = '';
+  stickEl.classList.remove('live');
+  stickHome();
+}
+
+if (hasTouch) {
+  if (isTouch) { $('touch').classList.add('on'); document.body.classList.add('touchui'); }
+  stickHome();
+  addEventListener('resize', stickHome);
+
+  const hold = (el, on, off) => {
+    el.addEventListener('touchstart', e => {
+      if (state.mode !== 'fly') return;
+      e.preventDefault(); e.stopPropagation(); on();
+    }, { passive: false });
+    const up = e => { e.preventDefault(); e.stopPropagation(); if (off) off(); };
+    el.addEventListener('touchend', up, { passive: false });
+    el.addEventListener('touchcancel', up, { passive: false });
   };
-  bind($('tUp'), () => touchAxes.up = 1, () => touchAxes.up = 0);
-  bind($('tDn'), () => touchAxes.up = -1, () => touchAxes.up = 0);
-  bind($('tNext'), () => cycleTarget(1), null);
-  bind($('tGo'), () => toggleAutopilot(), null);
-  void hud;
+  hold($('tUp'), () => touchAxes.up = 1, () => touchAxes.up = 0);
+  hold($('tDn'), () => touchAxes.up = -1, () => touchAxes.up = 0);
+  hold($('tNext'), () => cycleTarget(1), null);
+  hold($('tGo'), () => toggleAutopilot(), null);
+  hold($('tThrUp'), () => setThrottle(1), null);
+  hold($('tThrDn'), () => setThrottle(-1), null);
+
   canvas.addEventListener('touchstart', e => {
     if (state.mode !== 'fly') return;
     for (const t of e.changedTouches) {
-      if (t.clientX < innerWidth * 0.45 && stickId === null) {
+      const leftZone = t.clientX < innerWidth * 0.46 && t.clientY > innerHeight * 0.25;
+      if (leftZone && stickId === null) {
         stickId = t.identifier; stickOx = t.clientX; stickOy = t.clientY;
-        stickEl.style.display = 'block';
-        stickEl.style.left = (t.clientX - 59) + 'px';
-        stickEl.style.top = (t.clientY - 59) + 'px';
-      } else if (lookId === null) { lookId = t.identifier; lookX = t.clientX; lookY = t.clientY; }
+        stickEl.classList.add('live');
+        stickEl.style.left = (t.clientX - 61) + 'px';
+        stickEl.style.top = (t.clientY - 61) + 'px';
+      } else if (lookId === null) {
+        lookId = t.identifier; lookX = lookSx = t.clientX; lookY = lookSy = t.clientY;
+        lookMoved = 0; lookT0 = performance.now();
+        $('touch').classList.add('settled');
+      }
     }
   }, { passive: true });
+
   canvas.addEventListener('touchmove', e => {
     if (state.mode !== 'fly') return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     for (const t of e.changedTouches) {
       if (t.identifier === stickId) {
-        const dx = clamp((t.clientX - stickOx) / 52, -1, 1), dy = clamp((t.clientY - stickOy) / 52, -1, 1);
+        const dx = clamp((t.clientX - stickOx) / 54, -1, 1);
+        const dy = clamp((t.clientY - stickOy) / 54, -1, 1);
         touchAxes.side = dx; touchAxes.fwd = -dy;
-        $('stickN').style.transform = 'translate(' + dx * 34 + 'px,' + dy * 34 + 'px)';
+        stickNub.style.transform = 'translate(' + (dx * 36).toFixed(1) + 'px,' + (dy * 36).toFixed(1) + 'px)';
       } else if (t.identifier === lookId) {
-        ship.yaw -= (t.clientX - lookX) * 0.0038;
-        ship.pitch = clamp(ship.pitch - (t.clientY - lookY) * 0.0038, -Math.PI / 2 + 0.001, Math.PI / 2 - 0.001);
+        const sx = 0.0040 * SET.sens, iy = SET.invertY ? -1 : 1;
+        ship.yaw -= (t.clientX - lookX) * sx;
+        ship.pitch = clamp(ship.pitch - (t.clientY - lookY) * sx * iy,
+          -Math.PI / 2 + 0.001, Math.PI / 2 - 0.001);
+        lookMoved += Math.abs(t.clientX - lookX) + Math.abs(t.clientY - lookY);
         lookX = t.clientX; lookY = t.clientY;
       }
     }
   }, { passive: false });
-  const end = e => {
+
+  const endTouch = e => {
     for (const t of e.changedTouches) {
-      if (t.identifier === stickId) {
-        stickId = null; touchAxes.fwd = touchAxes.side = 0;
-        stickEl.style.display = 'none'; $('stickN').style.transform = '';
-      } else if (t.identifier === lookId) lookId = null;
+      if (t.identifier === stickId) stickRelease();
+      else if (t.identifier === lookId) {
+        // a stab rather than a drag means "target that"
+        if (lookMoved < 12 && performance.now() - lookT0 < 350 && state.mode === 'fly')
+          pickFromScreen(lookSx, lookSy);
+        lookId = null;
+      }
     }
   };
-  canvas.addEventListener('touchend', end, { passive: true });
-  canvas.addEventListener('touchcancel', end, { passive: true });
+  canvas.addEventListener('touchend', endTouch, { passive: true });
+  canvas.addEventListener('touchcancel', endTouch, { passive: true });
 }
+
+/* ---- rotate-to-landscape prompt ---- */
+let portraitOK = false;
+function checkOrientation() {
+  const portrait = innerHeight > innerWidth && innerWidth < 600;
+  const show = isTouch && portrait && !portraitOK && state.mode !== 'load';
+  $('rotate').classList.toggle('on', show);
+}
+addEventListener('resize', checkOrientation);
+addEventListener('orientationchange', () => setTimeout(checkOrientation, 220));
+$('rotateSkip').addEventListener('click', () => { portraitOK = true; checkOrientation(); });
+$('rotateFull').addEventListener('click', async () => {
+  try { await document.documentElement.requestFullscreen(); } catch (e) { /* not allowed */ }
+  try { await screen.orientation.lock('landscape'); } catch (e) { /* unsupported on iOS */ }
+  portraitOK = true;
+  setTimeout(checkOrientation, 400);
+});
 
 /* --- gamepad --- */
 let padPrev = {};
@@ -1718,17 +1863,27 @@ function cycleTarget(dir) {
   selectTarget(list[i]);
   toast('Target — ' + list[i].name);
 }
-function pickFromCrosshair() {
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  let best = null, bestAng = 0.26;
+function pickFromDir(dir, tol) {
+  let best = null, bestAng = tol || 0.26;
   const v = new THREE.Vector3();
   for (const b of objs) {
     v.copy(b.rel).normalize();
-    const ang = Math.acos(clamp(v.dot(fwd), -1, 1));
+    const ang = Math.acos(clamp(v.dot(dir), -1, 1));
     const ok = ang - Math.atan(b.displayR / Math.max(1e-6, b.rel.length()));
     if (ok < bestAng) { bestAng = ok; best = b; }
   }
-  if (best) { selectTarget(best); toast('Target — ' + best.name); }
+  if (best) { selectTarget(best); blip(900, 0.07); toast('Target — ' + best.name); }
+  return best;
+}
+function pickFromCrosshair() {
+  pickFromDir(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion));
+}
+/* tap anywhere on a world to target it (camera sits at the origin, so
+   the unprojected point is the ray direction) */
+function pickFromScreen(x, y) {
+  const d = new THREE.Vector3((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1, 0.5);
+  d.unproject(camera).normalize();
+  pickFromDir(d, 0.1);
 }
 function toggleAutopilot() {
   if (!state.target) return;
@@ -2300,7 +2455,10 @@ function openMenu(mode) {
   $('menuTitle').textContent = mode === 'pause' ? 'Paused' : 'EON ORRERY';
   $('menuTag').textContent = mode === 'pause' ? '' : 'A true-scale model of the Solar System';
   $('ui').style.visibility = 'hidden';
+  if (hasTouch) stickRelease();
+  touchAxes.up = 0;
   $('menuPanel').innerHTML = '';
+  checkOrientation();
   const nav = $('menuNav');
   nav.innerHTML = '';
   for (const [act, label] of NAV[mode]) {
@@ -2317,6 +2475,7 @@ function closeMenu() {
 function resumeFlight() {
   closeMenu();
   state.mode = 'fly';
+  checkOrientation();
   $('ui').style.visibility = 'visible';
   $('ui').style.opacity = state.uiHidden ? '0' : '1';
   audioOn();
@@ -2330,8 +2489,12 @@ function startFlight(b) {
   $('ui').style.opacity = state.uiHidden ? '0' : '1';
   if (b) { selectTarget(b); placeAtBody(b, 5.5); }
   audioOn();
+  checkOrientation();
   if (!isTouch) canvas.requestPointerLock?.();
-  toast(b ? 'Arrived at ' + b.name : 'Flight systems live');
+  if (isTouch && !SET.seenTouchHint) {
+    SET.seenTouchHint = true; saveSet();
+    setTimeout(() => toast('Left thumb moves · drag right to look'), 900);
+  } else toast(b ? 'Arrived at ' + b.name : 'Flight systems live');
 }
 
 function panelDest() {
@@ -2399,6 +2562,20 @@ function panelSettings() {
 function panelControls() {
   const p = document.createElement('div');
   p.className = 'mpan';
+  if (isTouch) {
+    const t = [
+      ['Move', 'Left thumb — the stick follows your touch'],
+      ['Look', 'Drag anywhere on the right'],
+      ['Target a world', 'Tap it, or press ⟳'],
+      ['Fly to target', 'GO'],
+      ['Up / down', '▲ ▼'],
+      ['Throttle', '+ / −'],
+      ['Menu · fullscreen · sound', 'Top of screen']
+    ];
+    p.innerHTML = '<h4>Touch controls</h4><div class="kgrid" style="grid-template-columns:1fr">' +
+      t.map(r => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('') +
+      '</div><h4 style="margin-top:14px">Keyboard</h4>';
+  }
   const rows = [
     ['Look', 'Mouse'], ['Thrust / reverse', 'W / S'], ['Strafe', 'A / D'],
     ['Up / down', 'Space / Ctrl'], ['Roll', 'Q / E'], ['Boost ×4', 'Shift'],
@@ -2408,7 +2585,7 @@ function panelControls() {
     ['Orbits / labels', 'O / L'], ['Flight assist', 'Z'], ['Approach governor', 'G'],
     ['Jump to a world', '1 … 9, 0'], ['Hide interface', 'H'], ['Fullscreen', 'F'], ['Menu', 'Esc']
   ];
-  p.innerHTML = '<h4>Controls</h4><div class="kgrid">' +
+  p.innerHTML += (isTouch ? '' : '<h4>Controls</h4>') + '<div class="kgrid">' +
     rows.map(r => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('') + '</div>';
   return p;
 }
@@ -2431,6 +2608,14 @@ $('menuNav').addEventListener('click', e => {
 });
 $('skip').addEventListener('click', endIntro);
 $('btnPause').addEventListener('click', () => openMenu('pause'));
+$('btnFull').addEventListener('click', async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      if (isTouch) { try { await screen.orientation.lock('landscape'); } catch (e) { /* iOS */ } }
+    } else await document.exitFullscreen();
+  } catch (e) { /* denied */ }
+});
 $('btnMute').addEventListener('click', () => {
   SET.audio = !SET.audio; saveSet();
   $('btnMute').style.opacity = SET.audio ? '1' : '0.4';
@@ -2521,6 +2706,8 @@ function updateTargetArrow() {
   await new Promise(r => setTimeout(r, 450));
   $('splash').classList.add('gone');
   setTimeout(() => { $('splash').style.display = 'none'; }, 950);
+
+  checkOrientation();
 
   // first-time visitors get the flythrough; everyone else lands on the menu
   if (SET.seenIntro) openMenu('title');
