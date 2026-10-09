@@ -125,9 +125,108 @@
   #err{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;
     background:var(--ink);padding:30px;text-align:center;font-size:15px;color:#e5a0a0}
 
+  /* ---- throttle ladder ---- */
+  #thrWrap{display:flex;align-items:center;gap:7px;margin:6px 0 2px}
+  #thrLadder{display:flex;gap:2px;flex:1}
+  #thrLadder i{flex:1;height:9px;background:rgba(93,227,255,.13);
+    border:1px solid transparent;transition:background .1s}
+  #thrLadder i.on{background:var(--cyan)}
+  #thrLadder i.gov{background:var(--amber)}
+  #thrName{font-family:'Orbitron';font-size:10.5px;color:var(--cyan);min-width:56px;text-align:right}
+  #govNote{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);
+    min-height:14px;margin-top:1px}
+
+  /* ---- off-screen target arrow ---- */
+  #tgtArrow{position:absolute;display:none;width:0;height:0;
+    border-left:13px solid var(--amber);border-top:8px solid transparent;border-bottom:8px solid transparent;
+    filter:drop-shadow(0 0 5px rgba(255,180,84,.7))}
+
+  /* ---- cinematic ---- */
+  #cine{position:fixed;inset:0;z-index:30;pointer-events:none;opacity:0;transition:opacity .5s}
+  #cine.on{opacity:1}
+  #cine .cbar{position:absolute;left:0;width:100%;height:9vh;background:#000}
+  #cine .cbar.top{top:0} #cine .cbar.bot{bottom:0}
+  #cineText{position:absolute;left:0;right:0;bottom:15vh;text-align:center;padding:0 8vw;
+    opacity:0;transition:opacity .8s}
+  #cineText.show{opacity:1}
+  #cineTitle{font-family:'Orbitron';font-size:clamp(17px,3.4vw,30px);letter-spacing:.3em;color:#fff;
+    text-transform:uppercase;text-shadow:0 0 30px rgba(0,0,0,.95);margin-bottom:9px}
+  #cineSub{font-size:clamp(13px,1.9vw,19px);color:#bcdcea;letter-spacing:.03em;line-height:1.5;
+    max-width:720px;margin:0 auto;text-shadow:0 2px 14px rgba(0,0,0,.95)}
+  #skip{position:absolute;right:22px;bottom:calc(9vh + 18px);pointer-events:auto;cursor:pointer;
+    background:transparent;border:1px solid var(--edge);color:var(--muted);font-family:'Rajdhani';
+    font-size:12px;letter-spacing:.22em;text-transform:uppercase;padding:7px 17px;transition:.2s}
+  #skip:hover{color:var(--ink);background:var(--cyan);border-color:var(--cyan)}
+  #fade{position:fixed;inset:0;z-index:31;background:#000;opacity:0;pointer-events:none;
+    transition:opacity .28s}
+
+  /* ---- menus ---- */
+  #menu{position:fixed;inset:0;z-index:35;display:none;align-items:center;justify-content:center;
+    background:linear-gradient(90deg,rgba(3,6,12,.93) 0%,rgba(3,6,12,.74) 42%,rgba(3,6,12,.12) 100%)}
+  #menu.on{display:flex}
+  #menu.pause{background:rgba(3,6,12,.78);justify-content:center}
+  #menuInner{width:min(620px,92vw);margin-left:clamp(0px,7vw,110px);margin-right:auto;padding:26px}
+  #menu.pause #menuInner{margin:0;text-align:center;width:min(390px,92vw)}
+  #menuTitle{font-family:'Orbitron';font-size:clamp(25px,4.6vw,43px);letter-spacing:.26em;margin:0;white-space:nowrap;
+    color:#fff;text-shadow:0 0 38px rgba(93,227,255,.45)}
+  #menuTag{font-size:13.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--cyan);
+    margin:8px 0 30px}
+  #menuNav{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+  #menu.pause #menuNav{align-items:center}
+  #menuNav button{pointer-events:auto;cursor:pointer;background:transparent;border:0;
+    border-left:2px solid transparent;color:#b6d6e4;font-family:'Rajdhani';font-weight:600;
+    font-size:19px;letter-spacing:.17em;text-transform:uppercase;padding:9px 16px;transition:.16s;
+    text-align:left}
+  #menu.pause #menuNav button{border-left:0;border-bottom:2px solid transparent;text-align:center}
+  #menuNav button:hover,#menuNav button:focus-visible{color:#fff;border-color:var(--cyan);
+    background:rgba(93,227,255,.09);outline:none;letter-spacing:.22em}
+  #menuPanel{margin-top:20px;max-height:46vh;overflow:auto;pointer-events:auto}
+  #menuPanel:empty{margin:0}
+  .mpan{border:1px solid var(--edge);background:rgba(6,14,24,.6);padding:15px 17px}
+  .mpan h4{margin:0 0 11px;font-family:'Orbitron';font-size:10.5px;letter-spacing:.2em;
+    color:var(--cyan);text-transform:uppercase}
+  .srow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:6px 0;
+    font-size:14px;border-bottom:1px solid rgba(93,227,255,.08)}
+  .srow:last-child{border:0}
+  .srow input[type=range]{width:142px;accent-color:#5de3ff}
+  .tgl{cursor:pointer;border:1px solid var(--edge);background:transparent;color:var(--muted);
+    font-family:'Rajdhani';font-weight:600;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+    padding:3px 13px;min-width:62px}
+  .tgl.on{background:var(--cyan);border-color:var(--cyan);color:var(--ink)}
+  #destGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:5px}
+  #destGrid button{cursor:pointer;background:rgba(6,14,24,.6);border:1px solid var(--edge);
+    color:#b6d6e4;font-family:'Rajdhani';font-weight:600;font-size:13px;letter-spacing:.1em;
+    padding:9px 4px;text-transform:uppercase;transition:.15s}
+  #destGrid button:hover{background:var(--cyan);color:var(--ink);border-color:var(--cyan)}
+  #destGrid button small{display:block;font-weight:400;letter-spacing:0;text-transform:none;
+    font-size:10.5px;opacity:.6;margin-top:2px}
+  #menuFoot{position:absolute;bottom:16px;right:20px;font-size:11px;letter-spacing:.2em;
+    text-transform:uppercase;color:#3d5563}
+  .kgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px 18px;font-size:13px}
+  .kgrid div{display:flex;justify-content:space-between;gap:10px}
+  .kgrid span:first-child{color:var(--muted)}
+
+  /* ---- mute / pause buttons ---- */
+  #quickBtns{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px}
+  #quickBtns button{pointer-events:auto;cursor:pointer;width:34px;height:28px;background:var(--panel);
+    border:1px solid var(--edge);color:var(--cyan);font-size:13px;backdrop-filter:blur(8px);
+    display:flex;align-items:center;justify-content:center}
+  #quickBtns button:hover{background:var(--cyan);color:var(--ink)}
+
+  @media (max-width:820px){
+    #quickBtns{left:auto;right:14px;top:auto;bottom:212px;transform:none;flex-direction:column}
+    #toast{top:auto;bottom:38%;background:rgba(5,9,16,.8);padding:5px 14px;
+      border:1px solid var(--edge);font-size:11px}
+    #menuInner{margin-left:auto;text-align:center}
+    #menuNav{align-items:center}
+    #menuNav button{border-left:0;border-bottom:2px solid transparent;text-align:center}
+    #menu{background:rgba(3,6,12,.85)}
+    #cineSub{font-size:14px}
+  }
   @media (max-width:820px){
     #helpPanel{display:none}
-    #infoPanel{width:190px;font-size:12px;top:8px;right:8px;padding:8px 10px}
+    #infoPanel{width:172px;font-size:11.5px;top:8px;right:8px;padding:7px 9px}
+    #infoFacts .row{font-size:11px}
     #infoName{font-size:14px}
     #infoBlurb{display:none}
     #timePanel{top:8px;left:8px;min-width:150px;font-size:12px;padding:8px 10px}
@@ -145,6 +244,11 @@
   <div id="labels"></div>
 
   <div id="cross"><div id="crossH"></div></div>
+  <div id="tgtArrow"></div>
+  <div id="quickBtns">
+    <button id="btnPause" title="Menu (Esc)">&#9776;</button>
+    <button id="btnMute" title="Sound">&#9834;</button>
+  </div>
 
   <div class="panel" id="timePanel">
     <h3>Mission clock</h3>
@@ -164,7 +268,11 @@
     <h3>Flight</h3>
     <div class="big mono" id="spdTxt">0 km/s</div>
     <div id="speedBar"><div id="speedFill"></div></div>
-    <div class="row"><span>Throttle cap</span><span id="capTxt" class="mono">—</span></div>
+    <div id="thrWrap">
+      <div id="thrLadder"></div><div id="thrName">AUTO</div>
+    </div>
+    <div id="govNote"></div>
+    <div class="row"><span>Speed limit</span><span id="capTxt" class="mono">—</span></div>
     <div class="row"><span>Range to target</span><span id="rngTxt" class="mono">—</span></div>
     <div class="row"><span>Light delay</span><span id="ltTxt" class="mono">—</span></div>
     <div class="row"><span>Speed relative to</span><span id="frameTxt">the Sun</span></div>
@@ -181,7 +289,7 @@
     <div class="row"><span>Up / down</span><span><kbd>Space</kbd><kbd>Ctrl</kbd></span></div>
     <div class="row"><span>Roll</span><span><kbd>Q</kbd><kbd>E</kbd></span></div>
     <div class="row"><span>Boost</span><span><kbd>Shift</kbd></span></div>
-    <div class="row"><span>Throttle cap</span><span>Wheel / <kbd>-</kbd><kbd>=</kbd></span></div>
+    <div class="row"><span>Throttle notch</span><span>Wheel / <kbd>-</kbd><kbd>=</kbd></span></div>
     <div class="row"><span>Full stop</span><span><kbd>X</kbd></span></div>
     <div class="row"><span>Cycle target</span><span><kbd>Tab</kbd> / click</span></div>
     <div class="row"><span>Autopilot to target</span><span><kbd>T</kbd></span></div>
@@ -190,7 +298,9 @@
     <div class="row"><span>Orbits / labels</span><span><kbd>O</kbd> <kbd>L</kbd></span></div>
     <div class="row"><span>Flight assist</span><span><kbd>Z</kbd></span></div>
     <div class="row"><span>Jump to body</span><span><kbd>1</kbd>…<kbd>9</kbd> <kbd>0</kbd></span></div>
+    <div class="row"><span>Approach governor</span><span><kbd>G</kbd></span></div>
     <div class="row"><span>Hide interface</span><span><kbd>H</kbd></span></div>
+    <div class="row"><span>Menu</span><span><kbd>Esc</kbd></span></div>
   </div>
 
   <div id="toast"></div>
@@ -211,7 +321,23 @@
   <p style="color:#5f7e8d;font-size:13.5px">That is the lesson: space is mostly space.</p>
   <div id="bar"><div id="barFill"></div></div>
   <div id="loadTxt">Initialising</div>
-  <button id="launch">Launch</button>
+</div>
+
+<div id="cine">
+  <div class="cbar top"></div><div class="cbar bot"></div>
+  <div id="cineText"><div id="cineTitle"></div><div id="cineSub"></div></div>
+  <button id="skip">Skip &#9654;</button>
+</div>
+<div id="fade"></div>
+
+<div id="menu">
+  <div id="menuInner">
+    <h1 id="menuTitle">EON ORRERY</h1>
+    <div id="menuTag">A true-scale model of the Solar System</div>
+    <nav id="menuNav"></nav>
+    <div id="menuPanel"></div>
+  </div>
+  <div id="menuFoot">eongames.co.uk</div>
 </div>
 
 <div id="err"><div><strong>WebGL unavailable.</strong><br>This experience needs hardware-accelerated 3D graphics.</div></div>
@@ -1022,11 +1148,71 @@ function beltPoints(count, aMin, aMax, incDeg, size, color, clump) {
    8.  WORLD BUILD
    ------------------------------------------------------------ */
 const state = {
+  mode: 'load',          // load | intro | menu | fly
   jd: 0, timeIdx: 4, paused: false,
   scaleIdx: 0, showOrbits: true, showLabels: true, uiHidden: false, frame: null,
   assist: true, autopilot: false, target: null,
-  warpExp: 1.4           // log10 of max speed in km/s
+  thr: 0,                // index into THROTTLE
+  govKms: Infinity       // speed the proximity governor is currently allowing
 };
+
+/* Throttle is a ladder of named notches rather than a continuous log
+   scale — you can see where you are and step predictably. */
+const THROTTLE = [
+  { v: 0.1, n: '100 m/s' }, { v: 1, n: '1 km/s' }, { v: 8, n: '8 km/s' },
+  { v: 50, n: '50 km/s' }, { v: 300, n: '300 km/s' }, { v: 2000, n: '2000 km/s' },
+  { v: 0.05 * C_KMS, n: '0.05 c' }, { v: 0.25 * C_KMS, n: '0.25 c' },
+  { v: C_KMS, n: '1 c' }, { v: 5 * C_KMS, n: '5 c' }, { v: 30 * C_KMS, n: '30 c' },
+  { v: 150 * C_KMS, n: '150 c' }, { v: 800 * C_KMS, n: '800 c' }, { v: 4000 * C_KMS, n: 'AUTO' }
+];
+state.thr = THROTTLE.length - 1;
+
+/* Persisted preferences. */
+const SET = { sens: 1, invertY: false, governor: true, audio: true, seenIntro: false };
+try { Object.assign(SET, JSON.parse(localStorage.getItem('eonOrrery') || '{}')); } catch (e) { /* private mode */ }
+function saveSet() { try { localStorage.setItem('eonOrrery', JSON.stringify(SET)); } catch (e) { /* ignore */ } }
+
+/* ---- a little synthesised sound; no audio files to host ---- */
+const AU_SND = { ctx: null, gain: null, osc: [], filt: null };
+function audioOn() {
+  if (AU_SND.ctx || !SET.audio) return;
+  try {
+    const C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return;
+    const ctx = new C();
+    const master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 220;
+    filt.connect(master);
+    for (const f of [38, 57.3, 76.5]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+      const g = ctx.createGain(); g.gain.value = 0.34;
+      o.connect(g); g.connect(filt); o.start();
+      AU_SND.osc.push(o);
+    }
+    AU_SND.ctx = ctx; AU_SND.gain = master; AU_SND.filt = filt;
+  } catch (e) { /* audio is optional */ }
+}
+function audioEngine(frac) {
+  if (!AU_SND.ctx) return;
+  const t = AU_SND.ctx.currentTime;
+  const want = SET.audio && state.mode === 'fly' ? 0.012 + frac * 0.05 : (SET.audio ? 0.008 : 0);
+  AU_SND.gain.gain.setTargetAtTime(want, t, 0.35);
+  AU_SND.filt.frequency.setTargetAtTime(170 + frac * 620, t, 0.35);
+  for (let i = 0; i < AU_SND.osc.length; i++)
+    AU_SND.osc[i].frequency.setTargetAtTime([38, 57.3, 76.5][i] * (1 + frac * 0.26), t, 0.5);
+}
+function blip(freq, len) {
+  if (!AU_SND.ctx || !SET.audio) return;
+  try {
+    const c = AU_SND.ctx, t = c.currentTime;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.value = freq || 760;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.06, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + (len || 0.14));
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + (len || 0.14) + 0.02);
+  } catch (e) { /* ignore */ }
+}
 const TIME_RATES = [
   { n: 'Paused', d: 0 }, { n: 'Real time', d: 1 / 86400 }, { n: '1 min / s', d: 1 / 1440 },
   { n: '1 hour / s', d: 1 / 24 }, { n: '6 hours / s', d: 0.25 }, { n: '1 day / s', d: 1 },
@@ -1348,9 +1534,15 @@ const canvas = $('view');
 const isTouch = matchMedia('(hover: none) and (pointer: coarse)').matches;
 
 addEventListener('keydown', e => {
+  const k0 = e.key.toLowerCase();
+  // menus and the cinematic swallow flight keys
+  if (state.mode === 'intro') { if (e.key === 'Escape' || e.code === 'Space' || e.code === 'Enter') endIntro(); return; }
+  if (state.mode === 'menu') { if (e.key === 'Escape' && menuMode === 'pause') resumeFlight(); return; }
+  if (state.mode !== 'fly') return;
+  if (e.key === 'Escape') { openMenu('pause'); return; }
   if (e.repeat) { keys[e.code] = true; return; }
   keys[e.code] = true;
-  const k = e.key.toLowerCase();
+  const k = k0;
   if (['Tab', 'Space'].includes(e.code) || ['[', ']', '-', '='].includes(e.key)) e.preventDefault();
   if (e.code === 'Tab') cycleTarget(e.shiftKey ? -1 : 1);
   else if (k === 't') toggleAutopilot();
@@ -1376,8 +1568,9 @@ addEventListener('keydown', e => {
   else if (k === 'p') { state.paused = !state.paused; toast(state.paused ? 'Time paused' : 'Time running'); }
   else if (e.key === '[') { state.timeIdx = clamp(state.timeIdx - 1, 0, TIME_RATES.length - 1); }
   else if (e.key === ']') { state.timeIdx = clamp(state.timeIdx + 1, 0, TIME_RATES.length - 1); }
-  else if (e.key === '-') { state.warpExp = clamp(state.warpExp - 0.25, -1, 9.4); }
-  else if (e.key === '=' || e.key === '+') { state.warpExp = clamp(state.warpExp + 0.25, -1, 9.4); }
+  else if (e.key === '-' || e.key === '_') setThrottle(-1);
+  else if (e.key === '=' || e.key === '+') setThrottle(1);
+  else if (k === 'g') { SET.governor = !SET.governor; saveSet(); toast('Approach governor ' + (SET.governor ? 'on' : 'off')); }
   else if (k === 'h') { state.uiHidden = !state.uiHidden; $('ui').style.opacity = state.uiHidden ? '0' : '1'; }
   else if (k === 'f') { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); }
   else if (/^[0-9]$/.test(e.key)) {
@@ -1389,26 +1582,36 @@ addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 canvas.addEventListener('mousedown', e => {
+  if (state.mode !== 'fly') return;
   if (e.button === 0 && !locked && !isTouch) { canvas.requestPointerLock?.(); }
   dragging = true; lastX = e.clientX; lastY = e.clientY;
 });
 addEventListener('mouseup', e => {
   dragging = false;
-  if (locked && e.button === 0) pickFromCrosshair();
+  if (state.mode === 'fly' && locked && e.button === 0) pickFromCrosshair();
 });
-document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
+document.addEventListener('pointerlockchange', () => {
+  const was = locked;
+  locked = document.pointerLockElement === canvas;
+  // losing the pointer (Esc, alt-tab) should pause rather than leave
+  // the ship flying with no way to steer it
+  if (was && !locked && state.mode === 'fly') openMenu('pause');
+});
 addEventListener('mousemove', e => {
-  const s = 0.0023;
-  if (locked) { ship.yaw -= e.movementX * s; ship.pitch -= e.movementY * s; }
+  if (state.mode !== 'fly') return;
+  const s = 0.0023 * SET.sens;
+  const iy = SET.invertY ? -1 : 1;
+  if (locked) { ship.yaw -= e.movementX * s; ship.pitch -= e.movementY * s * iy; }
   else if (dragging) {
-    ship.yaw -= (e.clientX - lastX) * s; ship.pitch -= (e.clientY - lastY) * s;
+    ship.yaw -= (e.clientX - lastX) * s; ship.pitch -= (e.clientY - lastY) * s * iy;
     lastX = e.clientX; lastY = e.clientY;
   }
   ship.pitch = clamp(ship.pitch, -Math.PI / 2 + 0.001, Math.PI / 2 - 0.001);
 });
 canvas.addEventListener('wheel', e => {
+  if (state.mode !== 'fly') return;
   e.preventDefault();
-  state.warpExp = clamp(state.warpExp - Math.sign(e.deltaY) * 0.18, -1, 9.4);
+  setThrottle(-Math.sign(e.deltaY));
 }, { passive: false });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -1420,7 +1623,7 @@ if (isTouch) {
   $('touch').classList.add('on');
   const hud = $('touch');
   const bind = (el, on, off) => {
-    el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); on(); }, { passive: false });
+    el.addEventListener('touchstart', e => { if (state.mode !== 'fly') return; e.preventDefault(); e.stopPropagation(); on(); }, { passive: false });
     el.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); off && off(); }, { passive: false });
   };
   bind($('tUp'), () => touchAxes.up = 1, () => touchAxes.up = 0);
@@ -1429,6 +1632,7 @@ if (isTouch) {
   bind($('tGo'), () => toggleAutopilot(), null);
   void hud;
   canvas.addEventListener('touchstart', e => {
+    if (state.mode !== 'fly') return;
     for (const t of e.changedTouches) {
       if (t.clientX < innerWidth * 0.45 && stickId === null) {
         stickId = t.identifier; stickOx = t.clientX; stickOy = t.clientY;
@@ -1439,6 +1643,7 @@ if (isTouch) {
     }
   }, { passive: true });
   canvas.addEventListener('touchmove', e => {
+    if (state.mode !== 'fly') return;
     e.preventDefault();
     for (const t of e.changedTouches) {
       if (t.identifier === stickId) {
@@ -1484,8 +1689,8 @@ function readPad() {
     press(0, () => toggleAutopilot());
     press(1, () => cycleTarget(1));
     press(2, () => { ship.vel.set(0, 0, 0); state.autopilot = false; });
-    press(12, () => state.warpExp = clamp(state.warpExp + 0.25, -1, 9.4));
-    press(13, () => state.warpExp = clamp(state.warpExp - 0.25, -1, 9.4));
+    press(12, () => setThrottle(1));
+    press(13, () => setThrottle(-1));
     return;
   }
   padAxes.fwd = padAxes.side = padAxes.up = padAxes.roll = padAxes.boost = 0;
@@ -1503,7 +1708,7 @@ function selectTarget(b) {
   $('infoFacts').innerHTML = (b.facts || []).map(f =>
     '<div class="row"><span>' + f[0] + '</span><span>' + f[1] + '</span></div>').join('');
   $('infoBlurb').textContent = b.blurb || '';
-  $('infoBlurb').style.display = b.blurb ? 'block' : 'none';
+  $('infoBlurb').style.display = b.blurb ? '' : 'none';
   p.style.display = 'block';
 }
 function cycleTarget(dir) {
@@ -1531,9 +1736,17 @@ function toggleAutopilot() {
   if (state.autopilot) {
     const d = state.target.worldPos.distanceTo(ship.pos);
     // size the burn so any crossing takes roughly ten seconds
-    state.apCruise = Math.max(Math.pow(10, state.warpExp) * U, d / 6);
+    state.apCruise = Math.max(THROTTLE[state.thr].v * U, d / 6);
     toast('Autopilot engaged — ' + state.target.name);
   } else toast('Autopilot disengaged');
+}
+
+function setThrottle(step) {
+  const n = clamp(state.thr + step, 0, THROTTLE.length - 1);
+  if (n === state.thr) return;
+  state.thr = n;
+  blip(520 + n * 34, 0.06);
+  toast('Throttle — ' + THROTTLE[n].n);
 }
 
 let toastT = 0;
@@ -1555,7 +1768,7 @@ function fmtDist(km) {
 }
 function fmtSpeed(kms) {
   if (kms < 0.01) return (kms * 1000).toFixed(0) + ' m/s';
-  if (kms < 1000) return kms.toFixed(kms < 10 ? 2 : 0) + ' km/s';
+  if (kms < 20000) return Math.round(kms).toLocaleString('en-GB') + ' km/s';
   const c = kms / C_KMS;
   if (c < 0.995) return (c * 100).toFixed(1) + '% c';
   return c.toLocaleString('en-GB', { maximumFractionDigits: c < 10 ? 2 : 0 }) + ' × c';
@@ -1654,8 +1867,24 @@ function updatePositions(dt) {
   void dt;
 }
 
+/* Speed you are allowed near something solid. Scaling the ceiling with
+   the gap to the nearest surface means you decelerate into an approach
+   automatically and cannot ram a planet at light speed, while open
+   space stays as fast as the throttle allows. */
+function governorKms() {
+  if (!SET.governor) return Infinity;
+  let gap = Infinity;
+  for (const b of objs) {
+    const d = b.rel.length() - b.displayR;
+    if (d < gap) gap = d;
+  }
+  return Math.max(0.35, (gap / U) * 0.17);
+}
+
 function flight(dt) {
-  const maxKms = Math.pow(10, state.warpExp);
+  const notchKms = THROTTLE[state.thr].v;
+  state.govKms = governorKms();
+  const maxKms = Math.min(notchKms, state.govKms);
   const maxU = maxKms * U;
   let thrFwd = 0, thrSide = 0, thrUp = 0, rollIn = 0;
 
@@ -1678,10 +1907,11 @@ function flight(dt) {
   if (keys.ArrowDown) ship.pitch = clamp(ship.pitch - 1.1 * dt, -1.569, 1.569);
   ship.roll += rollIn * 1.6 * dt;
 
-  const boost = (keys.ShiftLeft || keys.ShiftRight || padAxes.boost) ? 6 : 1;
-  const fine = (keys.AltLeft || keys.AltRight) ? 0.12 : 1;
+  const boost = (keys.ShiftLeft || keys.ShiftRight || padAxes.boost) ? 4 : 1;
+  const fine = (keys.AltLeft || keys.AltRight) ? 0.1 : 1;
   const cap = maxU * boost * fine;
-  const accel = cap * 1.9;
+  // ~2 s to reach the ceiling: taps nudge, holds commit
+  const accel = cap * 0.55;
 
   const q = shipQuat();
   const fwd = tmpV.set(0, 0, -1).applyQuaternion(q);
@@ -1716,8 +1946,9 @@ function flight(dt) {
     if (thrSide) ship.vel.addScaledVector(right, thrSide * accel * dt);
     if (thrUp) ship.vel.addScaledVector(up, thrUp * accel * dt);
     if (state.assist) {
+      if (!rollIn) ship.roll *= Math.max(0, 1 - 2.4 * dt);   // settle back level
       const noInput = !thrFwd && !thrSide && !thrUp;
-      const damp = noInput ? 1.7 : 0.9;
+      const damp = noInput ? 1.25 : 0.7;
       ship.vel.multiplyScalar(Math.max(0, 1 - damp * dt));
       // re-point existing velocity toward where we are facing
       const sp = ship.vel.length();
@@ -1751,13 +1982,21 @@ function render(now) {
   if (!running) return;
   let dt = (now - last) / 1000;
   last = now;
+  // the cinematic runs on wall-clock so it lasts the scripted time on
+  // any machine; simulation keeps the tighter clamp for stability
+  const realDt = Math.min(dt, 0.5);
   dt = Math.min(dt, 0.1);
 
-  readPad();
+  if (state.mode === 'fly') readPad();
 
-  if (!state.paused) state.jd += TIME_RATES[state.timeIdx].d * dt;
+  const timeRuns = !state.paused && !(state.mode === 'menu' && menuMode === 'pause');
+  if (timeRuns) state.jd += TIME_RATES[state.timeIdx].d * dt;
   updatePositions(dt);
-  const f = flight(dt);
+
+  let f = { maxKms: THROTTLE[state.thr].v };
+  if (state.mode === 'fly') f = flight(dt);
+  else if (state.mode === 'intro') cinematic(realDt);
+  else if (state.mode === 'menu' && menuMode === 'title') menuCam(dt);
 
   // ---- camera at the origin, everything else moved to suit ----
   camera.quaternion.copy(shipQuat());
@@ -1847,7 +2086,12 @@ function render(now) {
   }
 
   updateLabels();
-  updateHUD(f);
+  if (state.mode === 'fly') {
+    updateHUD(f);
+    updateThrottleUI();
+    audioEngine(clamp(ship.vel.length() / Math.max(f.cap || 1e-9, 1e-9), 0, 1));
+  }
+  updateTargetArrow();
 
   if (toastT && now > toastT) { $('toast').style.opacity = '0'; toastT = 0; }
   renderer.render(scene, camera);
@@ -1911,7 +2155,334 @@ function updateHUD(f) {
 }
 
 /* ------------------------------------------------------------
-   15.  BOOT
+   15.  FRONT END — cinematic, menus, settings
+   ------------------------------------------------------------ */
+const _bs = new THREE.Vector3(), _bu = new THREE.Vector3(0, 1, 0), _bt = new THREE.Vector3();
+function bodyBasis(b) {
+  _bs.copy(b.worldPos);
+  if (_bs.lengthSq() < 1e-12) _bs.set(1, 0, 0); else _bs.normalize();
+  _bt.crossVectors(_bu, _bs);
+  if (_bt.lengthSq() < 1e-9) _bt.set(0, 0, 1); else _bt.normalize();
+}
+function offsetPoint(b, o, unit, out) {
+  bodyBasis(b);
+  const k = unit === 'au' ? AU : b.displayR;
+  return out.copy(b.worldPos)
+    .addScaledVector(_bs, o[0] * k)
+    .addScaledVector(_bu, o[1] * k)
+    .addScaledVector(_bt, o[2] * k);
+}
+
+/* The intro is flown by the real engine rather than played from a
+   video file: every frame is the actual simulation, so it is sharp at
+   any resolution and costs nothing to download. */
+const SHOTS = [
+  { body: 'sun', unit: 'au', p0: [40, 7, 16], p1: [30, 5, 12], dur: 7,
+    title: 'The edge', sub: 'Forty times further out than Earth, our star is just the brightest thing in a cold sky.' },
+  { body: 'neptune', unit: 'r', p0: [-13, 3.4, 9], p1: [-5, 1.2, 3.3], dur: 8,
+    title: 'Neptune', sub: 'Four and a half billion kilometres from home. Sunlight takes four hours to get here.' },
+  { body: 'uranus', unit: 'r', p0: [9, -2.5, 6.5], p1: [3.5, -0.9, 2.7], dur: 6.5,
+    title: 'Uranus', sub: 'Tipped ninety-eight degrees. It rolls around its orbit lying on its side.' },
+  { body: 'saturn', unit: 'r', p0: [10.5, 0.85, 6.5], p1: [3, 0.2, 2], dur: 10,
+    title: 'Saturn', sub: 'The rings run two hundred and eighty thousand kilometres wide, and average about ten metres thick.' },
+  { body: 'jupiter', unit: 'r', p0: [-10, 2, 7], p1: [-3.3, 0.75, 2.5], dur: 8,
+    title: 'Jupiter', sub: 'Two and a half times the mass of every other planet put together.' },
+  { body: 'mars', unit: 'r', p0: [7, 1.7, 4.8], p1: [2.5, 0.65, 1.8], dur: 6.5,
+    title: 'Mars', sub: 'Thin air, red dust, and a volcano twenty-two kilometres high.' },
+  { body: 'earth', unit: 'r', p0: [6.4, 1.3, 5.4], p1: [2.2, 0.45, 1.6], dur: 9,
+    title: 'Earth', sub: 'Everyone who has ever lived, lived here. The whole of it fits on this one damp rock.' },
+  { body: 'sun', unit: 'r', p0: [6.4, 1.5, 4.8], p1: [3, 0.75, 2.3], dur: 8,
+    title: 'The Sun', sub: 'Ninety-nine point eight six per cent of all the mass out here. The planets are what was left over.' },
+  { body: 'sun', unit: 'au', p0: [2, 0.65, 1.5], p1: [5.4, 1.5, 4], dur: 6,
+    title: 'Eon Orrery', sub: 'Real orbits, real distances, real sizes. Nothing moved closer to make the picture look nice.' }
+];
+const cine = { i: 0, t: 0 };
+const cineP = new THREE.Vector3(), cineQ = new THREE.Vector3(), cineL = new THREE.Vector3();
+
+function fadeTo(v, ms) {
+  const el = $('fade');
+  el.style.transition = 'opacity ' + (ms || 300) + 'ms linear';
+  el.style.opacity = v;
+}
+function startIntro() {
+  closeMenu();
+  state.mode = 'intro';
+  state.scaleIdx = 0;
+  state.timeIdx = 4;
+  state.paused = false;
+  state.autopilot = false;
+  cine.i = 0; cine.t = 0;
+  $('cine').classList.add('on');
+  $('fade').style.transition = 'none';
+  $('ui').style.visibility = 'hidden';
+  audioOn();
+}
+function endIntro() {
+  $('cine').classList.remove('on');
+  $('cineText').classList.remove('show');
+  fadeTo(0, 400);
+  SET.seenIntro = true; saveSet();
+  openMenu('title');
+}
+function cinematic(dt) {
+  const sh = SHOTS[cine.i];
+  const b = byId[sh.body];
+  cine.t += dt;
+  const u = clamp(cine.t / sh.dur, 0, 1);
+  const e = u * u * (3 - 2 * u);
+  offsetPoint(b, sh.p0, sh.unit, cineP);
+  offsetPoint(b, sh.p1, sh.unit, cineQ);
+  ship.pos.copy(cineP).lerp(cineQ, e);
+  ship.vel.set(0, 0, 0);
+  cineL.copy(b.worldPos).addScaledVector(_bu, b.displayR * 0.33);
+  lookAtPoint(cineL);
+  ship.roll = Math.sin(e * Math.PI) * 0.035;
+
+  // dip to black at each cut
+  const fin = 0.6, fout = 0.6;
+  let a = 0;
+  if (cine.t < fin) a = 1 - cine.t / fin;
+  else if (cine.t > sh.dur - fout) a = (cine.t - (sh.dur - fout)) / fout;
+  $('fade').style.opacity = clamp(a, 0, 1);
+
+  const txt = $('cineText');
+  if (cine.t > fin * 0.9 && cine.t < sh.dur - fout) {
+    if (txt.dataset.i !== String(cine.i)) {
+      txt.dataset.i = String(cine.i);
+      $('cineTitle').textContent = sh.title;
+      $('cineSub').textContent = sh.sub;
+    }
+    txt.classList.add('show');
+  } else txt.classList.remove('show');
+
+  if (cine.t >= sh.dur) {
+    cine.i++; cine.t = 0;
+    if (cine.i >= SHOTS.length) endIntro();
+  }
+}
+
+/* menu backdrop: a slow drift around Saturn */
+let menuAng = 0.6;
+function menuCam(dt) {
+  menuAng += dt * 0.035;
+  const b = byId.saturn;
+  bodyBasis(b);
+  const d = b.displayR * 4.4;
+  // sit sunward of the planet so the face we see is lit, and drift
+  // slowly across it rather than swinging into its shadow
+  const sway = Math.sin(menuAng) * 0.62;
+  cineQ.set(0, 0, 0)
+    .addScaledVector(_bs, -0.58)
+    .addScaledVector(_bt, sway)
+    .addScaledVector(_bu, 0.24 + Math.sin(menuAng * 0.7) * 0.07)
+    .normalize().multiplyScalar(d);
+  ship.pos.copy(b.worldPos).add(cineQ);
+  ship.vel.set(0, 0, 0);
+  lookAtPoint(b.worldPos);
+}
+
+/* ---------------- menus ---------------- */
+let menuMode = 'title';
+const NAV = {
+  title: [['fly', 'Begin flight'], ['dest', 'Choose a world'], ['intro', 'Watch the intro'],
+          ['settings', 'Settings'], ['controls', 'Controls']],
+  pause: [['resume', 'Resume'], ['dest', 'Choose a world'], ['settings', 'Settings'],
+          ['controls', 'Controls'], ['title', 'Main menu']]
+};
+function openMenu(mode) {
+  menuMode = mode;
+  state.mode = 'menu';
+  if (document.pointerLockElement) document.exitPointerLock?.();
+  for (const k in keys) keys[k] = false;
+  const m = $('menu');
+  m.classList.add('on');
+  m.classList.toggle('pause', mode === 'pause');
+  $('menuTitle').textContent = mode === 'pause' ? 'Paused' : 'EON ORRERY';
+  $('menuTag').textContent = mode === 'pause' ? '' : 'A true-scale model of the Solar System';
+  $('ui').style.visibility = 'hidden';
+  $('menuPanel').innerHTML = '';
+  const nav = $('menuNav');
+  nav.innerHTML = '';
+  for (const [act, label] of NAV[mode]) {
+    const btn = document.createElement('button');
+    btn.textContent = label; btn.dataset.act = act;
+    nav.appendChild(btn);
+  }
+  audioEngine(0);
+}
+function closeMenu() {
+  $('menu').classList.remove('on');
+  $('menuPanel').innerHTML = '';
+}
+function resumeFlight() {
+  closeMenu();
+  state.mode = 'fly';
+  $('ui').style.visibility = 'visible';
+  $('ui').style.opacity = state.uiHidden ? '0' : '1';
+  audioOn();
+  if (!isTouch) canvas.requestPointerLock?.();
+}
+function startFlight(b) {
+  closeMenu();
+  state.mode = 'fly';
+  state.autopilot = false;
+  $('ui').style.visibility = 'visible';
+  $('ui').style.opacity = state.uiHidden ? '0' : '1';
+  if (b) { selectTarget(b); placeAtBody(b, 5.5); }
+  audioOn();
+  if (!isTouch) canvas.requestPointerLock?.();
+  toast(b ? 'Arrived at ' + b.name : 'Flight systems live');
+}
+
+function panelDest() {
+  const d = document.createElement('div');
+  d.id = 'destGrid';
+  for (const b of cycleList) {
+    const btn = document.createElement('button');
+    btn.innerHTML = b.name + '<small>' + (b.isMoon ? 'moon of ' + byId[b.parent].name : b.type.replace(' planet', '')) + '</small>';
+    btn.onclick = () => { blip(880, 0.08); startFlight(b); };
+    d.appendChild(btn);
+  }
+  return d;
+}
+function row(label, control) {
+  const r = document.createElement('div');
+  r.className = 'srow';
+  const s = document.createElement('span'); s.textContent = label;
+  r.appendChild(s); r.appendChild(control);
+  return r;
+}
+function toggleBtn(get, set) {
+  const b = document.createElement('button');
+  b.className = 'tgl';
+  const sync = () => { const v = get(); b.classList.toggle('on', v); b.textContent = v ? 'On' : 'Off'; };
+  b.onclick = () => { set(!get()); sync(); blip(640, 0.05); saveSet(); };
+  sync();
+  return b;
+}
+function panelSettings() {
+  const p = document.createElement('div');
+  p.className = 'mpan';
+  p.innerHTML = '<h4>Settings</h4>';
+  const sl = document.createElement('input');
+  sl.type = 'range'; sl.min = '0.25'; sl.max = '2.5'; sl.step = '0.05'; sl.value = SET.sens;
+  const val = document.createElement('span');
+  val.style.cssText = 'min-width:34px;text-align:right;color:var(--cyan)';
+  val.textContent = Number(SET.sens).toFixed(2);
+  sl.oninput = () => { SET.sens = parseFloat(sl.value); val.textContent = SET.sens.toFixed(2); saveSet(); };
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:9px';
+  wrap.appendChild(sl); wrap.appendChild(val);
+  p.appendChild(row('Mouse sensitivity', wrap));
+  p.appendChild(row('Invert vertical look', toggleBtn(() => SET.invertY, v => SET.invertY = v)));
+  p.appendChild(row('Approach speed governor', toggleBtn(() => SET.governor, v => SET.governor = v)));
+  p.appendChild(row('Flight assist', toggleBtn(() => state.assist, v => state.assist = v)));
+  p.appendChild(row('Sound', toggleBtn(() => SET.audio, v => { SET.audio = v; if (v) audioOn(); else audioEngine(0); })));
+  p.appendChild(row('Orbit lines', toggleBtn(() => state.showOrbits, v => { state.showOrbits = v; orbitGroup.visible = v; })));
+  p.appendChild(row('Labels', toggleBtn(() => state.showLabels, v => state.showLabels = v)));
+  const sc = document.createElement('button');
+  sc.className = 'tgl on'; sc.style.minWidth = '104px';
+  sc.textContent = SCALES[state.scaleIdx].n;
+  sc.onclick = () => {
+    state.scaleIdx = (state.scaleIdx + 1) % SCALES.length;
+    state.scaleJump = true;
+    sc.textContent = SCALES[state.scaleIdx].n;
+    blip(600, 0.05);
+  };
+  p.appendChild(row('Planet size scale', sc));
+  const note = document.createElement('div');
+  note.style.cssText = 'margin-top:10px;font-size:12px;color:var(--muted);line-height:1.45';
+  note.textContent = 'The governor scales your speed ceiling to the gap to the nearest surface, so you slow into an approach automatically. Turn it off for full manual throttle.';
+  p.appendChild(note);
+  return p;
+}
+function panelControls() {
+  const p = document.createElement('div');
+  p.className = 'mpan';
+  const rows = [
+    ['Look', 'Mouse'], ['Thrust / reverse', 'W / S'], ['Strafe', 'A / D'],
+    ['Up / down', 'Space / Ctrl'], ['Roll', 'Q / E'], ['Boost ×4', 'Shift'],
+    ['Precision ×0.1', 'Alt'], ['Throttle notch', 'Wheel or − / ='],
+    ['Full stop', 'X'], ['Cycle target', 'Tab'], ['Autopilot to target', 'T'],
+    ['Time rate', '[ / ]'], ['Pause time', 'P'], ['Size scale', 'M'],
+    ['Orbits / labels', 'O / L'], ['Flight assist', 'Z'], ['Approach governor', 'G'],
+    ['Jump to a world', '1 … 9, 0'], ['Hide interface', 'H'], ['Fullscreen', 'F'], ['Menu', 'Esc']
+  ];
+  p.innerHTML = '<h4>Controls</h4><div class="kgrid">' +
+    rows.map(r => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('') + '</div>';
+  return p;
+}
+$('menuNav').addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  const act = btn.dataset.act;
+  blip(820, 0.07);
+  const panel = $('menuPanel');
+  const showPanel = (name, make) => {
+    if (panel.dataset.p === name) { panel.innerHTML = ''; panel.dataset.p = ''; return; }
+    panel.innerHTML = ''; panel.appendChild(make()); panel.dataset.p = name;
+  };
+  if (act === 'fly') startFlight(byId.earth);
+  else if (act === 'resume') resumeFlight();
+  else if (act === 'intro') startIntro();
+  else if (act === 'title') openMenu('title');
+  else if (act === 'dest') showPanel('dest', panelDest);
+  else if (act === 'settings') showPanel('settings', panelSettings);
+  else if (act === 'controls') showPanel('controls', panelControls);
+});
+$('skip').addEventListener('click', endIntro);
+$('btnPause').addEventListener('click', () => openMenu('pause'));
+$('btnMute').addEventListener('click', () => {
+  SET.audio = !SET.audio; saveSet();
+  $('btnMute').style.opacity = SET.audio ? '1' : '0.4';
+  if (SET.audio) { audioOn(); blip(700, 0.08); } else audioEngine(0);
+});
+
+/* ---------------- throttle gauge + target arrow ---------------- */
+const thrCells = [];
+(function buildLadder() {
+  const l = $('thrLadder');
+  for (let i = 0; i < THROTTLE.length; i++) {
+    const c = document.createElement('i');
+    l.appendChild(c); thrCells.push(c);
+  }
+})();
+let lastThrKey = '';
+function updateThrottleUI() {
+  let govIdx = THROTTLE.length - 1;
+  for (let i = 0; i < THROTTLE.length; i++) if (THROTTLE[i].v > state.govKms) { govIdx = i - 1; break; }
+  const key = state.thr + '/' + govIdx;
+  if (key !== lastThrKey) {
+    lastThrKey = key;
+    for (let i = 0; i < thrCells.length; i++) {
+      const on = i <= state.thr && i <= govIdx;
+      const gov = i <= state.thr && i > govIdx;
+      thrCells[i].className = on ? 'on' : gov ? 'gov' : '';
+    }
+    $('thrName').textContent = THROTTLE[state.thr].n;
+  }
+  const binding = SET.governor && state.govKms < THROTTLE[state.thr].v;
+  $('govNote').textContent = binding ? 'Approach limit ' + fmtSpeed(state.govKms) : '';
+}
+function updateTargetArrow() {
+  const el = $('tgtArrow');
+  const t = state.target;
+  if (!t || state.mode !== 'fly' || state.uiHidden) { el.style.display = 'none'; return; }
+  const ahead = t.rel.dot(fwdV) > 0;
+  proj.copy(t.rel).project(camera);
+  if (ahead && Math.abs(proj.x) < 0.94 && Math.abs(proj.y) < 0.94) { el.style.display = 'none'; return; }
+  let x = proj.x, y = proj.y;
+  if (!ahead) { x = -x; y = -y; }
+  const m = Math.max(Math.abs(x), Math.abs(y), 1e-6);
+  x /= m; y /= m;
+  const px = innerWidth / 2 + x * innerWidth * 0.44;
+  const py = innerHeight / 2 - y * innerHeight * 0.44;
+  el.style.display = 'block';
+  el.style.transform = 'translate(-50%,-50%) translate(' + px.toFixed(0) + 'px,' + py.toFixed(0) +
+    'px) rotate(' + Math.atan2(-y, x).toFixed(3) + 'rad)';
+}
+
+/* ------------------------------------------------------------
+   16.  BOOT
    ------------------------------------------------------------ */
 (async function boot() {
   state.jd = jdNow();
@@ -1936,18 +2507,24 @@ function updateHUD(f) {
   selectTarget(byId.earth);
   placeAtBody(byId.earth, 5.5);
   state.timeIdx = 3;
+  $('btnMute').style.opacity = SET.audio ? '1' : '0.4';
 
-  $('launch').classList.add('ready');
-  $('launch').addEventListener('click', () => {
-    $('splash').classList.add('gone');
-    setTimeout(() => { $('splash').style.display = 'none'; }, 950);
-    running = true;
-    last = performance.now();
-    if (!isTouch) canvas.requestPointerLock?.();
-    setTimeout(() => toast('Earth — hold W to thrust'), 1200);
-  }, { once: true });
-
+  // hand over to the title sequence
+  running = true;
+  last = performance.now();
+  state.mode = 'menu';
+  menuMode = 'title';
   requestAnimationFrame(render);
+
+  $('loadTxt').textContent = 'Ready';
+  $('barFill').style.width = '100%';
+  await new Promise(r => setTimeout(r, 450));
+  $('splash').classList.add('gone');
+  setTimeout(() => { $('splash').style.display = 'none'; }, 950);
+
+  // first-time visitors get the flythrough; everyone else lands on the menu
+  if (SET.seenIntro) openMenu('title');
+  else { $('fade').style.opacity = '1'; setTimeout(startIntro, 650); }
 })();
 </script>
 </body>
