@@ -166,7 +166,7 @@
     min-height:14px;margin-top:1px}
 
   /* ---- off-screen target arrow ---- */
-  #tgtArrow{position:absolute;display:none;width:0;height:0;
+  #tgtArrow{position:absolute;display:none;pointer-events:auto;cursor:pointer;width:0;height:0;
     border-left:13px solid var(--amber);border-top:8px solid transparent;border-bottom:8px solid transparent;
     filter:drop-shadow(0 0 5px rgba(255,180,84,.7))}
 
@@ -290,6 +290,7 @@
   body.touchui #flightPanel #speedBar,
   body.touchui #flightPanel .r-cap,
   body.touchui #flightPanel .r-lt,
+  body.touchui #flightPanel .r-frame,
   body.touchui #flightPanel .pill{display:none}
   body.touchui #flightPanel > div:last-child{display:none}
   body.touchui #flightPanel .big{font-size:17px;margin-bottom:2px}
@@ -344,6 +345,7 @@
     <div class="row r-cap"><span>Speed limit</span><span id="capTxt" class="mono">—</span></div>
     <div class="row r-rng"><span>Range to target</span><span id="rngTxt" class="mono">—</span></div>
     <div class="row r-lt"><span>Light delay</span><span id="ltTxt" class="mono">—</span></div>
+    <div class="row r-eta"><span>Closing</span><span id="etaTxt" class="mono">—</span></div>
     <div class="row r-frame"><span>Speed relative to</span><span id="frameTxt">the Sun</span></div>
     <div>
       <span class="pill on" id="pillAssist">Assist</span><span class="pill" id="pillAuto">Autopilot</span><span class="pill" id="pillOrbit">Orbits</span>
@@ -361,6 +363,7 @@
     <div class="row"><span>Throttle notch</span><span>Wheel / <kbd>-</kbd><kbd>=</kbd></span></div>
     <div class="row"><span>Full stop</span><span><kbd>X</kbd></span></div>
     <div class="row"><span>Cycle target</span><span><kbd>Tab</kbd> / click</span></div>
+    <div class="row"><span>Point at target</span><span><kbd>R</kbd></span></div>
     <div class="row"><span>Autopilot to target</span><span><kbd>T</kbd></span></div>
     <div class="row"><span>Time rate</span><span><kbd>[</kbd><kbd>]</kbd> · <kbd>P</kbd> pause</span></div>
     <div class="row"><span>Size scale</span><span><kbd>M</kbd></span></div>
@@ -1631,6 +1634,7 @@ addEventListener('keydown', e => {
   if (['Tab', 'Space'].includes(e.code) || ['[', ']', '-', '='].includes(e.key)) e.preventDefault();
   if (e.code === 'Tab') cycleTarget(e.shiftKey ? -1 : 1);
   else if (k === 't') toggleAutopilot();
+  else if (k === 'r') aimAtTarget();
   else if (k === 'z') { state.assist = !state.assist; toast(state.assist ? 'Flight assist on' : 'Flight assist off — Newtonian drift'); }
   else if (k === 'x') { ship.vel.set(0, 0, 0); state.autopilot = false; toast('Full stop'); }
   else if (k === 'o') { state.showOrbits = !state.showOrbits; orbitGroup.visible = state.showOrbits; toast('Orbits ' + (state.showOrbits ? 'on' : 'off')); }
@@ -1885,6 +1889,13 @@ function pickFromScreen(x, y) {
   d.unproject(camera).normalize();
   pickFromDir(d, 0.1);
 }
+function aimAtTarget() {
+  if (!state.target) return;
+  lookAtPoint(state.target.worldPos);
+  blip(700, 0.06);
+  toast('Pointing at ' + state.target.name);
+}
+
 function toggleAutopilot() {
   if (!state.target) return;
   state.autopilot = !state.autopilot;
@@ -2004,13 +2015,27 @@ function updatePositions(dt) {
     b.worldPos.set(par.worldPos.x + x, par.worldPos.y + y2, par.worldPos.z + z2);
   }
 
-  // pick the most specific bubble the ship is inside, then ride with it
+  // Pick the most specific bubble the ship is inside, then ride with it.
   let ref = null, best = Infinity;
   for (const b of objs) {
     if (b.sun) continue;
     const fr = frameRadius(b);
     if (fr < best && b.prevPos.distanceTo(ship.pos) < fr) { best = fr; ref = b; }
   }
+  // Under autopilot the target's frame always wins, even while we are
+  // still inside the bubble we are departing from — otherwise the
+  // bubble we are leaving pins us to the wrong frame and the
+  // destination runs away before we can clear it.
+  // Outside every bubble, ride with the target instead of the Sun.
+  // Without this you are chasing a moving planet: under time
+  // compression a planet sweeps past faster than its own bubble is
+  // wide (Earth covers 2.6 million km per second at 1 day/s, against a
+  // 925,000 km bubble), so the bubble can never be entered and the
+  // target is literally uncatchable. Riding the target's frame costs
+  // nothing — the carry is incremental, so switching frames moves the
+  // ship not at all — and it makes range close purely by your thrust.
+  const tgt = (state.target && !state.target.sun) ? state.target : null;
+  if (tgt && (state.autopilot || !ref)) ref = tgt;
   state.frame = ref;
   if (ref && frameInit && !state.scaleJump) {
     ship.pos.x += ref.worldPos.x - ref.prevPos.x;
@@ -2026,20 +2051,28 @@ function updatePositions(dt) {
    the gap to the nearest surface means you decelerate into an approach
    automatically and cannot ram a planet at light speed, while open
    space stays as fast as the throttle allows. */
+let nearBody = null;
 function governorKms() {
-  if (!SET.governor) return Infinity;
+  nearBody = null;
   let gap = Infinity;
   for (const b of objs) {
-    const d = b.rel.length() - b.displayR;
-    if (d < gap) gap = d;
+    // measured against live positions, not the render pass's cached
+    // offsets, which lag by a frame — at these speeds a frame of lag
+    // is millions of kilometres
+    const d = b.worldPos.distanceTo(ship.pos) - b.displayR;
+    if (d < gap) { gap = d; nearBody = b; }
   }
-  return Math.max(0.35, (gap / U) * 0.17);
+  if (!SET.governor) return Infinity;
+  // Speed ceiling is a fixed fraction of the gap to the nearest
+  // surface, which makes every approach exponential: roughly the same
+  // handful of seconds to arrive whether you start at the Moon or at
+  // Neptune, and you can never be going fast enough to ram a planet.
+  return Math.max(1.5, (gap / U) * 0.5);
 }
 
 function flight(dt) {
-  const notchKms = THROTTLE[state.thr].v;
   state.govKms = governorKms();
-  const maxKms = Math.min(notchKms, state.govKms);
+  const maxKms = Math.min(THROTTLE[state.thr].v, state.govKms);
   const maxU = maxKms * U;
   let thrFwd = 0, thrSide = 0, thrUp = 0, rollIn = 0;
 
@@ -2048,671 +2081,4 @@ function flight(dt) {
   if (keys.KeyD) thrSide += 1;
   if (keys.KeyA) thrSide -= 1;
   if (keys.Space) thrUp += 1;
-  if (keys.ControlLeft || keys.ControlRight || keys.KeyC) thrUp -= 1;
-  if (keys.KeyE) rollIn += 1;
-  if (keys.KeyQ) rollIn -= 1;
-  thrFwd += touchAxes.fwd + padAxes.fwd;
-  thrSide += touchAxes.side + padAxes.side;
-  thrUp += touchAxes.up + padAxes.up;
-  rollIn += padAxes.roll;
-
-  if (keys.ArrowLeft) ship.yaw += 1.4 * dt;
-  if (keys.ArrowRight) ship.yaw -= 1.4 * dt;
-  if (keys.ArrowUp) ship.pitch = clamp(ship.pitch + 1.1 * dt, -1.569, 1.569);
-  if (keys.ArrowDown) ship.pitch = clamp(ship.pitch - 1.1 * dt, -1.569, 1.569);
-  ship.roll += rollIn * 1.6 * dt;
-
-  const boost = (keys.ShiftLeft || keys.ShiftRight || padAxes.boost) ? 4 : 1;
-  const fine = (keys.AltLeft || keys.AltRight) ? 0.1 : 1;
-  const cap = maxU * boost * fine;
-  // ~2 s to reach the ceiling: taps nudge, holds commit
-  const accel = cap * 0.55;
-
-  const q = shipQuat();
-  const fwd = tmpV.set(0, 0, -1).applyQuaternion(q);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-
-  if (state.autopilot && state.target) {
-    const b = state.target;
-    const park = Math.max(b.displayR * 3.4, b.displayR + 0.25);
-    const to = tmpV2.copy(b.worldPos).sub(ship.pos);
-    const dist = to.length();
-    const gap = dist - park;
-    if (gap <= park * 0.06) {
-      state.autopilot = false;
-      ship.vel.set(0, 0, 0);
-      toast('Arrived — ' + b.name);
-    } else {
-      const dir = to.multiplyScalar(1 / Math.max(dist, 1e-12));
-      const wantYaw = Math.atan2(-dir.x, -dir.z);
-      const wantPitch = Math.atan2(dir.y, Math.hypot(dir.x, dir.z));
-      const dy = ((wantYaw - ship.yaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-      ship.yaw += dy * Math.min(1, dt * 3.2);
-      ship.pitch += (wantPitch - ship.pitch) * Math.min(1, dt * 3.2);
-      ship.roll *= Math.max(0, 1 - dt * 2);
-      // cruise flat out, then burn down over the last stretch
-      const cruise = state.apCruise || Math.max(cap, gap / 6);
-      const v = Math.min(cruise, Math.max(gap * 1.8, park * 0.3));
-      ship.vel.copy(dir).multiplyScalar(v);
-    }
-  } else {
-    if (thrFwd) ship.vel.addScaledVector(fwd, thrFwd * accel * dt);
-    if (thrSide) ship.vel.addScaledVector(right, thrSide * accel * dt);
-    if (thrUp) ship.vel.addScaledVector(up, thrUp * accel * dt);
-    if (state.assist) {
-      if (!rollIn) ship.roll *= Math.max(0, 1 - 2.4 * dt);   // settle back level
-      const noInput = !thrFwd && !thrSide && !thrUp;
-      const damp = noInput ? 1.25 : 0.7;
-      ship.vel.multiplyScalar(Math.max(0, 1 - damp * dt));
-      // re-point existing velocity toward where we are facing
-      const sp = ship.vel.length();
-      if (sp > 1e-9 && (thrFwd > 0)) {
-        ship.vel.lerp(tmpV2.copy(fwd).multiplyScalar(sp), Math.min(1, dt * 2.2));
-      }
-    }
-    const sp = ship.vel.length();
-    if (sp > cap) ship.vel.multiplyScalar(cap / sp);
-  }
-
-  ship.pos.addScaledVector(ship.vel, dt);
-
-  // never end up inside a world
-  for (const b of objs) {
-    const d = tmpV2.subVectors(ship.pos, b.worldPos);
-    const len = d.length();
-    const floor = b.displayR * 1.002 + 0.002;
-    if (len < floor && len > 1e-9) {
-      ship.pos.copy(b.worldPos).addScaledVector(d.multiplyScalar(1 / len), floor);
-      const into = ship.vel.dot(d);
-      if (into < 0) ship.vel.addScaledVector(d, -into);
-      if (state.autopilot) { state.autopilot = false; }
-    }
-  }
-  return { cap, maxKms };
-}
-
-function render(now) {
-  requestAnimationFrame(render);
-  if (!running) return;
-  let dt = (now - last) / 1000;
-  last = now;
-  // the cinematic runs on wall-clock so it lasts the scripted time on
-  // any machine; simulation keeps the tighter clamp for stability
-  const realDt = Math.min(dt, 0.5);
-  dt = Math.min(dt, 0.1);
-
-  if (state.mode === 'fly') readPad();
-
-  const timeRuns = !state.paused && !(state.mode === 'menu' && menuMode === 'pause');
-  if (timeRuns) state.jd += TIME_RATES[state.timeIdx].d * dt;
-  updatePositions(dt);
-
-  let f = { maxKms: THROTTLE[state.thr].v };
-  if (state.mode === 'fly') f = flight(dt);
-  else if (state.mode === 'intro') cinematic(realDt);
-  else if (state.mode === 'menu' && menuMode === 'title') menuCam(dt);
-
-  // ---- camera at the origin, everything else moved to suit ----
-  camera.quaternion.copy(shipQuat());
-  camera.position.set(0, 0, 0);
-
-  const sc = SCALES[state.scaleIdx];
-  sunWorld.set(0, 0, 0);
-  const pxToWorld = 2 * Math.tan(camera.fov * DEG / 2) / innerHeight;
-
-  for (const b of objs) {
-    b.rel.copy(b.worldPos).sub(ship.pos);
-    b.pivot.position.copy(b.rel);
-    b.mesh.scale.setScalar(b.displayR);
-
-    // axial tilt, then spin
-    b.pivot.quaternion.setFromAxisAngle(AXIS_X, (b.tilt || 0) * DEG);
-    if (b.rot) {
-      const turns = (state.jd * 24) / b.rot;
-      b.mesh.rotation.set(0, turns * Math.PI * 2, 0);
-    }
-    if (b.ringMesh) b.ringMesh.scale.setScalar(sc.p);
-
-    // sun direction for shading
-    if (!b.sun) {
-      const sd = tmpV.copy(sunWorld).sub(b.worldPos).normalize();
-      const u = b.mesh.material.uniforms;
-      if (u && u.uSunDir) u.uSunDir.value.copy(sd);
-      if (b.clouds) b.clouds.material.uniforms.uSunDir.value.copy(sd);
-      if (b.atmoMesh) b.atmoMesh.material.uniforms.uSunDir.value.copy(sd);
-      if (b.ringMat) {
-        b.ringMat.uniforms.uSunDir.value.copy(sd);
-        b.ringMat.uniforms.uCenter.value.copy(b.rel);
-        b.ringMat.uniforms.uPlanetR.value = b.displayR;
-        b.ringMat.uniforms.uAxis.value.set(0, 1, 0).applyQuaternion(b.pivot.quaternion);
-      }
-    }
-
-    const dist = Math.max(b.rel.length(), 1e-9);
-    b.apparent = b.displayR / dist / pxToWorld;
-    b.mesh.visible = b.apparent > 0.34;
-
-    // below a pixel a world is just a star — keep it visible as one
-    if (b.dot) {
-      let op = 0;
-      if (b.apparent < 2.8) {
-        const dSun = Math.max(b.worldPos.length(), 1e-6);
-        const L = Math.log10((b.rU * b.rU) / (dSun * dSun * dist * dist) + 1e-40);
-        const magT = clamp((L + 24) / 5, 0.04, 1);
-        sv1.copy(b.worldPos).multiplyScalar(-1).normalize();
-        sv2.copy(b.rel).multiplyScalar(-1).normalize();
-        const phase = 0.5 + 0.5 * sv1.dot(sv2);
-        let gate = 1;
-        if (b.isMoon) gate = byId[b.parent].rel.length() < b.a * U * 400 ? 1 : 0;
-        op = clamp((2.8 - b.apparent) / 2.2, 0, 1) * (0.2 + 0.8 * phase) * magT * gate;
-      }
-      if (op > 0.012) {
-        b.dot.visible = true;
-        b.dot.material.opacity = Math.min(op, 1);
-        b.dot.position.copy(b.rel);
-        b.dot.scale.setScalar(10 * pxToWorld * dist);
-      } else b.dot.visible = false;
-    }
-  }
-
-  // orbits ride with the floating origin
-  if (orbitGroup) {
-    orbitGroup.position.set(-ship.pos.x, -ship.pos.y, -ship.pos.z);
-    orbitGroup.visible = state.showOrbits;
-  }
-  if (beltMain) {
-    beltMain.position.copy(orbitGroup.position);
-    beltKuiper.position.copy(orbitGroup.position);
-    // rigid mean motion — illustrative, not per-asteroid Kepler
-    beltMain.rotation.y = -state.jd / 1680 * Math.PI * 2;
-    beltKuiper.rotation.y = -state.jd / 110000 * Math.PI * 2;
-  }
-
-  // sun glow sized so the Sun stays a visible star from anywhere
-  if (sunGlow) {
-    const s = byId.sun;
-    const d = Math.max(s.rel.length(), 1e-6);
-    const px = (s.displayR / d) * (innerHeight / (2 * Math.tan(camera.fov * DEG / 2)));
-    const want = Math.max(s.displayR * 3.6, d * 0.0075);
-    sunGlow.position.copy(s.rel);
-    sunGlow.scale.setScalar(want);
-    sunGlow.material.opacity = px < 1.2 ? 0.85 : clamp(1.15 - px / 400, 0.22, 1);
-  }
-
-  updateLabels();
-  if (state.mode === 'fly') {
-    updateHUD(f);
-    updateThrottleUI();
-    audioEngine(clamp(ship.vel.length() / Math.max(f.cap || 1e-9, 1e-9), 0, 1));
-  }
-  updateTargetArrow();
-
-  if (toastT && now > toastT) { $('toast').style.opacity = '0'; toastT = 0; }
-  renderer.render(scene, camera);
-}
-
-const fwdV = new THREE.Vector3();
-function updateLabels() {
-  const show = state.showLabels && !state.uiHidden;
-  fwdV.set(0, 0, -1).applyQuaternion(camera.quaternion);
-  const hw = innerWidth / 2, hh = innerHeight / 2;
-  for (const b of objs) {
-    const el = b.label;
-    if (!show) { if (el.style.display !== 'none') el.style.display = 'none'; continue; }
-    const dist = b.rel.length();
-    proj.copy(b.rel).project(camera);
-    const ahead = b.rel.dot(fwdV) > 0;
-    const onScreen = ahead && Math.abs(proj.x) < 1.08 && Math.abs(proj.y) < 1.08;
-    // hide a moon's tag unless we are reasonably near its planet
-    let want = onScreen;
-    if (b.isMoon) {
-      const par = byId[b.parent];
-      want = want && par.rel.length() < b.a * U * 260;
-    }
-    if (b.apparent > innerHeight * 0.62) want = false;      // too close, it fills the view
-    if (!want) { if (el.style.display !== 'none') el.style.display = 'none'; continue; }
-    const x = hw + proj.x * hw;
-    const y = hh - proj.y * hh;
-    const off = clamp(b.apparent + 18, 18, innerHeight * 0.42);
-    el.style.display = 'block';
-    el.style.transform = 'translate(-50%,-50%) translate(' + x.toFixed(1) + 'px,' + (y - off).toFixed(1) + 'px)';
-    el.classList.toggle('sel', b === state.target);
-    b.labelDist.textContent = fmtDist(dist / U);
-  }
-}
-
-function updateHUD(f) {
-  const d = jdToDate(state.jd);
-  $('dateTxt').textContent =
-    String(d.getUTCDate()).padStart(2, '0') + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear() +
-    '  ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
-  $('timeRate').textContent = state.paused ? 'Paused' : TIME_RATES[state.timeIdx].n;
-  $('scaleTxt').textContent = SCALES[state.scaleIdx].n;
-
-  const spdKms = ship.vel.length() / U;
-  $('spdTxt').textContent = fmtSpeed(spdKms);
-  $('capTxt').textContent = fmtSpeed(f.maxKms);
-  $('speedFill').style.width = (clamp(spdKms / Math.max(f.maxKms, 1e-9), 0, 1) * 100).toFixed(1) + '%';
-
-  if (state.target) {
-    const t = state.target;
-    const surf = Math.max(0, (t.rel.length() - t.displayR)) / U;
-    $('rngTxt').textContent = fmtDist(surf);
-    $('ltTxt').textContent = fmtLight(t.rel.length() / U);
-  } else { $('rngTxt').textContent = '—'; $('ltTxt').textContent = '—'; }
-
-  $('frameTxt').textContent = state.frame ? state.frame.name : 'the Sun';
-
-  $('pillAssist').classList.toggle('on', state.assist);
-  $('pillAuto').classList.toggle('on', state.autopilot);
-  $('pillOrbit').classList.toggle('on', state.showOrbits);
-}
-
-/* ------------------------------------------------------------
-   15.  FRONT END — cinematic, menus, settings
-   ------------------------------------------------------------ */
-const _bs = new THREE.Vector3(), _bu = new THREE.Vector3(0, 1, 0), _bt = new THREE.Vector3();
-function bodyBasis(b) {
-  _bs.copy(b.worldPos);
-  if (_bs.lengthSq() < 1e-12) _bs.set(1, 0, 0); else _bs.normalize();
-  _bt.crossVectors(_bu, _bs);
-  if (_bt.lengthSq() < 1e-9) _bt.set(0, 0, 1); else _bt.normalize();
-}
-function offsetPoint(b, o, unit, out) {
-  bodyBasis(b);
-  const k = unit === 'au' ? AU : b.displayR;
-  return out.copy(b.worldPos)
-    .addScaledVector(_bs, o[0] * k)
-    .addScaledVector(_bu, o[1] * k)
-    .addScaledVector(_bt, o[2] * k);
-}
-
-/* The intro is flown by the real engine rather than played from a
-   video file: every frame is the actual simulation, so it is sharp at
-   any resolution and costs nothing to download. */
-const SHOTS = [
-  { body: 'sun', unit: 'au', p0: [40, 7, 16], p1: [30, 5, 12], dur: 7,
-    title: 'The edge', sub: 'Forty times further out than Earth, our star is just the brightest thing in a cold sky.' },
-  { body: 'neptune', unit: 'r', p0: [-13, 3.4, 9], p1: [-5, 1.2, 3.3], dur: 8,
-    title: 'Neptune', sub: 'Four and a half billion kilometres from home. Sunlight takes four hours to get here.' },
-  { body: 'uranus', unit: 'r', p0: [9, -2.5, 6.5], p1: [3.5, -0.9, 2.7], dur: 6.5,
-    title: 'Uranus', sub: 'Tipped ninety-eight degrees. It rolls around its orbit lying on its side.' },
-  { body: 'saturn', unit: 'r', p0: [10.5, 0.85, 6.5], p1: [3, 0.2, 2], dur: 10,
-    title: 'Saturn', sub: 'The rings run two hundred and eighty thousand kilometres wide, and average about ten metres thick.' },
-  { body: 'jupiter', unit: 'r', p0: [-10, 2, 7], p1: [-3.3, 0.75, 2.5], dur: 8,
-    title: 'Jupiter', sub: 'Two and a half times the mass of every other planet put together.' },
-  { body: 'mars', unit: 'r', p0: [7, 1.7, 4.8], p1: [2.5, 0.65, 1.8], dur: 6.5,
-    title: 'Mars', sub: 'Thin air, red dust, and a volcano twenty-two kilometres high.' },
-  { body: 'earth', unit: 'r', p0: [6.4, 1.3, 5.4], p1: [2.2, 0.45, 1.6], dur: 9,
-    title: 'Earth', sub: 'Everyone who has ever lived, lived here. The whole of it fits on this one damp rock.' },
-  { body: 'sun', unit: 'r', p0: [6.4, 1.5, 4.8], p1: [3, 0.75, 2.3], dur: 8,
-    title: 'The Sun', sub: 'Ninety-nine point eight six per cent of all the mass out here. The planets are what was left over.' },
-  { body: 'sun', unit: 'au', p0: [2, 0.65, 1.5], p1: [5.4, 1.5, 4], dur: 6,
-    title: 'Eon Orrery', sub: 'Real orbits, real distances, real sizes. Nothing moved closer to make the picture look nice.' }
-];
-const cine = { i: 0, t: 0 };
-const cineP = new THREE.Vector3(), cineQ = new THREE.Vector3(), cineL = new THREE.Vector3();
-
-function fadeTo(v, ms) {
-  const el = $('fade');
-  el.style.transition = 'opacity ' + (ms || 300) + 'ms linear';
-  el.style.opacity = v;
-}
-function startIntro() {
-  closeMenu();
-  state.mode = 'intro';
-  state.scaleIdx = 0;
-  state.timeIdx = 4;
-  state.paused = false;
-  state.autopilot = false;
-  cine.i = 0; cine.t = 0;
-  $('cine').classList.add('on');
-  $('fade').style.transition = 'none';
-  $('ui').style.visibility = 'hidden';
-  audioOn();
-}
-function endIntro() {
-  $('cine').classList.remove('on');
-  $('cineText').classList.remove('show');
-  fadeTo(0, 400);
-  SET.seenIntro = true; saveSet();
-  openMenu('title');
-}
-function cinematic(dt) {
-  const sh = SHOTS[cine.i];
-  const b = byId[sh.body];
-  cine.t += dt;
-  const u = clamp(cine.t / sh.dur, 0, 1);
-  const e = u * u * (3 - 2 * u);
-  offsetPoint(b, sh.p0, sh.unit, cineP);
-  offsetPoint(b, sh.p1, sh.unit, cineQ);
-  ship.pos.copy(cineP).lerp(cineQ, e);
-  ship.vel.set(0, 0, 0);
-  cineL.copy(b.worldPos).addScaledVector(_bu, b.displayR * 0.33);
-  lookAtPoint(cineL);
-  ship.roll = Math.sin(e * Math.PI) * 0.035;
-
-  // dip to black at each cut
-  const fin = 0.6, fout = 0.6;
-  let a = 0;
-  if (cine.t < fin) a = 1 - cine.t / fin;
-  else if (cine.t > sh.dur - fout) a = (cine.t - (sh.dur - fout)) / fout;
-  $('fade').style.opacity = clamp(a, 0, 1);
-
-  const txt = $('cineText');
-  if (cine.t > fin * 0.9 && cine.t < sh.dur - fout) {
-    if (txt.dataset.i !== String(cine.i)) {
-      txt.dataset.i = String(cine.i);
-      $('cineTitle').textContent = sh.title;
-      $('cineSub').textContent = sh.sub;
-    }
-    txt.classList.add('show');
-  } else txt.classList.remove('show');
-
-  if (cine.t >= sh.dur) {
-    cine.i++; cine.t = 0;
-    if (cine.i >= SHOTS.length) endIntro();
-  }
-}
-
-/* menu backdrop: a slow drift around Saturn */
-let menuAng = 0.6;
-function menuCam(dt) {
-  menuAng += dt * 0.035;
-  const b = byId.saturn;
-  bodyBasis(b);
-  const d = b.displayR * 4.4;
-  // sit sunward of the planet so the face we see is lit, and drift
-  // slowly across it rather than swinging into its shadow
-  const sway = Math.sin(menuAng) * 0.62;
-  cineQ.set(0, 0, 0)
-    .addScaledVector(_bs, -0.58)
-    .addScaledVector(_bt, sway)
-    .addScaledVector(_bu, 0.24 + Math.sin(menuAng * 0.7) * 0.07)
-    .normalize().multiplyScalar(d);
-  ship.pos.copy(b.worldPos).add(cineQ);
-  ship.vel.set(0, 0, 0);
-  lookAtPoint(b.worldPos);
-}
-
-/* ---------------- menus ---------------- */
-let menuMode = 'title';
-const NAV = {
-  title: [['fly', 'Begin flight'], ['dest', 'Choose a world'], ['intro', 'Watch the intro'],
-          ['settings', 'Settings'], ['controls', 'Controls']],
-  pause: [['resume', 'Resume'], ['dest', 'Choose a world'], ['settings', 'Settings'],
-          ['controls', 'Controls'], ['title', 'Main menu']]
-};
-function openMenu(mode) {
-  menuMode = mode;
-  state.mode = 'menu';
-  if (document.pointerLockElement) document.exitPointerLock?.();
-  for (const k in keys) keys[k] = false;
-  const m = $('menu');
-  m.classList.add('on');
-  m.classList.toggle('pause', mode === 'pause');
-  $('menuTitle').textContent = mode === 'pause' ? 'Paused' : 'EON ORRERY';
-  $('menuTag').textContent = mode === 'pause' ? '' : 'A true-scale model of the Solar System';
-  $('ui').style.visibility = 'hidden';
-  if (hasTouch) stickRelease();
-  touchAxes.up = 0;
-  $('menuPanel').innerHTML = '';
-  checkOrientation();
-  const nav = $('menuNav');
-  nav.innerHTML = '';
-  for (const [act, label] of NAV[mode]) {
-    const btn = document.createElement('button');
-    btn.textContent = label; btn.dataset.act = act;
-    nav.appendChild(btn);
-  }
-  audioEngine(0);
-}
-function closeMenu() {
-  $('menu').classList.remove('on');
-  $('menuPanel').innerHTML = '';
-}
-function resumeFlight() {
-  closeMenu();
-  state.mode = 'fly';
-  checkOrientation();
-  $('ui').style.visibility = 'visible';
-  $('ui').style.opacity = state.uiHidden ? '0' : '1';
-  audioOn();
-  if (!isTouch) canvas.requestPointerLock?.();
-}
-function startFlight(b) {
-  closeMenu();
-  state.mode = 'fly';
-  state.autopilot = false;
-  $('ui').style.visibility = 'visible';
-  $('ui').style.opacity = state.uiHidden ? '0' : '1';
-  if (b) { selectTarget(b); placeAtBody(b, 5.5); }
-  audioOn();
-  checkOrientation();
-  if (!isTouch) canvas.requestPointerLock?.();
-  if (isTouch && !SET.seenTouchHint) {
-    SET.seenTouchHint = true; saveSet();
-    setTimeout(() => toast('Left thumb moves · drag right to look'), 900);
-  } else toast(b ? 'Arrived at ' + b.name : 'Flight systems live');
-}
-
-function panelDest() {
-  const d = document.createElement('div');
-  d.id = 'destGrid';
-  for (const b of cycleList) {
-    const btn = document.createElement('button');
-    btn.innerHTML = b.name + '<small>' + (b.isMoon ? 'moon of ' + byId[b.parent].name : b.type.replace(' planet', '')) + '</small>';
-    btn.onclick = () => { blip(880, 0.08); startFlight(b); };
-    d.appendChild(btn);
-  }
-  return d;
-}
-function row(label, control) {
-  const r = document.createElement('div');
-  r.className = 'srow';
-  const s = document.createElement('span'); s.textContent = label;
-  r.appendChild(s); r.appendChild(control);
-  return r;
-}
-function toggleBtn(get, set) {
-  const b = document.createElement('button');
-  b.className = 'tgl';
-  const sync = () => { const v = get(); b.classList.toggle('on', v); b.textContent = v ? 'On' : 'Off'; };
-  b.onclick = () => { set(!get()); sync(); blip(640, 0.05); saveSet(); };
-  sync();
-  return b;
-}
-function panelSettings() {
-  const p = document.createElement('div');
-  p.className = 'mpan';
-  p.innerHTML = '<h4>Settings</h4>';
-  const sl = document.createElement('input');
-  sl.type = 'range'; sl.min = '0.25'; sl.max = '2.5'; sl.step = '0.05'; sl.value = SET.sens;
-  const val = document.createElement('span');
-  val.style.cssText = 'min-width:34px;text-align:right;color:var(--cyan)';
-  val.textContent = Number(SET.sens).toFixed(2);
-  sl.oninput = () => { SET.sens = parseFloat(sl.value); val.textContent = SET.sens.toFixed(2); saveSet(); };
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;align-items:center;gap:9px';
-  wrap.appendChild(sl); wrap.appendChild(val);
-  p.appendChild(row('Mouse sensitivity', wrap));
-  p.appendChild(row('Invert vertical look', toggleBtn(() => SET.invertY, v => SET.invertY = v)));
-  p.appendChild(row('Approach speed governor', toggleBtn(() => SET.governor, v => SET.governor = v)));
-  p.appendChild(row('Flight assist', toggleBtn(() => state.assist, v => state.assist = v)));
-  p.appendChild(row('Sound', toggleBtn(() => SET.audio, v => { SET.audio = v; if (v) audioOn(); else audioEngine(0); })));
-  p.appendChild(row('Orbit lines', toggleBtn(() => state.showOrbits, v => { state.showOrbits = v; orbitGroup.visible = v; })));
-  p.appendChild(row('Labels', toggleBtn(() => state.showLabels, v => state.showLabels = v)));
-  const sc = document.createElement('button');
-  sc.className = 'tgl on'; sc.style.minWidth = '104px';
-  sc.textContent = SCALES[state.scaleIdx].n;
-  sc.onclick = () => {
-    state.scaleIdx = (state.scaleIdx + 1) % SCALES.length;
-    state.scaleJump = true;
-    sc.textContent = SCALES[state.scaleIdx].n;
-    blip(600, 0.05);
-  };
-  p.appendChild(row('Planet size scale', sc));
-  const note = document.createElement('div');
-  note.style.cssText = 'margin-top:10px;font-size:12px;color:var(--muted);line-height:1.45';
-  note.textContent = 'The governor scales your speed ceiling to the gap to the nearest surface, so you slow into an approach automatically. Turn it off for full manual throttle.';
-  p.appendChild(note);
-  return p;
-}
-function panelControls() {
-  const p = document.createElement('div');
-  p.className = 'mpan';
-  if (isTouch) {
-    const t = [
-      ['Move', 'Left thumb — the stick follows your touch'],
-      ['Look', 'Drag anywhere on the right'],
-      ['Target a world', 'Tap it, or press ⟳'],
-      ['Fly to target', 'GO'],
-      ['Up / down', '▲ ▼'],
-      ['Throttle', '+ / −'],
-      ['Menu · fullscreen · sound', 'Top of screen']
-    ];
-    p.innerHTML = '<h4>Touch controls</h4><div class="kgrid" style="grid-template-columns:1fr">' +
-      t.map(r => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('') +
-      '</div><h4 style="margin-top:14px">Keyboard</h4>';
-  }
-  const rows = [
-    ['Look', 'Mouse'], ['Thrust / reverse', 'W / S'], ['Strafe', 'A / D'],
-    ['Up / down', 'Space / Ctrl'], ['Roll', 'Q / E'], ['Boost ×4', 'Shift'],
-    ['Precision ×0.1', 'Alt'], ['Throttle notch', 'Wheel or − / ='],
-    ['Full stop', 'X'], ['Cycle target', 'Tab'], ['Autopilot to target', 'T'],
-    ['Time rate', '[ / ]'], ['Pause time', 'P'], ['Size scale', 'M'],
-    ['Orbits / labels', 'O / L'], ['Flight assist', 'Z'], ['Approach governor', 'G'],
-    ['Jump to a world', '1 … 9, 0'], ['Hide interface', 'H'], ['Fullscreen', 'F'], ['Menu', 'Esc']
-  ];
-  p.innerHTML += (isTouch ? '' : '<h4>Controls</h4>') + '<div class="kgrid">' +
-    rows.map(r => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('') + '</div>';
-  return p;
-}
-$('menuNav').addEventListener('click', e => {
-  const btn = e.target.closest('button'); if (!btn) return;
-  const act = btn.dataset.act;
-  blip(820, 0.07);
-  const panel = $('menuPanel');
-  const showPanel = (name, make) => {
-    if (panel.dataset.p === name) { panel.innerHTML = ''; panel.dataset.p = ''; return; }
-    panel.innerHTML = ''; panel.appendChild(make()); panel.dataset.p = name;
-  };
-  if (act === 'fly') startFlight(byId.earth);
-  else if (act === 'resume') resumeFlight();
-  else if (act === 'intro') startIntro();
-  else if (act === 'title') openMenu('title');
-  else if (act === 'dest') showPanel('dest', panelDest);
-  else if (act === 'settings') showPanel('settings', panelSettings);
-  else if (act === 'controls') showPanel('controls', panelControls);
-});
-$('skip').addEventListener('click', endIntro);
-$('btnPause').addEventListener('click', () => openMenu('pause'));
-$('btnFull').addEventListener('click', async () => {
-  try {
-    if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen();
-      if (isTouch) { try { await screen.orientation.lock('landscape'); } catch (e) { /* iOS */ } }
-    } else await document.exitFullscreen();
-  } catch (e) { /* denied */ }
-});
-$('btnMute').addEventListener('click', () => {
-  SET.audio = !SET.audio; saveSet();
-  $('btnMute').style.opacity = SET.audio ? '1' : '0.4';
-  if (SET.audio) { audioOn(); blip(700, 0.08); } else audioEngine(0);
-});
-
-/* ---------------- throttle gauge + target arrow ---------------- */
-const thrCells = [];
-(function buildLadder() {
-  const l = $('thrLadder');
-  for (let i = 0; i < THROTTLE.length; i++) {
-    const c = document.createElement('i');
-    l.appendChild(c); thrCells.push(c);
-  }
-})();
-let lastThrKey = '';
-function updateThrottleUI() {
-  let govIdx = THROTTLE.length - 1;
-  for (let i = 0; i < THROTTLE.length; i++) if (THROTTLE[i].v > state.govKms) { govIdx = i - 1; break; }
-  const key = state.thr + '/' + govIdx;
-  if (key !== lastThrKey) {
-    lastThrKey = key;
-    for (let i = 0; i < thrCells.length; i++) {
-      const on = i <= state.thr && i <= govIdx;
-      const gov = i <= state.thr && i > govIdx;
-      thrCells[i].className = on ? 'on' : gov ? 'gov' : '';
-    }
-    $('thrName').textContent = THROTTLE[state.thr].n;
-  }
-  const binding = SET.governor && state.govKms < THROTTLE[state.thr].v;
-  $('govNote').textContent = binding ? 'Approach limit ' + fmtSpeed(state.govKms) : '';
-}
-function updateTargetArrow() {
-  const el = $('tgtArrow');
-  const t = state.target;
-  if (!t || state.mode !== 'fly' || state.uiHidden) { el.style.display = 'none'; return; }
-  const ahead = t.rel.dot(fwdV) > 0;
-  proj.copy(t.rel).project(camera);
-  if (ahead && Math.abs(proj.x) < 0.94 && Math.abs(proj.y) < 0.94) { el.style.display = 'none'; return; }
-  let x = proj.x, y = proj.y;
-  if (!ahead) { x = -x; y = -y; }
-  const m = Math.max(Math.abs(x), Math.abs(y), 1e-6);
-  x /= m; y /= m;
-  const px = innerWidth / 2 + x * innerWidth * 0.44;
-  const py = innerHeight / 2 - y * innerHeight * 0.44;
-  el.style.display = 'block';
-  el.style.transform = 'translate(-50%,-50%) translate(' + px.toFixed(0) + 'px,' + py.toFixed(0) +
-    'px) rotate(' + Math.atan2(-y, x).toFixed(3) + 'rad)';
-}
-
-/* ------------------------------------------------------------
-   16.  BOOT
-   ------------------------------------------------------------ */
-(async function boot() {
-  state.jd = jdNow();
-
-  for (const b of BODIES) makeBody(b, false);
-  for (const m of MOONS) makeBody(m, true);
-  for (const b of BODIES) {
-    cycleList.push(byId[b.id]);
-    for (const m of MOONS) if (m.parent === b.id) cycleList.push(byId[m.id]);
-  }
-  for (const o of objs) makeLabel(o);
-
-  // first pass so orbit lines and the opening view use real positions
-  updatePositions(0);
-
-  await build((p, label) => {
-    $('barFill').style.width = (p * 100).toFixed(0) + '%';
-    $('loadTxt').textContent = label;
-  });
-
-  updatePositions(0);
-  selectTarget(byId.earth);
-  placeAtBody(byId.earth, 5.5);
-  state.timeIdx = 3;
-  $('btnMute').style.opacity = SET.audio ? '1' : '0.4';
-
-  // hand over to the title sequence
-  running = true;
-  last = performance.now();
-  state.mode = 'menu';
-  menuMode = 'title';
-  requestAnimationFrame(render);
-
-  $('loadTxt').textContent = 'Ready';
-  $('barFill').style.width = '100%';
-  await new Promise(r => setTimeout(r, 450));
-  $('splash').classList.add('gone');
-  setTimeout(() => { $('splash').style.display = 'none'; }, 950);
-
-  checkOrientation();
-
-  // first-time visitors get the flythrough; everyone else lands on the menu
-  if (SET.seenIntro) openMenu('title');
-  else { $('fade').style.opacity = '1'; setTimeout(startIntro, 650); }
-})();
-</script>
-</body>
-</html>
+  if (keys.ControlLeft 
