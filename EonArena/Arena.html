@@ -1028,6 +1028,7 @@ function buildSurfaces(){
     hazard: std({ map: hazardTexture(), roughness:0.78, metalness:0.22,
                   emissive:0x7A5410, emissiveIntensity:0.45 }),
     pipe:   std({ color:0x39425E, roughness:0.42, metalness:0.80 }),
+    beam:   std({ color:0x232B45, roughness:0.68, metalness:0.35 }),
     dark:   std({ color:0x151B30, roughness:0.9, metalness:0.1 })
   };
   // walls are big, so tile their texture rather than stretching one panel over them
@@ -1144,6 +1145,7 @@ function pipe(x1, z1, x2, z2, y, r, mat, role){
   m.position.set((x1+x2)/2, y, (z1+z2)/2);
   m.rotation.z = Math.PI/2;
   m.rotation.y = -Math.atan2(dz, dx);
+  m.userData.span = { x1, z1, x2, z2, bottom: y - r };
   // collars every few metres so a long run doesn't read as a single tube.
   // Spacing is a draw-call budget, not a style choice -- these are separate meshes.
   for (let d = 4.5; d < len; d += 9){
@@ -1163,7 +1165,7 @@ function pillarPost(x, z, y, h, r, mat){
   climb routes land at the middle of an edge, so a rail across it is a wall at the top
   of the stairs. Anything railed here must leave the arrival point clear.
 */
-function railing(cx, cz, hw, hd, y, color, gapX, gapZ){
+function railing(cx, cz, hw, hd, y, gapX, gapZ){
   const mat = SURF.pipe, RAIL = 0.98;
   const seen = new Set();
   const post = (x, z) => {
@@ -1191,7 +1193,6 @@ function railing(cx, cz, hw, hd, y, color, gapX, gapZ){
       else        { pipe(e.at, u, e.at, v, y + RAIL, 0.038, mat, 'rail'); post(e.at, u); post(e.at, v); }
     });
   });
-  if (color) addGlow(cx, y + 1.05, cz, color, 2.0);
 }
 function barrel(x, z, y, mat){
   const b = new THREE.Mesh(cylG(0.34, 0.34, 0.92, 12), mat || SURF.rust);
@@ -1231,18 +1232,19 @@ function hazardRim(cx, cz, hw, hd, y){
   and read as floating sticks against the sky, which is exactly how the first version
   looked. Top chord + bottom chord + web between them reads as structure.
 */
-function girder(x1, z1, x2, z2, y){
+function girder(x1, z1, x2, z2, y, depth){
   const dx = x2-x1, dz = z2-z1, len = Math.hypot(dx, dz);
-  const DEPTH = 0.62;
+  const DEPTH = depth || 0.62;
   const g = new THREE.Object3D();
   g.position.set((x1+x2)/2, y, (z1+z2)/2);
   g.rotation.y = -Math.atan2(dz, dx);
   worldGroup.add(g);
 
   [0, -DEPTH].forEach(oy => {
-    const chord = new THREE.Mesh(boxG(len, 0.2, 0.13), SURF.pipe);
+    const chord = new THREE.Mesh(boxG(len, 0.2, 0.13), SURF.beam);
     chord.position.set(0, oy, 0);
     chord.castShadow = true;
+    chord.userData.span = { x1, z1, x2, z2, bottom: y + oy - 0.1 };
     g.add(chord);
   });
   const n = Math.max(2, Math.round(len/5));
@@ -1329,15 +1331,16 @@ const PIT = {
     // ---- non-colliding dressing ----
     const hh2 = h - 1.1;
     [[-1,1],[1,1],[1,-1],[-1,-1]].forEach(([sx, sz]) => {
-      pipe(sx*hh2, -hh2, sx*hh2, hh2, 6.4, 0.16);           // service runs near the ceiling line
-      pipe(sx*hh2 - sx*0.5, -hh2, sx*hh2 - sx*0.5, hh2, 5.9, 0.1);
+      pipe(sx*hh2, -hh2, sx*hh2, hh2, 6.4, 0.16, SURF.beam);   // service runs near the ceiling line
+      pipe(sx*hh2 - sx*0.5, -hh2, sx*hh2 - sx*0.5, hh2, 5.9, 0.1, SURF.beam);
     });
     for (let i = -1; i <= 1; i++) girder(-h, i*17, h, i*17, 7.4);   // roof trusses overhead
-    railing(0, 0, 6.3, 6.3, 2.0, NEON.teal, 6.5, 6.5);              // gaps = the four stair arrivals
+    railing(0, 0, 6.3, 6.3, 2.0, 6.5, 6.5);                         // gaps = the four stair arrivals
     hazardRim(0, 0, 6.3, 6.3, 1.99);                                // marks the drop
     [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
-      mast(x, 4.5, z, 2.6, NEON.rose);
-      pillarPost(x > 0 ? x-3.4 : x+3.4, z, 0, 4.4, 0.13);
+      const px = x > 0 ? x - 3.4 : x + 3.4;
+      pillarPost(px, z, 0, 4.4, 0.13);
+      mast(px, 4.4, z, 2.0, NEON.rose);        // stands on the pillar, not in mid-air
     });
     [[-27,-20],[27,-20],[-27,20],[27,20],[-20,27],[20,27],[-20,-27],[20,-27]]
       .forEach(([x,z], i) => barrel(x, z, 0, i % 3 ? SURF.rust : SURF.crateB));
@@ -1447,9 +1450,10 @@ const STACKS = {
     // No railing here: the parapet boxes above already edge the roof, and the gaps at
     // x = +/-9.2 are the terrace arrivals. Railing them was a wall at the top of the stairs.
     hazardRim(0, 0, 9.2, 9.2, 3.79);                        // marks the drop
-    for (let i = -1; i <= 1; i++) girder(-h, i*13, h, i*13, 6.3);
+    // roof deck is 3.8; a player's head reaches 5.58, so the underside must clear that
+    for (let i = -1; i <= 1; i++) girder(-h, i*13, h, i*13, 6.85, 0.5);
     [[-1,1],[1,-1]].forEach(([sx, sz]) => {
-      pipe(sx*(h-1.2), -(h-1.2), sx*(h-1.2), (h-1.2), 5.2, 0.15);
+      pipe(sx*(h-1.2), -(h-1.2), sx*(h-1.2), (h-1.2), 5.2, 0.15, SURF.beam);
     });
     pipe(-9.4, -9.9, 9.4, -9.9, 2.9, 0.12);                 // conduit along the depot walls
     pipe(-9.4,  9.9, 9.4,  9.9, 2.9, 0.12);
@@ -5022,7 +5026,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r8-clearways · 2026-10-18 18:58 UTC';
+const BUILD = 'r9-headroom · 2026-10-18 19:22 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
