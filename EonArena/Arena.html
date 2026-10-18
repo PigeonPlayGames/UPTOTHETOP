@@ -426,7 +426,7 @@
 
 <div id="menu">
   <div id="menuCard" class="panel">
-    <div class="eyebrow">eon games · realtime deathmatch</div>
+    <div class="eyebrow">eon games · realtime deathmatch <span id="verTag" style="opacity:.45;font-weight:400"></span></div>
     <h1 class="wordmark"><i>Eon</i> <b>Arena</b></h1>
     <p class="tagline">Six-sided combat pit. Bring friends into the same realm code and fight to twenty-five frags. Everything runs in the browser — positions, hits and taunts sync live.</p>
 
@@ -929,7 +929,8 @@ function tex(w, h, draw, repX, repY){
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repX || 1, repY || repX || 1);
-  t.anisotropy = 4;
+  t.anisotropy = (typeof renderer !== 'undefined' && renderer.capabilities)
+    ? renderer.capabilities.getMaxAnisotropy() : 4;
   return t;
 }
 function noise(g, w, h, amount, dark){
@@ -979,14 +980,23 @@ function panelTexture(base, seam, rivets){
   }, 1);
 }
 function concreteTexture(base){
-  return tex(256, 256, (g, w, h) => {
+  return tex(512, 512, (g, w, h) => {
     g.fillStyle = base; g.fillRect(0, 0, w, h);
-    noise(g, w, h, 34, 26);
-    g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 2;
-    for (let i = 0; i < 5; i++){                    // hairline cracks
+    // broad staining first, so the eye reads patches metres across rather than the
+    // fine grain -- this is what stops a tiled floor looking tiled
+    for (let i = 0; i < 7; i++){
+      const x = Math.random()*w, y = Math.random()*h, r = 90 + Math.random()*150;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, Math.random() < 0.5 ? 'rgba(0,0,0,0.16)' : 'rgba(255,255,255,0.05)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grd; g.fillRect(x-r, y-r, r*2, r*2);
+    }
+    noise(g, w, h, 30, 40);
+    g.strokeStyle = 'rgba(0,0,0,0.20)'; g.lineWidth = 2;
+    for (let i = 0; i < 9; i++){                    // hairline cracks
       let x = Math.random()*w, y = Math.random()*h;
       g.beginPath(); g.moveTo(x, y);
-      for (let k = 0; k < 6; k++){ x += (Math.random()-0.5)*40; y += (Math.random()-0.5)*40; g.lineTo(x, y); }
+      for (let k = 0; k < 8; k++){ x += (Math.random()-0.5)*70; y += (Math.random()-0.5)*70; g.lineTo(x, y); }
       g.stroke();
     }
   }, 1);
@@ -1007,23 +1017,24 @@ function buildSurfaces(){
   if (SURF) return SURF;
   const std = (o) => new THREE.MeshStandardMaterial(o);
   SURF = {
-    floor:  std({ map: concreteTexture('#1A2142'), roughness:0.95, metalness:0.05, color:0xA9B4DC }),
-    floor2: std({ map: concreteTexture('#171C33'), roughness:0.95, metalness:0.05, color:0xA3AED6 }),
-    wall:   std({ map: panelTexture('#2B3558', 'rgba(0,0,0,0.35)', true),  roughness:0.72, metalness:0.28, color:0xBFC8E8 }),
-    wallB:  std({ map: panelTexture('#1F2744', 'rgba(0,0,0,0.40)', true),  roughness:0.78, metalness:0.22, color:0xB9C2E2 }),
-    panel:  std({ map: panelTexture('#223055', 'rgba(0,0,0,0.30)', false), roughness:0.55, metalness:0.45, color:0xC2CBEB }),
-    crateA: std({ map: panelTexture('#39436E', 'rgba(0,0,0,0.38)', true),  roughness:0.62, metalness:0.38, color:0xC4CCEC }),
-    crateB: std({ map: panelTexture('#2C3660', 'rgba(0,0,0,0.38)', true),  roughness:0.66, metalness:0.34, color:0xBEC7E8 }),
-    rust:   std({ map: concreteTexture('#6E4631'), roughness:0.88, metalness:0.18, color:0xD8BBA4 }),
-    hazard: std({ map: hazardTexture(), roughness:0.8, metalness:0.2 }),
-    pipe:   std({ color:0x4A5578, roughness:0.45, metalness:0.75 }),
+    floor:  std({ map: concreteTexture('#1A2142'), roughness:0.96, metalness:0.06, color:0x7E88B4 }),
+    floor2: std({ map: concreteTexture('#171C33'), roughness:0.96, metalness:0.06, color:0x79839F }),
+    wall:   std({ map: panelTexture('#2B3558', 'rgba(0,0,0,0.42)', true),  roughness:0.70, metalness:0.32, color:0x8E98C0 }),
+    wallB:  std({ map: panelTexture('#1F2744', 'rgba(0,0,0,0.46)', true),  roughness:0.76, metalness:0.26, color:0x848EB6 }),
+    panel:  std({ map: panelTexture('#223055', 'rgba(0,0,0,0.34)', false), roughness:0.52, metalness:0.50, color:0x929CC4 }),
+    crateA: std({ map: panelTexture('#39436E', 'rgba(0,0,0,0.44)', true),  roughness:0.58, metalness:0.42, color:0x98A2CA }),
+    crateB: std({ map: panelTexture('#2C3660', 'rgba(0,0,0,0.44)', true),  roughness:0.62, metalness:0.38, color:0x8E98C2 }),
+    rust:   std({ map: concreteTexture('#6E4631'), roughness:0.86, metalness:0.20, color:0xB08A6E }),
+    hazard: std({ map: hazardTexture(), roughness:0.78, metalness:0.22,
+                  emissive:0x7A5410, emissiveIntensity:0.45 }),
+    pipe:   std({ color:0x39425E, roughness:0.42, metalness:0.80 }),
     dark:   std({ color:0x151B30, roughness:0.9, metalness:0.1 })
   };
   // walls are big, so tile their texture rather than stretching one panel over them
   SURF.wall.map.repeat.set(8, 2);
   SURF.wallB.map.repeat.set(4, 2);
-  SURF.floor.map.repeat.set(16, 16);
-  SURF.floor2.map.repeat.set(12, 12);
+  SURF.floor.map.repeat.set(9, 9);
+  SURF.floor2.map.repeat.set(7, 7);
   return SURF;
 }
 
@@ -1111,15 +1122,22 @@ function flat(geo, mat, x, y, z){
   verified against the collider list, and silhouette detail has no business changing
   any of that. It exists purely to break up the boxes.
 */
-const decoMeshes = [];      // cosmetic only -- the auto-quality ladder can shed all of it
-function deco(mesh){
+/*
+  Cosmetic only -- the auto-quality ladder can shed all of it. The role says what a
+  piece IS, which matters because the rules differ: a post or rail must never stand in
+  a climb route, overhead structure only needs headroom, and trim is walked over.
+*/
+const decoMeshes = [];
+const DECO_ROLES = ['post','rail','prop','overhead','trim'];
+function deco(mesh, role){
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.userData.deco = true;
+  mesh.userData.decoRole = role || 'prop';
   worldGroup.add(mesh);
   decoMeshes.push(mesh);
   return mesh;
 }
-function pipe(x1, z1, x2, z2, y, r, mat){
+function pipe(x1, z1, x2, z2, y, r, mat, role){
   const dx = x2 - x1, dz = z2 - z1;
   const len = Math.hypot(dx, dz);
   const m = new THREE.Mesh(cylG(r, r, len, 8), mat || SURF.pipe);
@@ -1133,31 +1151,52 @@ function pipe(x1, z1, x2, z2, y, r, mat){
     c.position.set(0, (d - len/2), 0);
     m.add(c);
   }
-  return deco(m);
+  return deco(m, role || 'overhead');
 }
 function pillarPost(x, z, y, h, r, mat){
   const m = new THREE.Mesh(cylG(r, r*1.15, h, 8), mat || SURF.pipe);
   m.position.set(x, y + h/2, z);
-  return deco(m);
+  return deco(m, 'post');
 }
-function railing(cx, cz, hw, hd, y, color){
-  const mat = SURF.pipe;
-  const corners = [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]];
-  corners.forEach(([ox, oz]) => {
-    const post = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), mat);
-    post.position.set(cx+ox, y + 0.5, cz+oz);
-    deco(post);
+/*
+  gapX / gapZ leave the centre of each edge open. This is not decoration taste: the
+  climb routes land at the middle of an edge, so a rail across it is a wall at the top
+  of the stairs. Anything railed here must leave the arrival point clear.
+*/
+function railing(cx, cz, hw, hd, y, color, gapX, gapZ){
+  const mat = SURF.pipe, RAIL = 0.98;
+  const seen = new Set();
+  const post = (x, z) => {
+    const key = x.toFixed(2) + ',' + z.toFixed(2);
+    if (seen.has(key)) return;                 // corners are shared between two edges
+    seen.add(key);
+    const m = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), mat);
+    m.position.set(x, y + 0.5, z);
+    deco(m, 'post');
+  };
+  const edges = [
+    { horiz:true,  at: cz - hd, a: cx - hw, b: cx + hw, gap: gapX || 0 },
+    { horiz:true,  at: cz + hd, a: cx - hw, b: cx + hw, gap: gapX || 0 },
+    { horiz:false, at: cx - hw, a: cz - hd, b: cz + hd, gap: gapZ || 0 },
+    { horiz:false, at: cx + hw, a: cz - hd, b: cz + hd, gap: gapZ || 0 }
+  ];
+  edges.forEach(e => {
+    const mid = (e.a + e.b) / 2;
+    const spans = e.gap > 0
+      ? [[e.a, mid - e.gap/2], [mid + e.gap/2, e.b]]
+      : [[e.a, e.b]];
+    spans.forEach(([u, v]) => {
+      if (v - u < 0.5) return;                 // a stub shorter than this is just litter
+      if (e.horiz){ pipe(u, e.at, v, e.at, y + RAIL, 0.038, mat, 'rail'); post(u, e.at); post(v, e.at); }
+      else        { pipe(e.at, u, e.at, v, y + RAIL, 0.038, mat, 'rail'); post(e.at, u); post(e.at, v); }
+    });
   });
-  for (let i = 0; i < 4; i++){
-    const a = corners[i], b = corners[(i+1)%4];
-    pipe(cx+a[0], cz+a[1], cx+b[0], cz+b[1], y + 0.98, 0.038, mat);
-  }
   if (color) addGlow(cx, y + 1.05, cz, color, 2.0);
 }
 function barrel(x, z, y, mat){
   const b = new THREE.Mesh(cylG(0.34, 0.34, 0.92, 12), mat || SURF.rust);
   b.position.set(x, y + 0.46, z);
-  deco(b);
+  deco(b, 'prop');
   const rim = new THREE.Mesh(cylG(0.36, 0.36, 0.07, 12), SURF.dark);
   rim.position.set(0, 0.2, 0);
   b.add(rim);
@@ -1166,7 +1205,7 @@ function barrel(x, z, y, mat){
 function mast(x, z, y, h, color){
   const m = new THREE.Mesh(cylG(0.055, 0.1, h, 6), SURF.pipe);
   m.position.set(x, y + h/2, z);
-  deco(m);
+  deco(m, 'post');
   const dish = new THREE.Mesh(cylG(0.02, 0.34, 0.3, 10), SURF.dark);
   dish.position.set(0, h/2 - 0.1, 0);
   m.add(dish);
@@ -1184,22 +1223,39 @@ function hazardRim(cx, cz, hw, hd, y){
    .forEach(([sw, sd, ox, oz]) => {
      const m = new THREE.Mesh(boxG(sw, t, sd), SURF.hazard);
      m.position.set(cx + ox, y + t/2, cz + oz);
-     deco(m);
+     deco(m, 'trim');
    });
 }
+/*
+  A truss needs both chords. With only a top beam the diagonals hang off into nothing
+  and read as floating sticks against the sky, which is exactly how the first version
+  looked. Top chord + bottom chord + web between them reads as structure.
+*/
 function girder(x1, z1, x2, z2, y){
   const dx = x2-x1, dz = z2-z1, len = Math.hypot(dx, dz);
-  const g = new THREE.Mesh(boxG(len, 0.22, 0.14), SURF.pipe);
+  const DEPTH = 0.62;
+  const g = new THREE.Object3D();
   g.position.set((x1+x2)/2, y, (z1+z2)/2);
   g.rotation.y = -Math.atan2(dz, dx);
-  deco(g);
-  const n = Math.max(2, Math.round(len/5));        // zig-zag web, so it reads as a truss
+  worldGroup.add(g);
+
+  [0, -DEPTH].forEach(oy => {
+    const chord = new THREE.Mesh(boxG(len, 0.2, 0.13), SURF.pipe);
+    chord.position.set(0, oy, 0);
+    chord.castShadow = true;
+    g.add(chord);
+  });
+  const n = Math.max(2, Math.round(len/5));
+  const diag = Math.hypot(len/n, DEPTH);
   for (let i = 0; i < n; i++){
-    const b = new THREE.Mesh(boxG(4.6, 0.09, 0.11), SURF.pipe);
-    b.position.set(-len/2 + (i+0.5)*(len/n), -0.26, 0);
-    b.rotation.z = (i % 2 ? 1 : -1) * 0.62;
+    const b = new THREE.Mesh(boxG(diag, 0.08, 0.1), SURF.dark);
+    b.position.set(-len/2 + (i+0.5)*(len/n), -DEPTH/2, 0);
+    b.rotation.z = (i % 2 ? 1 : -1) * Math.atan2(DEPTH, len/n);
     g.add(b);
   }
+  g.traverse(o => {
+    if (o.isMesh){ o.userData.deco = true; o.userData.decoRole = 'overhead'; decoMeshes.push(o); }
+  });
   return g;
 }
 
@@ -1277,7 +1333,7 @@ const PIT = {
       pipe(sx*hh2 - sx*0.5, -hh2, sx*hh2 - sx*0.5, hh2, 5.9, 0.1);
     });
     for (let i = -1; i <= 1; i++) girder(-h, i*17, h, i*17, 7.4);   // roof trusses overhead
-    railing(0, 0, 6.3, 6.3, 2.0, NEON.teal);                        // platform edge
+    railing(0, 0, 6.3, 6.3, 2.0, NEON.teal, 6.5, 6.5);              // gaps = the four stair arrivals
     hazardRim(0, 0, 6.3, 6.3, 1.99);                                // marks the drop
     [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
       mast(x, 4.5, z, 2.6, NEON.rose);
@@ -1388,7 +1444,8 @@ const STACKS = {
     [[-9.4,-9.4],[9.4,-9.4],[-9.4,9.4],[9.4,9.4]].forEach(([x,z]) => addGlow(x, 3.95, z, NEON.teal, 4));
 
     // ---- non-colliding dressing ----
-    railing(0, 0, 9.2, 9.2, 3.8, 0);                        // roof edge, both sides
+    // No railing here: the parapet boxes above already edge the roof, and the gaps at
+    // x = +/-9.2 are the terrace arrivals. Railing them was a wall at the top of the stairs.
     hazardRim(0, 0, 9.2, 9.2, 3.79);                        // marks the drop
     for (let i = -1; i <= 1; i++) girder(-h, i*13, h, i*13, 6.3);
     [[-1,1],[1,-1]].forEach(([sx, sz]) => {
@@ -1397,9 +1454,9 @@ const STACKS = {
     pipe(-9.4, -9.9, 9.4, -9.9, 2.9, 0.12);                 // conduit along the depot walls
     pipe(-9.4,  9.9, 9.4,  9.9, 2.9, 0.12);
     [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => mast(x, 2.6, z, 2.2, NEON.rose));
-    [[-13,-3],[13,3],[-3,13],[3,-13],[-20,-12],[20,12]].forEach(([x,z], i) =>
+    // keep clear of the terraces: x in 9.95..16.55 with |z| < 6.5 is the stair run
+    [[-13,-11],[13,11],[-3,13],[3,-13],[-20,-12],[20,12]].forEach(([x,z], i) =>
       barrel(x, z, 0, i % 2 ? SURF.rust : SURF.crateA));
-    [[-6.2,-6.2],[6.2,6.2]].forEach(([x,z]) => pillarPost(x, z, 0, 3.4, 0.14));
 
     const beacon = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
     beacon.position.set(0, 4.0, 0); worldGroup.add(beacon);
@@ -4965,6 +5022,15 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
+const BUILD = 'r8-clearways · 2026-10-18 18:58 UTC';
+/*
+  Printed first thing at boot, and shown on the menu. If this string is missing or
+  older than expected, the browser or CDN is serving a cached copy and no code
+  change below has actually reached the page.
+*/
+console.log('%c EON ARENA ' + BUILD,
+  'background:#E8B04B;color:#121729;font-weight:700;padding:2px 6px;border-radius:3px');
+
 (function boot(){
   if (typeof THREE === 'undefined'){
     document.getElementById('boot').textContent = 'three.js failed to load — check your connection or unblock cdnjs.cloudflare.com';
@@ -4983,6 +5049,7 @@ function frame(){
   ['pointerdown','keydown','touchstart'].forEach(ev =>
     addEventListener(ev, startMusic, { once:true, passive:true }));
   updateHud();
+  const vt = $('verTag'); if (vt) vt.textContent = '· ' + BUILD;
   $('boot').style.display = 'none';
   frame();
 
