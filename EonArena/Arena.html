@@ -1131,6 +1131,32 @@ function flat(geo, mat, x, y, z){
 */
 const decoMeshes = [];
 const DECO_ROLES = ['post','rail','prop','overhead','trim'];
+
+/*
+  Solid decoration. You should bump into a post, a handrail or a barrel; you should
+  not bump into a pipe run ten metres overhead or a strip of floor paint. Roles decide,
+  and because the climb-route test already guarantees no post/rail/prop stands in a
+  stairway, giving these collision cannot wall off a route.
+  Collision here is AABB, so a cylinder gets a square footprint -- with a floor on the
+  half-width, since a collider as thin as a real handrail is something you squeeze past.
+*/
+function postCollider(x, z, yBase, h, r){
+  const hw = Math.max(r * 1.4, 0.13);
+  colliders.push({ min:{ x:x-hw, y:yBase, z:z-hw },
+                   max:{ x:x+hw, y:yBase+h, z:z+hw } });
+}
+/*
+  A handrail stops you walking off an edge, so the barrier runs from the deck up to
+  the rail rather than being a wafer at rail height -- 0.98m, which is above
+  CFG.stepHeight, so it cannot be strolled over.
+*/
+function railBarrier(x1, z1, x2, z2, yBase, yTop){
+  const t = 0.16;
+  colliders.push({
+    min:{ x:Math.min(x1,x2)-t, y:yBase, z:Math.min(z1,z2)-t },
+    max:{ x:Math.max(x1,x2)+t, y:yTop,  z:Math.max(z1,z2)+t }
+  });
+}
 function deco(mesh, role){
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.userData.deco = true;
@@ -1159,6 +1185,7 @@ function pipe(x1, z1, x2, z2, y, r, mat, role){
 function pillarPost(x, z, y, h, r, mat){
   const m = new THREE.Mesh(cylG(r, r*1.15, h, 8), mat || SURF.pipe);
   m.position.set(x, y + h/2, z);
+  postCollider(x, z, y, h, r);
   return deco(m, 'post');
 }
 /*
@@ -1175,6 +1202,7 @@ function railing(cx, cz, hw, hd, y, gapX, gapZ){
     seen.add(key);
     const m = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), mat);
     m.position.set(x, y + 0.5, z);
+    postCollider(x, z, y, 1.0, 0.05);
     deco(m, 'post');
   };
   const edges = [
@@ -1190,14 +1218,22 @@ function railing(cx, cz, hw, hd, y, gapX, gapZ){
       : [[e.a, e.b]];
     spans.forEach(([u, v]) => {
       if (v - u < 0.5) return;                 // a stub shorter than this is just litter
-      if (e.horiz){ pipe(u, e.at, v, e.at, y + RAIL, 0.038, mat, 'rail'); post(u, e.at); post(v, e.at); }
-      else        { pipe(e.at, u, e.at, v, y + RAIL, 0.038, mat, 'rail'); post(e.at, u); post(e.at, v); }
+      if (e.horiz){
+        pipe(u, e.at, v, e.at, y + RAIL, 0.038, mat, 'rail');
+        railBarrier(u, e.at, v, e.at, y, y + RAIL);
+        post(u, e.at); post(v, e.at);
+      } else {
+        pipe(e.at, u, e.at, v, y + RAIL, 0.038, mat, 'rail');
+        railBarrier(e.at, u, e.at, v, y, y + RAIL);
+        post(e.at, u); post(e.at, v);
+      }
     });
   });
 }
 function barrel(x, z, y, mat){
   const b = new THREE.Mesh(cylG(0.34, 0.34, 0.92, 12), mat || SURF.rust);
   b.position.set(x, y + 0.46, z);
+  postCollider(x, z, y, 0.92, 0.34);
   deco(b, 'prop');
   const rim = new THREE.Mesh(cylG(0.36, 0.36, 0.07, 12), SURF.dark);
   rim.position.set(0, 0.2, 0);
@@ -1207,6 +1243,7 @@ function barrel(x, z, y, mat){
 function mast(x, z, y, h, color){
   const m = new THREE.Mesh(cylG(0.055, 0.1, h, 6), SURF.pipe);
   m.position.set(x, y + h/2, z);
+  postCollider(x, z, y, h, 0.1);
   deco(m, 'post');
   const dish = new THREE.Mesh(cylG(0.02, 0.34, 0.3, 10), SURF.dark);
   dish.position.set(0, h/2 - 0.1, 0);
@@ -1532,10 +1569,10 @@ const YARDS = {
             {id:'p4',x:-34,z:0,y:0},{id:'p5',x:34,z:0,y:0} ],
   climbs:[ {base:{x:0,z:21.0},  top:{x:0,z:10},  y:4.2, w:14,  from:0},
            {base:{x:0,z:-21.0}, top:{x:0,z:-10}, y:4.2, w:14,  from:0},
-           {base:{x:39,z:26},   top:{x:28,z:26},   y:4.2, w:2.2, from:0},
-           {base:{x:-39,z:26},  top:{x:-28,z:26},  y:4.2, w:2.2, from:0},
-           {base:{x:39,z:-26},  top:{x:28,z:-26},  y:4.2, w:2.2, from:0},
-           {base:{x:-39,z:-26}, top:{x:-28,z:-26}, y:4.2, w:2.2, from:0},
+           {base:{x:28,z:16.3},   top:{x:28,z:24.0},   y:4.2, w:3.4, from:0},
+           {base:{x:-28,z:16.3},  top:{x:-28,z:24.0},  y:4.2, w:3.4, from:0},
+           {base:{x:28,z:-16.3},  top:{x:28,z:-24.0},  y:4.2, w:3.4, from:0},
+           {base:{x:-28,z:-16.3}, top:{x:-28,z:-24.0}, y:4.2, w:3.4, from:0},
            {base:{x:10.2,z:-8.2},  top:{x:9.0,z:2.0},  y:8.0, w:4.0, from:4.2},
            {base:{x:-10.2,z:-8.2}, top:{x:-9.0,z:2.0}, y:8.0, w:4.0, from:4.2} ],
   build(){
@@ -1591,11 +1628,16 @@ const YARDS = {
     /* ---- catwalks: underside sits at 3.8, clear of a jumping player below ---- */
     [-1,1].forEach(sz => {
       box(0, 3.8, sz*26, 60, 0.4, 3.0, MAT.panel);
-      for (let i = 0; i < 8; i++){                      // a stair tower at each end
-        [-1,1].forEach(sx => {
-          box(sx*(30.5 + i*1.2), 0, sz*26, 1.2, 4.2 - i*0.525, 3.0, i%2 ? MAT.crateA : MAT.crateB);
-        });
-      }
+      /*
+        Stairs climb from the open yard toward the catwalk. They used to run along the
+        perimeter wall, so getting up meant walking into a corner first -- which is
+        both awkward and a bad place to be caught.
+      */
+      [-1,1].forEach(sx => {
+        for (let i = 0; i < 8; i++){
+          box(sx*28, 0, sz*(24.0 - i*1.1), 3.4, 4.2 - i*0.525, 1.1, i%2 ? MAT.crateA : MAT.crateB);
+        }
+      });
     });
 
     // container rows for cover
@@ -1605,8 +1647,8 @@ const YARDS = {
         box(x + (x > 0 ? -3.0 : 3.0), 0, z, 2.4, 1.3, 5.0, MAT.crateA);
         strip(x, 2.55, z, 3.25, 0.1, 0.1, MAT.accent3, NEON.rose, 2.6);
       });
-    [[-16,-30],[16,-30],[-16,30],[16,30],[-28,-16],[28,-16],[-28,16],[28,16],
-     [0,-30],[0,30],[-26,0],[26,0]]
+    [[-16,-30],[16,-30],[-16,30],[16,30],[-36,-16],[36,-16],[-36,16],[36,16],
+     [0,-30],[0,30],[-26,0],[26,0],[-10,-20],[10,-20],[-10,20],[10,20]]
       .forEach((c,i) => box(c[0], 0, c[1], 2.6, 1.3, 2.6, i%2 ? MAT.crateA : MAT.rust));
 
     // lights that read from across a map this size
@@ -1624,16 +1666,41 @@ const YARDS = {
     hazardRim(0, 0,  8.4,  8.4, 7.99);                 // high roof edge
     [-1,1].forEach(i => girder(-h, i*19, h, i*19, 11.0, 0.55));
     [-1,1].forEach(sx => pipe(sx*(h-1.3), -(h-1.3), sx*(h-1.3), (h-1.3), 10.2, 0.16, SURF.beam));
-    // catwalk handrails, outside the 2.2m climb corridor so they never block an arrival
-    [-1,1].forEach(sz => [-1,1].forEach(so => {
-      const zz = sz*26 + so*1.45;
-      pipe(-30, zz, 30, zz, 5.18, 0.038, SURF.pipe, 'rail');
-      for (let x = -27; x <= 27; x += 9){
-        const post = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), SURF.pipe);
-        post.position.set(x, 4.7, zz);
-        deco(post, 'post');
+    /*
+      Catwalk handrails. Solid now, so the inner run stops short of both stair
+      arrivals and the outer run and end caps close the rest of the edge.
+    */
+    [-1,1].forEach(sz => {
+      const zo = sz*27.45, zi = sz*24.55;
+      pipe(-30, zo, 30, zo, 5.18, 0.038, SURF.pipe, 'rail');
+      railBarrier(-30, zo, 30, zo, 4.2, 5.18);
+      pipe(-26, zi, 26, zi, 5.18, 0.038, SURF.pipe, 'rail');     // gap at x = +/-28
+      railBarrier(-26, zi, 26, zi, 4.2, 5.18);
+      [-1,1].forEach(sx => {                                      // end caps
+        pipe(sx*29.9, zi, sx*29.9, zo, 5.18, 0.038, SURF.pipe, 'rail');
+        railBarrier(sx*29.9, zi, sx*29.9, zo, 4.2, 5.18);
+      });
+      for (let x = -27; x <= 27; x += 13.5){
+        [zo, zi].forEach(zz => {
+          if (zz === zi && Math.abs(x) > 25) return;               // keep arrivals clear
+          const po = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), SURF.pipe);
+          po.position.set(x, 4.7, zz);
+          postCollider(x, zz, 4.2, 1.0, 0.05);
+          deco(po, 'post');
+        });
       }
-    }));
+    });
+    // hub deck: rail the east and west edges; north and south are terrace arrivals
+    [-1,1].forEach(sx => {
+      pipe(sx*12.3, -12.3, sx*12.3, 12.3, 5.18, 0.038, SURF.pipe, 'rail');
+      railBarrier(sx*12.3, -12.3, sx*12.3, 12.3, 4.2, 5.18);
+      for (let z = -9; z <= 9; z += 9){
+        const po = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), SURF.pipe);
+        po.position.set(sx*12.3, 4.7, z);
+        postCollider(sx*12.3, z, 4.2, 1.0, 0.05);
+        deco(po, 'post');
+      }
+    });
     [[-34,-20],[34,-20],[-34,20],[34,20],[-8,-36],[8,36]]
       .forEach(([x,z], i) => barrel(x, z, 0, i % 2 ? SURF.rust : SURF.crateA));
     [[-20,-20],[20,-20],[-20,20],[20,20]].forEach(([x,z]) => mast(x, 2.8, z, 2.4, NEON.rose));
@@ -5210,7 +5277,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r11-yards · 2026-10-18 20:09 UTC';
+const BUILD = 'r12-solid-rails · 2026-10-18 20:23 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
