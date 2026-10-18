@@ -3,130 +3,489 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>eon games — browser games you can play right now</title>
-  <meta name="description" content="eon games builds multiplayer browser games you can play instantly — no installs, no launchers. Strategy, social deduction, arena shooters and racing." />
+  <title>eon games — four free browser games, no install</title>
+  <meta name="description" content="Four hand-built browser games you can play instantly: a 3D arena shooter, a neon racer, a to-scale solar system and a tower defence. No downloads, no launchers, free." />
   <meta name="theme-color" content="#050816" />
 
   <!-- Open Graph / social sharing -->
   <meta property="og:title" content="eon games" />
-  <meta property="og:description" content="Multiplayer browser games you can play instantly. No installs, no launchers." />
+  <meta property="og:description" content="Four free browser games you can play in a tab. No installs, no launchers." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://eongames.co.uk/" />
-  <meta property="og:image" content="https://eongames.co.uk/eongames.png" />
+  <meta property="og:image" content="https://eongames.co.uk/eon-logo-poster.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="canonical" href="https://eongames.co.uk/" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles-home.css" />
   <noscript><style>.reveal{opacity:1 !important;transform:none !important;}</style></noscript>
 
   <!--
-    GAME CARD FIXES
-    Loaded after styles.css / styles-home.css so these rules win.
-    - Every cover is locked to a 16:9 frame and cropped (object-fit: cover),
-      so tall screenshots can't stretch the card on phones.
-    - "Artwork coming soon" sits behind the image and only shows if the image is missing.
-    - Status pill floats over the artwork instead of pushing content down.
-    - Tags become small chips instead of a bulleted list.
+    ─────────────────────────────────────────────────────────────
+    HOME PAGE LAYER — loaded last so it wins over styles.css.
+    The hero and the game lineup use their own class names
+    (.stage-*, .lineup-*) so nothing in the older stylesheets
+    can fight them. Header, buttons, modals and the comment
+    section keep their original classes and IDs so script.js
+    carries on working untouched.
+    ─────────────────────────────────────────────────────────────
   -->
   <style>
-    .games-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
-      gap: 1.25rem;
+    :root {
+      --void:   #050816;
+      --deep:   #0a1028;
+      --cyan:   #26d0ff;
+      --violet: #7c5cff;
+      --ember:  #ff9f43;
+      --paper:  #eef2ff;
+      --muted:  rgba(238, 242, 255, .66);
+      --hair:   rgba(255, 255, 255, .09);
+
+      --font-display: "Outfit", "Segoe UI", system-ui, sans-serif;
+      --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+
+      --gap-xs: .4rem;
+      --gap-s:  .75rem;
+      --gap-m:  1.25rem;
+      --gap-l:  2rem;
+      --gap-xl: 2.5rem;
+      --gap-2xl: 4rem;
+
+      --shell: 1200px;
     }
 
-    .game-card {
+    /* ───────────────── Typography ───────────────── */
+
+    body {
+      font-family: var(--font-body);
+      background: var(--void);
+    }
+
+    h1, h2, h3, .wordmark, .btn {
+      font-family: var(--font-display);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ───────────────── Hero: the logo film ─────────────────
+       The animation is the one loud moment on the page.
+       Everything below it stays deliberately quiet.          */
+
+    .stage {
+      position: relative;
+      max-width: var(--shell);
+      margin: 0 auto;
+      padding: clamp(1rem, 3vw, 2rem) clamp(1rem, 4vw, 2rem) var(--gap-l);
+      text-align: center;
+    }
+
+    .stage-film-frame {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      max-height: 52vh;
+      margin: 0 auto;
+      border-radius: 24px;
+      overflow: hidden;
+      background: #04060f;
+      isolation: isolate;
+    }
+
+    .stage-film {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* The film ends on a dark field, so it dissolves into the
+       page instead of sitting in a hard-edged box. */
+    .stage-film-frame::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(to bottom, transparent 55%, rgba(5, 8, 22, .55) 82%, var(--void) 100%),
+        linear-gradient(to right, var(--void), transparent 14%, transparent 86%, var(--void));
+      z-index: 1;
+    }
+
+    .stage-replay {
+      position: absolute;
+      right: .9rem;
+      bottom: .9rem;
+      z-index: 2;
+      display: none;
+      align-items: center;
+      gap: .45rem;
+      padding: .5rem .85rem;
+      font: 500 .82rem/1 var(--font-body);
+      color: var(--paper);
+      background: rgba(10, 16, 40, .62);
+      border: 1px solid var(--hair);
+      border-radius: 999px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      transition: border-color .2s ease, background .2s ease;
+    }
+    .stage-replay[data-ready="true"] { display: inline-flex; }
+    .stage-replay:hover { border-color: rgba(38, 208, 255, .5); background: rgba(10, 16, 40, .85); }
+    .stage-replay svg { width: 13px; height: 13px; flex: none; }
+
+    .stage-copy {
+      max-width: 60ch;
+      margin: clamp(-2.5rem, -4vw, -1rem) auto 0;
+      position: relative;
+      z-index: 2;
+    }
+
+    .stage-copy h1 {
+      margin: 0 0 var(--gap-s);
+      font-size: clamp(2.2rem, 5.2vw, 3.6rem);
+      font-weight: 600;
+      line-height: 1.04;
+      letter-spacing: -.035em;
+      text-wrap: balance;
+      color: var(--paper);
+    }
+
+    .stage-copy p {
+      margin: 0 auto var(--gap-l);
+      max-width: 54ch;
+      font-size: clamp(1rem, 1.6vw, 1.14rem);
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .stage-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--gap-s);
+      justify-content: center;
+    }
+
+    /* ───────────────── Section frame ───────────────── */
+
+    .shell {
+      max-width: var(--shell);
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 4vw, 2rem);
+    }
+
+    .band { padding-block: var(--gap-2xl); }
+
+    .band-head { margin-bottom: var(--gap-l); }
+
+    /* The lineup follows straight on from the hero, so it needs
+       less air above it than the bands further down the page. */
+    #games { padding-top: var(--gap-l); }
+
+    .band-head h2 {
+      margin: 0 0 var(--gap-xs);
+      font-size: clamp(1.85rem, 4vw, 2.6rem);
+      font-weight: 600;
+      letter-spacing: -.03em;
+      line-height: 1.1;
+      color: var(--paper);
+    }
+
+    .band-head p {
+      margin: 0;
+      max-width: 56ch;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ───────────────── The lineup ─────────────────
+       Rank is carried by size, not by a number badge:
+       Eon Arena takes the full width, the other three
+       share a row beneath it.                        */
+
+    .lineup { display: grid; gap: var(--gap-m); }
+
+    .lineup-rest {
+      display: grid;
+      gap: var(--gap-m);
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    }
+
+    .title-card {
+      --accent: var(--cyan);
+      position: relative;
       display: flex;
       flex-direction: column;
       min-width: 0;
       overflow: hidden;
+      border: 1px solid var(--hair);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .012));
+      transition: border-color .25s ease;
     }
 
-    .game-art {
+    .title-card:hover,
+    .title-card:focus-within {
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+
+    .title-card--feature {
+      border-radius: 22px;
+      flex-direction: row;
+      align-items: stretch;
+    }
+
+    .card-art {
       position: relative;
       width: 100%;
       aspect-ratio: 16 / 9;
       overflow: hidden;
-      border-radius: 12px;
+      flex: none;
       background:
-        radial-gradient(circle at 30% 30%, rgba(38, 208, 255, .18), transparent 60%),
-        radial-gradient(circle at 75% 70%, rgba(124, 92, 255, .22), transparent 60%),
-        #0a1028;
-      flex-shrink: 0;
+        radial-gradient(circle at 30% 28%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%),
+        radial-gradient(circle at 76% 74%, rgba(124, 92, 255, .2), transparent 60%),
+        var(--deep);
     }
 
-    .art-placeholder {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      font-size: .8rem;
-      color: rgba(238, 242, 255, .55);
-      z-index: 0;
+    .title-card--feature .card-art {
+      width: 58%;
+      aspect-ratio: auto;
+      min-height: 340px;
     }
 
-    .game-cover {
+    .card-cover {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       max-width: none;
       object-fit: cover;
-      object-position: center top;
+      object-position: center;
       display: block;
       z-index: 1;
+      transition: opacity .25s ease;
     }
 
-    .game-art .status-pill {
+    .card-fallback {
       position: absolute;
-      top: .6rem;
-      left: .6rem;
-      z-index: 2;
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+      text-align: center;
+      font-size: .82rem;
+      color: rgba(238, 242, 255, .5);
+      z-index: 0;
     }
 
-    .game-card-body {
+    .card-flag {
+      position: absolute;
+      top: .7rem;
+      left: .7rem;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .34rem .7rem .34rem .6rem;
+      font: 500 .74rem/1 var(--font-body);
+      color: var(--paper);
+      background: rgba(5, 8, 22, .62);
+      border: 1px solid var(--hair);
+      border-radius: 999px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .card-flag::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+
+    .card-body {
       display: flex;
       flex-direction: column;
       flex: 1;
-      gap: .6rem;
-      padding-top: .9rem;
+      min-width: 0;
+      gap: var(--gap-s);
+      padding: var(--gap-m);
     }
 
-    .game-card-body h3,
-    .game-card-body p { margin: 0; }
+    .title-card--feature .card-body {
+      justify-content: center;
+      padding: clamp(1.5rem, 3vw, 2.5rem);
+      gap: var(--gap-m);
+    }
 
-    .tag-row {
+    .card-body h3 {
+      margin: 0;
+      font-size: 1.3rem;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      color: var(--paper);
+    }
+
+    .title-card--feature .card-body h3 {
+      font-size: clamp(1.7rem, 3.2vw, 2.3rem);
+      letter-spacing: -.03em;
+      line-height: 1.05;
+    }
+
+    .card-body p {
+      margin: 0;
+      font-size: .94rem;
+      line-height: 1.6;
+      color: var(--muted);
+      max-width: 48ch;
+    }
+
+    .title-card--feature .card-body p { font-size: 1.04rem; }
+
+    .card-tags {
       list-style: none;
       margin: 0;
       padding: 0;
       display: flex;
       flex-wrap: wrap;
-      gap: .4rem;
+      gap: var(--gap-xs);
     }
 
-    .tag-row li {
+    .card-tags li {
       font-size: .72rem;
       line-height: 1;
-      padding: .35rem .6rem;
+      padding: .36rem .62rem;
       border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, .14);
-      background: rgba(255, 255, 255, .05);
-      color: rgba(238, 242, 255, .8);
+      border: 1px solid var(--hair);
+      background: rgba(255, 255, 255, .04);
+      color: rgba(238, 242, 255, .78);
     }
 
-    .game-card-body .btn-card {
+    .card-body .btn {
       margin-top: auto;
       align-self: flex-start;
     }
 
-    /* Empty slots: quieter, so the real games stand out */
-    .game-card-slot .game-art { aspect-ratio: 16 / 7; }
-    .game-card-slot { opacity: .7; }
+    .title-card--feature .card-body .btn { margin-top: var(--gap-xs); }
+
+    /* Make the whole card clickable without nesting links. */
+    .card-link::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+    }
+
+    /* ───────────────── Community + about ───────────────── */
+
+    .community-layout {
+      display: grid;
+      gap: var(--gap-m);
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--hair);
+      border-radius: 18px;
+      padding: clamp(1.25rem, 2.5vw, 1.75rem);
+      background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .012));
+    }
+
+    .panel h3 {
+      margin: 0 0 var(--gap-m);
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--paper);
+    }
+
+    .panel textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      margin-bottom: var(--gap-s);
+      padding: .8rem .9rem;
+      font: 400 .95rem/1.55 var(--font-body);
+      color: var(--paper);
+      background: rgba(5, 8, 22, .5);
+      border: 1px solid var(--hair);
+      border-radius: 12px;
+    }
+
+    .panel textarea::placeholder { color: rgba(238, 242, 255, .42); }
+    .panel textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+    .about-grid {
+      display: grid;
+      gap: var(--gap-l);
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+      margin-top: var(--gap-l);
+    }
+
+    .about-grid h3 {
+      margin: 0 0 var(--gap-xs);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--paper);
+    }
+
+    .about-grid p {
+      margin: 0;
+      font-size: .94rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    /* ───────────────── Shared polish ───────────────── */
+
+    a:focus-visible,
+    button:focus-visible,
+    .card-link:focus-visible::after {
+      outline: 2px solid var(--cyan);
+      outline-offset: 3px;
+      border-radius: 6px;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity .55s ease, transform .55s ease;
+    }
+    .reveal.is-visible { opacity: 1; transform: none; }
+
+    @media (max-width: 860px) {
+      .title-card--feature { flex-direction: column; }
+      .title-card--feature .card-art {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        min-height: 0;
+      }
+    }
 
     @media (max-width: 600px) {
-      .games-grid { gap: 1rem; }
-      .game-card-body p { font-size: .92rem; }
+      :root { --gap-2xl: 3.5rem; --gap-xl: 2.25rem; }
+      .stage-film-frame { border-radius: 18px; max-height: none; }
+      .stage-copy { margin-top: -.5rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { opacity: 1; transform: none; transition: none; }
+      .title-card, .stage-replay, .card-cover { transition: none; }
     }
   </style>
 </head>
@@ -157,243 +516,176 @@
 
   <main>
     <!-- ───────────────────────── HERO ───────────────────────── -->
-    <section class="hero">
-      <div class="hero-content">
-        <p class="eyebrow">Playable in your browser</p>
-        <h1>Build the future of play with <span>eon games</span></h1>
-        <p class="hero-text">
-          Strategy, social deduction, shooters and racing.
-          No installs, no launchers, no account needed to play — just open a tab and go.
-        </p>
+    <section class="stage">
+      <div class="stage-film-frame">
+        <video
+          id="brandFilm"
+          class="stage-film"
+          poster="eon-logo-poster.jpg"
+          muted
+          playsinline
+          preload="none"
+          aria-label="eon games logo animation"></video>
 
-        <div class="hero-actions">
-          <a href="#games" class="btn btn-primary">Explore games</a>
-          <a href="#community" class="btn btn-glass">Join the community</a>
-        </div>
-
-        <dl class="hero-stats">
-          <div><dt>Playable now</dt><dd>4</dd></div>
-          <div><dt>Multiplayer</dt><dd>Real time</dd></div>
-          <div><dt>Price</dt><dd>Free</dd></div>
-        </dl>
+        <button id="replayFilm" class="stage-replay" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7" />
+            <path d="M3 4v5h5" />
+          </svg>
+          Replay
+        </button>
       </div>
 
-      <div class="hero-image-card">
-        <img class="hero-image" src="eongames.png" alt="eon games emblem"
-             onerror="this.hidden=true;var f=document.getElementById('heroFallback');if(f){f.removeAttribute('hidden');}" />
-
-        <!-- Shown only if eongames.png is missing, so the hero is never empty -->
-        <svg id="heroFallback" class="hero-fallback" hidden viewBox="0 0 420 420" role="img" aria-label="eon games orbital emblem">
-          <defs>
-            <radialGradient id="hf-core" cx="50%" cy="45%" r="55%">
-              <stop offset="0%" stop-color="#ffffff" stop-opacity=".95" />
-              <stop offset="35%" stop-color="#26d0ff" stop-opacity=".75" />
-              <stop offset="100%" stop-color="#7c5cff" stop-opacity="0" />
-            </radialGradient>
-            <linearGradient id="hf-ring" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#26d0ff" />
-              <stop offset="55%" stop-color="#7c5cff" />
-              <stop offset="100%" stop-color="#ff9f43" />
-            </linearGradient>
-          </defs>
-          <circle cx="210" cy="210" r="120" fill="url(#hf-core)" />
-          <g fill="none" stroke="url(#hf-ring)" stroke-width="2.5" opacity=".9">
-            <ellipse cx="210" cy="210" rx="180" ry="62" />
-            <ellipse cx="210" cy="210" rx="180" ry="62" transform="rotate(58 210 210)" />
-            <ellipse cx="210" cy="210" rx="180" ry="62" transform="rotate(-58 210 210)" />
-          </g>
-          <circle cx="210" cy="210" r="34" fill="#eef2ff" opacity=".92" />
-          <circle cx="390" cy="210" r="6" fill="#ff9f43" />
-          <circle cx="115" cy="65" r="4" fill="#26d0ff" />
-          <circle cx="316" cy="352" r="5" fill="#7c5cff" />
-        </svg>
+      <div class="stage-copy">
+        <h1>.</h1>
+        <p>
+          Free games, nothing to download, nothing to pay.
+        </p>
+        <div class="stage-actions">
+          <a href="EonArena/Arena.html" class="btn btn-primary">Play Eon Arena</a>
+          <a href="#games" class="btn btn-glass">See all games</a>
+        </div>
       </div>
     </section>
 
     <!-- ───────────────────────── GAMES ───────────────────────── -->
-    <section id="games" class="section">
-      <div class="section-header">
-        <p class="section-tag">Our games</p>
-        <h2>Featured titles</h2>
-        <p>Four are playable today, one is in development, and the rest are slots waiting for the next build.</p>
-      </div>
+    <section id="games" class="band">
+      <div class="shell">
+        <div class="band-head">
+          <h2>The lineup</h2>
+        </div>
 
-      <div class="games-grid">
+        <div class="lineup">
 
-        <!-- Saxons Strategy -->
-        <article class="game-card reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/SaxonStrategy.png" alt="Saxons Strategy cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-live">Playable</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Saxons Strategy</h3>
-            <p>Raise a village, train troops and take the realm off your neighbours. A Tribal Wars-style empire builder that runs in real time while you're away.</p>
-            <ul class="tag-row"><li>Strategy</li><li>Multiplayer</li><li>Persistent world</li></ul>
-            <a href="Tribal2/realm.html" class="btn btn-card">Play now</a>
-          </div>
-        </article>
+          <!-- 1 — Eon Arena -->
+          <article class="title-card title-card--feature reveal" style="--accent: #26d0ff;">
+            <div class="card-art">
+              <span class="card-fallback" aria-hidden="true">Eon Arena</span>
+              <img class="card-cover" src="Eon_Images/EonArena1.png" alt="" loading="eager"
+                   decoding="async" width="1280" height="720" onerror="this.remove()" />
+              <span class="card-flag">Playable now</span>
+            </div>
+            <div class="card-body">
+              <h3>Eon Arena</h3>
+              <p>
+                A 3D deathmatch out-shoot everyone.
+              </p>
+              <ul class="card-tags">
+                <li>3D shooter</li><li>Multiplayer</li><li>Touch ready</li>
+              </ul>
+              <a href="EonArena/Arena.html" class="btn btn-primary card-link">Play Eon Arena</a>
+            </div>
+          </article>
 
-        <!-- Who me? -->
-        <article class="game-card reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/WhoMe.png" alt="Who me? cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-live">Playable</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Who me?</h3>
-            <p>Finish your tasks before the impostor finishes you. Twelve rooms, live chat, emergency meetings and a vote that only goes one way if you argue well.</p>
-            <ul class="tag-row"><li>Social deduction</li><li>Live chat</li><li>Room codes</li></ul>
-            <a href="AmongUs/index.html" class="btn btn-card">Play now</a>
-          </div>
-        </article>
+          <div class="lineup-rest">
 
-        <!-- Eon Arena -->
-        <article class="game-card reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/EonArena1.png" alt="Eon Arena cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-live">Playable</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Eon Arena</h3>
-            <p>A 3D deathmatch that loads in a tab. Drop into the shared realm, grab a spawn point and out-shoot everyone else — mouse and keyboard, or touch on a phone.</p>
-            <ul class="tag-row"><li>3D shooter</li><li>Deathmatch</li><li>Touch ready</li></ul>
-            <a href="EonArena/Arena.html" class="btn btn-card">Play now</a>
-          </div>
-        </article>
+            <!-- 2 — Velocity -->
+            <article class="title-card reveal" style="--accent: #7c5cff;">
+              <div class="card-art">
+                <span class="card-fallback" aria-hidden="true">Velocity</span>
+                <img class="card-cover" src="VELOCITY/Velocity.jpg" alt="" loading="lazy"
+                     decoding="async" width="1280" height="720" onerror="this.remove()" />
+                <span class="card-flag">Playable now</span>
+              </div>
+              <div class="card-body">
+                <h3>Velocity</h3>
+                <p>Race through a lost neon city, no traffic laws and a the fastest lap ghost.</p>
+                <ul class="card-tags"><li>Racing</li><li>3D</li><li>Controller ready</li></ul>
+                <a href="VELOCITY/index.html" class="btn btn-glass card-link">Play Velocity</a>
+              </div>
+            </article>
 
-        <!-- Velocity -->
-        <article class="game-card reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="VELOCITY/Velocity.jpg" alt="Velocity cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-live">Playable</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Velocity</h3>
-            <p>Race through the lost city of Velocity. Neon streets, tight corners and a clock that doesn't wait — on touchscreen, keyboard or controller.</p>
-            <ul class="tag-row"><li>Racing</li><li>3D</li><li>Controller ready</li></ul>
-            <a href="VELOCITY/index.html" class="btn btn-card">Play now</a>
-          </div>
-        </article>
+            <!-- 3 — Eon Orrery -->
+            <article class="title-card reveal" style="--accent: #ff9f43;">
+              <div class="card-art">
+                <span class="card-fallback" aria-hidden="true">Eon Orrery</span>
+                <img class="card-cover" src="Orrery/Orrery.png" alt="" loading="lazy"
+                     decoding="async" width="1280" height="720" onerror="this.remove()" />
+                <span class="card-flag">Playable now</span>
+              </div>
+              <div class="card-body">
+                <h3>Eon Orrery</h3>
+                <p>Fly the solar system to actual scale, stars in true positions, correct orbits, true distances, explore planets moons and beyond.</p>
+                <ul class="card-tags"><li>Space</li><li>To scale</li><li>Free flight</li></ul>
+                <a href="Orrery/Orrery.html" class="btn btn-glass card-link">Open the Orrery</a>
+              </div>
+            </article>
 
-        <!-- Neon Rift -->
-        <article class="game-card reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Eon_Images/NeonRift.png" alt="Neon Rift cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill">In development</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Neon Rift</h3>
-            <p>A fast arcade run through a fracturing skyline. Still being built — the art direction is locked, the gameplay is not.</p>
-            <ul class="tag-row"><li>Arcade</li><li>Single player</li></ul>
-            <a href="NeonRift.html" class="btn btn-card">Try the preview</a>
-          </div>
-        </article>
+            <!-- 4 — Dustline -->
+            <article class="title-card reveal" style="--accent: #e8b06a;">
+              <div class="card-art">
+                <span class="card-fallback" aria-hidden="true">Dustline</span>
+                <img class="card-cover" src="Dustline.png" alt="" loading="lazy"
+                     decoding="async" width="1280" height="720" onerror="this.remove()" />
+                <span class="card-flag">Playable now</span>
+              </div>
+              <div class="card-body">
+                <h3>Dustline</h3>
+                <p>Hold the line across open desert. Place your towers, read the next wave and spend what you earn before it arrives.</p>
+                <ul class="card-tags"><li>Tower defence</li><li>3D</li><li>Single player</li></ul>
+                <a href="dustline.html" class="btn btn-glass card-link">Play Dustline</a>
+              </div>
+            </article>
 
-        <article class="game-card game-card-slot reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <img class="game-cover" src="Dustline.png" alt="Dustline cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-slot">Slot open</span>
           </div>
-          <div class="game-card-body">
-            <h3>Dustline</h3>
-            <p>Tower Defence</p>
-            <ul class="tag-row"><li>Arcade</li><li>Single player</li></ul>
-            <a href="dustline.html" class="btn btn-card">Try the preview</a>
-          </div>
-        </article>
-
-        <article class="game-card game-card-slot reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Single Player</span>
-            <img class="game-cover" src="breach/breach.png" alt="Breach cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <span class="status-pill pill-live">Playable</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Breach</h3>
-            <p>Cyber Security</p>
-            <ul class="tag-row"><li>Arcade</li><li>Single player</li></ul>
-            <img class="game-cover" src="breach/breach1.png" alt="Breach cover art" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <a href="breach/breach.html" class="btn btn-card">Try the preview</a>
-          </div>
-        </article>
-
-        <article class="game-card game-card-slot reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <span class="status-pill pill-slot">Slot open</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Eon Orrery</h3>
-            <p>Earth</p>
-            <ul class="tag-row"><li>Arcade</li><li>Single player</li></ul>
-            <img class="game-cover" src="Orrery/Orrery.png" alt="Orrery Art Here" loading="lazy" decoding="async" width="1280" height="720" onerror="this.remove()" />
-            <a href="Orrery/Orrery.html" class="btn btn-card">Try the preview</a>
-          </div>
-        </article>
-
-        <article class="game-card game-card-slot reveal">
-          <div class="game-art">
-            <span class="art-placeholder" aria-hidden="true">Artwork coming soon</span>
-            <span class="status-pill pill-slot">Slot open</span>
-          </div>
-          <div class="game-card-body">
-            <h3>Game nine</h3>
-            <p>Nothing here yet. Next build drops into this slot.</p>
-            <span class="btn btn-card is-disabled" aria-disabled="true">Empty slot</span>
-          </div>
-        </article>
-
+        </div>
       </div>
     </section>
 
     <!-- ───────────────────────── COMMUNITY ───────────────────────── -->
-    <section id="community" class="section">
-      <div class="section-header">
-        <p class="section-tag">Community</p>
-        <h2>Player comments</h2>
-        <p>Log in to post a comment, and give a thumbs up to the ones you like.</p>
-      </div>
-
-      <div class="community-layout">
-        <div class="comment-form-card">
-          <h3>Leave a comment</h3>
-          <form id="commentForm">
-            <label class="sr-only" for="commentText">Your comment</label>
-            <textarea id="commentText" placeholder="Which game should get built next?"></textarea>
-            <button type="submit" class="btn btn-primary full-width">Post comment</button>
-          </form>
+    <section id="community" class="band">
+      <div class="shell">
+        <div class="band-head">
+          <h2>Player comments</h2>
+          <p>Log in to post a comment, and give a thumbs up to the ones you like.</p>
         </div>
 
-        <div class="comment-list-card">
-          <h3>Latest comments</h3>
-          <div id="commentList" class="comment-list" aria-live="polite">
-            <p class="comment-text empty-note">Loading comments…</p>
+        <div class="community-layout">
+          <div class="panel comment-form-card">
+            <h3>Leave a comment</h3>
+            <form id="commentForm">
+              <label class="sr-only" for="commentText">Your comment</label>
+              <textarea id="commentText" placeholder="Which game should get built next?"></textarea>
+              <button type="submit" class="btn btn-primary full-width">Post comment</button>
+            </form>
+          </div>
+
+          <div class="panel comment-list-card">
+            <h3>Latest comments</h3>
+            <div id="commentList" class="comment-list" aria-live="polite">
+              <p class="comment-text empty-note">Loading comments…</p>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
     <!-- ───────────────────────── ABOUT ───────────────────────── -->
-    <section id="about" class="section about-section">
-      <div class="section-header">
-        <p class="section-tag">About</p>
-        <h2>eon games</h2>
-        <p>
-          eon games is a one-person studio building multiplayer games that run entirely in a browser tab.
-          Every title here is hand-built with HTML, CSS and JavaScript, with Firebase keeping players in sync —
-          no engines, no downloads, no store pages.
-        </p>
-        <div class="about-facts">
-          <div><strong>Built with</strong><span>HTML · CSS · JavaScript · Firebase</span></div>
-          <div><strong>Plays on</strong><span>Desktop, tablet and phone</span></div>
-          <div><strong>Costs</strong><span>Nothing, ever</span></div>
+    <section id="about" class="band">
+      <div class="shell">
+        <div class="band-head">
+          <h2>About eon games</h2>
+          <p>
+            A one-person studio building games that run entirely in a browser tab. Every title here is
+            hand-written in HTML, CSS and JavaScript, with Firebase keeping players in sync — no engine,
+            no download, no store page in the way.
+          </p>
+        </div>
+
+        <div class="about-grid">
+          <div>
+            <h3>Built by hand</h3>
+            <p>No game engine and no framework. Each game is plain JavaScript, written and tested in the browser it runs in.</p>
+          </div>
+          <div>
+            <h3>Plays anywhere</h3>
+            <p>Desktop, tablet or phone. The multiplayer games take touch controls as well as mouse, keyboard and a controller.</p>
+          </div>
+          <div>
+            <h3>Free, with no catch</h3>
+            <p>Nothing to buy and nothing to install. An account is only needed to leave a comment.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -459,6 +751,38 @@
       if (typeof closeSignupModal === "function") closeSignupModal();
     });
 
+    /* ── Logo film ──────────────────────────────────────────────
+       The video weighs 1.5 MB, so it is only fetched when it is
+       actually going to play. Anyone who prefers reduced motion,
+       or whose browser blocks autoplay, gets the poster frame —
+       which is the finished logo, so nothing looks broken.      */
+    (function () {
+      var film = document.getElementById("brandFilm");
+      var replay = document.getElementById("replayFilm");
+      if (!film) return;
+
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      function showReplay() { if (replay) replay.setAttribute("data-ready", "true"); }
+
+      if (reduce) { showReplay(); }
+      else {
+        film.src = "eon-logo.mp4";
+        film.load();
+        var attempt = film.play();
+        if (attempt && typeof attempt.catch === "function") attempt.catch(showReplay);
+        film.addEventListener("ended", showReplay);
+      }
+
+      if (replay) {
+        replay.addEventListener("click", function () {
+          if (!film.src) { film.src = "eon-logo.mp4"; film.load(); }
+          film.currentTime = 0;
+          film.play();
+        });
+      }
+    })();
+
     // Reveal cards on scroll (skipped if the visitor prefers reduced motion)
     (function () {
       var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -475,7 +799,7 @@
         });
       }, { rootMargin: "0px 0px -40px 0px", threshold: 0.1 });
       items.forEach(function (el, i) {
-        el.style.transitionDelay = Math.min(i, 5) * 60 + "ms";
+        el.style.transitionDelay = Math.min(i, 3) * 70 + "ms";
         io.observe(el);
       });
     })();
