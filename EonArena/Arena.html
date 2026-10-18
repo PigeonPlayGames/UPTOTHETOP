@@ -459,6 +459,7 @@
       <div class="modes" id="maps">
         <button class="mode" data-map="pit" aria-pressed="true">The Pit</button>
         <button class="mode" data-map="stacks">The Stacks</button>
+        <button class="mode" data-map="yards">The Yards</button>
       </div>
       <small style="display:block;margin-top:6px;color:var(--dim);font-size:11px" id="mapNote"></small>
     </div>
@@ -1263,7 +1264,7 @@ function girder(x1, z1, x2, z2, y, depth){
 
 /* ---------------- MAP 1 — THE PIT: wide open, long sightlines ---------------- */
 const PIT = {
-  id:'pit', name:'The Pit',
+  id:'pit', name:'The Pit', half:31,
   blurb:'Open bowl, long sightlines. The Rail owns this one.',
   fog:[40,130], sun:[28,42,18],
   spawns:[ {x:-24,z:-24},{x:24,z:-24},{x:-24,z:24},{x:24,z:24},
@@ -1363,7 +1364,7 @@ const PIT = {
    fight on. Doorways break every long line, so the Rail rarely gets its shot and the
    Scatter comes into its own.                                                        */
 const STACKS = {
-  id:'stacks', name:'The Stacks',
+  id:'stacks', name:'The Stacks', half:22,
   blurb:'Two-storey depot. Terraces to the deck, stairs to the high roof.',
   fog:[26,90], sun:[20,34,-14],
   spawns:[ {x:-15,z:-15},{x:15,z:-15},{x:-15,z:15},{x:15,z:15},
@@ -1509,7 +1510,138 @@ const STACKS = {
   }
 };
 
-const MAPS = { pit: PIT, stacks: STACKS };
+/* ---------------- MAP 3 — THE YARDS -----------------------------------------
+   The big one: 80m square against the Pit's 62. Long lanes need somewhere to
+   break them, so the middle is a two-storey control hub and two elevated
+   catwalks cross the north and south halves. Ground level stays open enough
+   to run, with container rows for cover.
+
+     0.0   yard floor, hub ground room (entered east/west)
+     4.2   hub deck + both catwalks
+     8.0   hub high roof
+----------------------------------------------------------------------------- */
+const YARDS = {
+  id:'yards', name:'The Yards', half:40,
+  blurb:'Shipping yard. Two-storey hub, catwalks overhead, long lanes.',
+  fog:[45,150], sun:[30,46,10],
+  spawns:[ {x:-34,z:-34},{x:34,z:-34},{x:-34,z:34},{x:34,z:34},
+           {x:0,z:-36},{x:0,z:36},{x:-36,z:0},{x:36,z:0} ],
+  teamSpawns:[[0,1,4,6],[2,3,5,7]],
+  pickups:[ {id:'p0',x:0,z:4,y:8.0},{id:'p1',x:0,z:0,y:0},
+            {id:'p2',x:-26,z:26,y:4.2},{id:'p3',x:26,z:-26,y:4.2},
+            {id:'p4',x:-34,z:0,y:0},{id:'p5',x:34,z:0,y:0} ],
+  climbs:[ {base:{x:0,z:21.0},  top:{x:0,z:10},  y:4.2, w:14,  from:0},
+           {base:{x:0,z:-21.0}, top:{x:0,z:-10}, y:4.2, w:14,  from:0},
+           {base:{x:39,z:26},   top:{x:28,z:26},   y:4.2, w:2.2, from:0},
+           {base:{x:-39,z:26},  top:{x:-28,z:26},  y:4.2, w:2.2, from:0},
+           {base:{x:39,z:-26},  top:{x:28,z:-26},  y:4.2, w:2.2, from:0},
+           {base:{x:-39,z:-26}, top:{x:-28,z:-26}, y:4.2, w:2.2, from:0},
+           {base:{x:10.2,z:-8.2},  top:{x:9.0,z:2.0},  y:8.0, w:4.0, from:4.2},
+           {base:{x:-10.2,z:-8.2}, top:{x:-9.0,z:2.0}, y:8.0, w:4.0, from:4.2} ],
+  build(){
+    const S = 80, H = 13, h = S/2;
+    flat(new THREE.PlaneGeometry(S,S), MAT.floor, 0, 0, 0);
+    solids.push(worldGroup.children[worldGroup.children.length-1]);
+    for (let i = -2; i <= 2; i++){                 // sparse grid: it is a big floor
+      flat(new THREE.PlaneGeometry(S, 0.09), i % 2 ? MAT.grid : MAT.grid2, 0, 0.01, i*15);
+      flat(new THREE.PlaneGeometry(0.09, S), i % 2 ? MAT.grid : MAT.grid2, i*15, 0.01, 0);
+    }
+    box(0, 0,  h, S+2, H, 1, MAT.wall);
+    box(0, 0, -h, S+2, H, 1, MAT.wall);
+    box( h, 0, 0, 1, H, S+2, MAT.wall);
+    box(-h, 0, 0, 1, H, S+2, MAT.wall);
+
+    /* ---- central hub, ground floor (24 x 24) ----
+       North and south faces are solid because the terraces lean against them;
+       you get in from east or west. */
+    const HW = 3.8, T = 0.8;
+    box(0, 0, -12, 24.8, HW, T, MAT.wallB);
+    box(0, 0,  12, 24.8, HW, T, MAT.wallB);
+    [-1,1].forEach(sx => {
+      box(sx*12, 0, -6.8, T, HW, 10.4, MAT.wallB);     // doorway centred between them
+      box(sx*12, 0,  6.8, T, HW, 10.4, MAT.wallB);
+    });
+    box(0, HW, 0, 24.8, 0.4, 24.8, MAT.wall);          // deck, top 4.2
+
+    /* ---- hub upper storey on the deck ----
+       Interior is 3.4 high, which clears a jumping player (1.78 + 1.45). */
+    const U = 4.2, UH = 3.4, UT = 0.7;
+    [-1,1].forEach(sz => {
+      box(-4.5, U, sz*7.5, 6.0, UH, UT, MAT.wallB);    // north/south doorways
+      box( 4.5, U, sz*7.5, 6.0, UH, UT, MAT.wallB);
+    });
+    box(-7.5, U, 0, UT, UH, 15.7, MAT.wallB);          // east/west solid: stairs run outside
+    box( 7.5, U, 0, UT, UH, 15.7, MAT.wallB);
+    box(0, U + UH, 0, 16.8, 0.4, 16.8, MAT.wall);      // high roof, top 8.0
+
+    // deck -> high roof, a stair on each side ring
+    [-1,1].forEach(sx => {
+      for (let i = 0; i < 7; i++){
+        box(sx*10.2, U, -8.2 + i*1.7, 4.0, 0.543*(i+1), 1.7, i%2 ? MAT.crateA : MAT.crateB);
+      }
+    });
+
+    // ground -> deck, terraces against the north and south faces
+    [-1,1].forEach(sz => {
+      for (let i = 0; i < 8; i++){
+        box(0, 0, sz*(12.6 + i*1.2), 14.0, 4.2 - i*0.525, 1.2, i%2 ? MAT.crateB : MAT.crateA);
+      }
+    });
+
+    /* ---- catwalks: underside sits at 3.8, clear of a jumping player below ---- */
+    [-1,1].forEach(sz => {
+      box(0, 3.8, sz*26, 60, 0.4, 3.0, MAT.panel);
+      for (let i = 0; i < 8; i++){                      // a stair tower at each end
+        [-1,1].forEach(sx => {
+          box(sx*(30.5 + i*1.2), 0, sz*26, 1.2, 4.2 - i*0.525, 3.0, i%2 ? MAT.crateA : MAT.crateB);
+        });
+      }
+    });
+
+    // container rows for cover
+    [[-32,-8],[32,-8],[-32,8],[32,8],[-20,-20],[20,-20],[-20,20],[20,20]]
+      .forEach(([x,z]) => {
+        box(x, 0, z, 3.2, 2.8, 6.4, MAT.rust);
+        box(x + (x > 0 ? -3.0 : 3.0), 0, z, 2.4, 1.3, 5.0, MAT.crateA);
+        strip(x, 2.55, z, 3.25, 0.1, 0.1, MAT.accent3, NEON.rose, 2.6);
+      });
+    [[-16,-30],[16,-30],[-16,30],[16,30],[-28,-16],[28,-16],[-28,16],[28,16],
+     [0,-30],[0,30],[-26,0],[26,0]]
+      .forEach((c,i) => box(c[0], 0, c[1], 2.6, 1.3, 2.6, i%2 ? MAT.crateA : MAT.rust));
+
+    // lights that read from across a map this size
+    [-1,1].forEach(sx => strip(sx*12.5, 3.1, 0, 0.14, 0.14, 3.4, MAT.accent, NEON.amber, 3.4));
+    [-1,1].forEach(sz => strip(0, 7.1, sz*7.9, 3.0, 0.12, 0.1, MAT.accent, NEON.amber, 3.0));
+    [-1,1].forEach(sz => strip(0, 4.3, sz*12.5, 24.8, 0.1, 0.12, MAT.accent2, NEON.teal, 0));
+    [-1,1].forEach(sz => strip(0, 8.1, sz*8.5, 16.8, 0.1, 0.12, MAT.accent2, NEON.teal, 0));
+
+    const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 1.2), MAT.accent2);
+    beacon.position.set(0, 8.2, 0); worldGroup.add(beacon);
+    addGlow(0, 8.3, 0, NEON.teal, 6);
+
+    // ---- non-colliding dressing ----
+    hazardRim(0, 0, 12.4, 12.4, 4.19);                 // deck edge
+    hazardRim(0, 0,  8.4,  8.4, 7.99);                 // high roof edge
+    [-1,1].forEach(i => girder(-h, i*19, h, i*19, 11.0, 0.55));
+    [-1,1].forEach(sx => pipe(sx*(h-1.3), -(h-1.3), sx*(h-1.3), (h-1.3), 10.2, 0.16, SURF.beam));
+    // catwalk handrails, outside the 2.2m climb corridor so they never block an arrival
+    [-1,1].forEach(sz => [-1,1].forEach(so => {
+      const zz = sz*26 + so*1.45;
+      pipe(-30, zz, 30, zz, 5.18, 0.038, SURF.pipe, 'rail');
+      for (let x = -27; x <= 27; x += 9){
+        const post = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), SURF.pipe);
+        post.position.set(x, 4.7, zz);
+        deco(post, 'post');
+      }
+    }));
+    [[-34,-20],[34,-20],[-34,20],[34,20],[-8,-36],[8,36]]
+      .forEach(([x,z], i) => barrel(x, z, 0, i % 2 ? SURF.rust : SURF.crateA));
+    [[-20,-20],[20,-20],[-20,20],[20,20]].forEach(([x,z]) => mast(x, 2.8, z, 2.4, NEON.rose));
+    [[-30,0],[30,0]].forEach(([x,z]) => pillarPost(x, z, 0, 10.0, 0.18));
+  }
+};
+
+const MAPS = { pit: PIT, stacks: STACKS, yards: YARDS };
 function currentMap(){ return MAPS[mapId] || PIT; }
 
 function buildPickupMeshes(){
@@ -2463,7 +2595,7 @@ function movePlayer(dt){
   if (wasAir && me.onGround && me.vel.y === 0) Audio2.play('land');
 
   // keep inside the pit even if something goes wrong
-  const lim = (currentMap().id === 'stacks' ? 22 : 31) - 1.2;
+  const lim = currentMap().half - 1.2;
   p.x = clamp(p.x, -lim, lim); p.z = clamp(p.z, -lim, lim);
 
   // footsteps + head bob
@@ -3938,7 +4070,7 @@ function steerMove(ai, dirX, dirZ, speed, dt){
     const dx = dirX*c - dirZ*sn, dz = dirX*sn + dirZ*c;
     const nx = ai.pos.x + dx*speed*dt, nz = ai.pos.z + dz*speed*dt;
     if (!blockedAt(nx, nz, ai.pos.y)){
-      const lim = (currentMap().id === 'stacks' ? 22 : 31) - 2;
+      const lim = currentMap().half - 2;
       ai.pos.x = clamp(nx, -lim, lim);
       ai.pos.z = clamp(nz, -lim, lim);
       const g = groundAt(ai.pos.x, ai.pos.z, ai.pos.y, DRONE_STEP);
@@ -4565,7 +4697,7 @@ function updateTagVisibility(){
 /* minimap */
 const miniCtx = $('miniC').getContext('2d');
 function drawMini(){
-  const c = miniCtx, S = 300, half = currentMap().id === 'stacks' ? 22 : 31, k = S/(half*2);
+  const c = miniCtx, S = 300, half = currentMap().half, k = S/(half*2);
   c.clearRect(0,0,S,S);
   c.fillStyle = 'rgba(10,14,23,.55)'; c.fillRect(0,0,S,S);
   c.fillStyle = '#232C40';
@@ -5078,7 +5210,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r10-two-storey · 2026-10-18 19:51 UTC';
+const BUILD = 'r11-yards · 2026-10-18 20:09 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
