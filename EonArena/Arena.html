@@ -1136,9 +1136,9 @@ function pipe(x1, z1, x2, z2, y, r, mat){
   return deco(m);
 }
 function pillarPost(x, z, y, h, r, mat){
-  return deco(Object.assign(new THREE.Mesh(cylG(r, r*1.15, h, 8), mat || SURF.pipe), {
-    position: new THREE.Vector3(x, y + h/2, z)
-  }));
+  const m = new THREE.Mesh(cylG(r, r*1.15, h, 8), mat || SURF.pipe);
+  m.position.set(x, y + h/2, z);
+  return deco(m);
 }
 function railing(cx, cz, hw, hd, y, color){
   const mat = SURF.pipe;
