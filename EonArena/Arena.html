@@ -1364,17 +1364,23 @@ const PIT = {
    Scatter comes into its own.                                                        */
 const STACKS = {
   id:'stacks', name:'The Stacks',
-  blurb:'Roofed depot, corners everywhere. Close-quarters fighting.',
+  blurb:'Two-storey depot. Terraces to the deck, stairs to the high roof.',
   fog:[26,90], sun:[20,34,-14],
   spawns:[ {x:-15,z:-15},{x:15,z:-15},{x:-15,z:15},{x:15,z:15},
            {x:0,z:-18},{x:0,z:18},{x:-18,z:0},{x:18,z:0} ],
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
-  pickups:[ {id:'p0',x:0,z:6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
-            {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0} ],
-  climbs:[ {base:{x:17.6,z:0},  top:{x:6,z:0},  y:3.8, w:13},
-           {base:{x:-17.6,z:0}, top:{x:-6,z:0}, y:3.8, w:13} ],
+  pickups:[ {id:'p0',x:0,z:7.6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
+            {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0},{id:'p5',x:0,z:-3.6,y:7.7} ],
+  /*
+    Two flights. 'from' is the deck a flight starts on, so a drone climbs one storey
+    at a time instead of walking to the foot of a stair that begins in mid-air.
+  */
+  climbs:[ {base:{x:17.6,z:0},  top:{x:6,z:0},  y:3.8, w:13,  from:0},
+           {base:{x:-17.6,z:0}, top:{x:-6,z:0}, y:3.8, w:13,  from:0},
+           {base:{x:7.65,z:-6.3},  top:{x:5.0,z:4.1},  y:7.7, w:3.5, from:3.8},
+           {base:{x:-7.65,z:-6.3}, top:{x:-5.0,z:4.1}, y:7.7, w:3.5, from:3.8} ],
   build(){
-    const S = 44, H = 7, h = S/2;
+    const S = 44, H = 11, h = S/2;
     flat(new THREE.PlaneGeometry(S,S), MAT.floor2, 0, 0, 0);
     solids.push(worldGroup.children[worldGroup.children.length-1]);
     for (let i = -2; i <= 2; i++){
@@ -1419,6 +1425,38 @@ const STACKS = {
       }
     });
 
+    /*
+      SECOND STOREY. The 3.8 roof is its floor. An upper block sits on it with
+      doorways north and south, and a stair on each of the east and west rings runs
+      up to the high roof at 7.7.
+
+        0.0  ground floor, depot interior
+        3.8  deck -- ring walkway + upper room floor
+        7.7  high roof
+
+      Interior height is 3.5, which clears a jumping player (1.78 + 1.45 = 3.23) so
+      you cannot bang your head indoors.
+    */
+    const U = 3.8, UH = 3.5, UT = 0.7, uSeg = 4.1, uOff = 3.45;
+    box(-uOff, U, -5.5, uSeg, UH, UT, MAT.wallB);     // north face, centre doorway
+    box( uOff, U, -5.5, uSeg, UH, UT, MAT.wallB);
+    box(-uOff, U,  5.5, uSeg, UH, UT, MAT.wallB);     // south face, centre doorway
+    box( uOff, U,  5.5, uSeg, UH, UT, MAT.wallB);
+    box(-5.5, U, 0, UT, UH, 11.7, MAT.wallB);         // east/west faces solid: the
+    box( 5.5, U, 0, UT, UH, 11.7, MAT.wallB);         // stairs run outside them
+    box(0, U + UH, 0, 12.2, 0.4, 12.2, MAT.wall);     // high roof, top 7.7
+
+    // a stair on each side ring, rising north to south
+    [-1, 1].forEach(sx => {
+      for (let i = 0; i < 7; i++){
+        box(sx*7.65, U, -5.5 + i*1.6, 3.5, 0.557*(i+1), 1.6, i%2 ? MAT.crateA : MAT.crateB);
+      }
+    });
+    strip(0, 7.8, -6.0, 12.2, 0.1, 0.12, MAT.accent2, NEON.teal, 0);   // high roof trim
+    strip(0, 7.8,  6.0, 12.2, 0.1, 0.12, MAT.accent2, NEON.teal, 0);
+    [[0,-5.9],[0,5.9]].forEach(([x,z]) =>                              // upper doorway lights
+      strip(x, 7.1, z, 2.6, 0.12, 0.1, MAT.accent, NEON.amber, 3.0));
+
     // interior: solid core plus two low crates to break the room up
     box(0, 0, 0, 4, WH, 4, MAT.wallB);
     box(-5.5, 0, -5.5, 2, 1.2, 2, MAT.rust);
@@ -1449,11 +1487,14 @@ const STACKS = {
     // ---- non-colliding dressing ----
     // No railing here: the parapet boxes above already edge the roof, and the gaps at
     // x = +/-9.2 are the terrace arrivals. Railing them was a wall at the top of the stairs.
-    hazardRim(0, 0, 9.2, 9.2, 3.79);                        // marks the drop
+    hazardRim(0, 0, 9.2, 9.2, 3.79);                        // marks the deck drop
+    hazardRim(0, 0, 6.1, 6.1, 7.69);                        // marks the high-roof drop
     // roof deck is 3.8; a player's head reaches 5.58, so the underside must clear that
-    for (let i = -1; i <= 1; i++) girder(-h, i*13, h, i*13, 6.85, 0.5);
+    // Only the outer two. A truss over the roof is head height for a jumping player
+    // (3.8 deck + 1.78 + 1.45 jump = 7.03), and the high roof now occupies that space.
+    [-1, 1].forEach(i => girder(-h, i*15, h, i*15, 9.4, 0.5));
     [[-1,1],[1,-1]].forEach(([sx, sz]) => {
-      pipe(sx*(h-1.2), -(h-1.2), sx*(h-1.2), (h-1.2), 5.2, 0.15, SURF.beam);
+      pipe(sx*(h-1.2), -(h-1.2), sx*(h-1.2), (h-1.2), 9.0, 0.15, SURF.beam);
     });
     pipe(-9.4, -9.9, 9.4, -9.9, 2.9, 0.12);                 // conduit along the depot walls
     pipe(-9.4,  9.9, 9.4,  9.9, 2.9, 0.12);
@@ -1463,8 +1504,8 @@ const STACKS = {
       barrel(x, z, 0, i % 2 ? SURF.rust : SURF.crateA));
 
     const beacon = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
-    beacon.position.set(0, 4.0, 0); worldGroup.add(beacon);
-    addGlow(0, 4.1, 0, NEON.teal, 5);
+    beacon.position.set(0, 7.9, 0); worldGroup.add(beacon);     // now crowns the high roof
+    addGlow(0, 8.0, 0, NEON.teal, 5);
   }
 };
 
@@ -3947,13 +3988,24 @@ function routeTo(ai, tx, tz, ty){
     return routePt;
   }
 
+  /*
+    Only flights that start at the level the drone is actually standing on. Without
+    this, a drone on the ground picks whichever base is nearest in plan view -- which
+    on a two-storey map can be an upper flight whose foot is a storey above its head,
+    so it walks to a spot under thin air and stalls. Climbing a storey at a time makes
+    it ride the ground terrace first, then find the upper stair from the deck.
+  */
+  const reachable = climbs.filter(c => Math.abs(ai.pos.y - (c.from || 0)) < 1.6);
+  const pool = reachable.length ? reachable : climbs;
+
   // keep the chosen stairway while it is still nearby, otherwise take the closest
   let best = ai.climbPick;
-  if (best && Math.hypot(ai.pos.x - best.base.x, ai.pos.z - best.base.z) > 18) best = null;
+  if (best && (pool.indexOf(best) < 0 ||
+      Math.hypot(ai.pos.x - best.base.x, ai.pos.z - best.base.z) > 18)) best = null;
   if (!best){
     let bd = 1e9;
-    for (let i = 0; i < climbs.length; i++){
-      const c = climbs[i];
+    for (let i = 0; i < pool.length; i++){
+      const c = pool[i];
       const d = Math.hypot(ai.pos.x - c.base.x, ai.pos.z - c.base.z);
       if (d < bd){ bd = d; best = c; }
     }
@@ -5026,7 +5078,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r9-headroom · 2026-10-18 19:22 UTC';
+const BUILD = 'r10-two-storey · 2026-10-18 19:51 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
