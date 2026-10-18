@@ -819,6 +819,12 @@ function initRender(){
 
   buildSky();
   buildDust();
+  buildEnv();
+  const S = buildSurfaces();           // swap the flat colours for textured PBR
+  MAT.floor = S.floor; MAT.floor2 = S.floor2;
+  MAT.wall = S.wall;   MAT.wallB = S.wallB;
+  MAT.crateA = S.crateA; MAT.crateB = S.crateB;
+  MAT.rust = S.rust;   MAT.panel = S.panel;
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth/innerHeight;
@@ -909,9 +915,143 @@ function addGlow(x, y, z, color, size, parent){
   return spr;
 }
 
+/* ===================== SURFACES ===================== */
+/*
+  Textures are drawn on a canvas at load rather than downloaded. That keeps the game a
+  single file with no asset payload — which matters more here than photographic detail,
+  since the thing making it look flat is untextured surfaces and no specular response,
+  not the lack of sculpted models.
+*/
+function tex(w, h, draw, repX, repY){
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repX || 1, repY || repX || 1);
+  t.anisotropy = 4;
+  return t;
+}
+function noise(g, w, h, amount, dark){
+  const img = g.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4){
+    const n = (Math.random() - 0.5) * amount;
+    d[i] = clamp(d[i] + n, 0, 255);
+    d[i+1] = clamp(d[i+1] + n, 0, 255);
+    d[i+2] = clamp(d[i+2] + n, 0, 255);
+  }
+  g.putImageData(img, 0, 0);
+  if (dark){                                        // blotchy grime
+    for (let i = 0; i < dark; i++){
+      const x = Math.random()*w, y = Math.random()*h, r = 6 + Math.random()*26;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, 'rgba(0,0,0,0.20)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grd;
+      g.fillRect(x-r, y-r, r*2, r*2);
+    }
+  }
+}
+
+function panelTexture(base, seam, rivets){
+  return tex(256, 256, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    noise(g, w, h, 26, 10);
+    g.strokeStyle = seam; g.lineWidth = 3;
+    for (let i = 0; i <= 2; i++){                   // panel seams
+      g.beginPath(); g.moveTo(0, i*h/2); g.lineTo(w, i*h/2); g.stroke();
+      g.beginPath(); g.moveTo(i*w/2, 0); g.lineTo(i*w/2, h); g.stroke();
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 1;
+    for (let i = 0; i < 40; i++){                   // scratches
+      const x = Math.random()*w, y = Math.random()*h;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random()-0.5)*40, y + (Math.random()-0.5)*8); g.stroke();
+    }
+    if (rivets){
+      g.fillStyle = 'rgba(255,255,255,0.09)';
+      for (let x = 16; x < w; x += 32){
+        for (let y = 16; y < h; y += 112){
+          g.beginPath(); g.arc(x, y, 2.2, 0, 7); g.fill();
+        }
+      }
+    }
+  }, 1);
+}
+function concreteTexture(base){
+  return tex(256, 256, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    noise(g, w, h, 34, 26);
+    g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 2;
+    for (let i = 0; i < 5; i++){                    // hairline cracks
+      let x = Math.random()*w, y = Math.random()*h;
+      g.beginPath(); g.moveTo(x, y);
+      for (let k = 0; k < 6; k++){ x += (Math.random()-0.5)*40; y += (Math.random()-0.5)*40; g.lineTo(x, y); }
+      g.stroke();
+    }
+  }, 1);
+}
+function hazardTexture(){
+  return tex(128, 128, (g, w, h) => {
+    g.fillStyle = '#1A1E30'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#C8902F'; g.lineWidth = 16;
+    for (let i = -h; i < w + h; i += 36){
+      g.beginPath(); g.moveTo(i, 0); g.lineTo(i + h, h); g.stroke();
+    }
+    noise(g, w, h, 30, 6);
+  }, 1);
+}
+
+let SURF = null;
+function buildSurfaces(){
+  if (SURF) return SURF;
+  const std = (o) => new THREE.MeshStandardMaterial(o);
+  SURF = {
+    floor:  std({ map: concreteTexture('#1A2142'), roughness:0.95, metalness:0.05, color:0xA9B4DC }),
+    floor2: std({ map: concreteTexture('#171C33'), roughness:0.95, metalness:0.05, color:0xA3AED6 }),
+    wall:   std({ map: panelTexture('#2B3558', 'rgba(0,0,0,0.35)', true),  roughness:0.72, metalness:0.28, color:0xBFC8E8 }),
+    wallB:  std({ map: panelTexture('#1F2744', 'rgba(0,0,0,0.40)', true),  roughness:0.78, metalness:0.22, color:0xB9C2E2 }),
+    panel:  std({ map: panelTexture('#223055', 'rgba(0,0,0,0.30)', false), roughness:0.55, metalness:0.45, color:0xC2CBEB }),
+    crateA: std({ map: panelTexture('#39436E', 'rgba(0,0,0,0.38)', true),  roughness:0.62, metalness:0.38, color:0xC4CCEC }),
+    crateB: std({ map: panelTexture('#2C3660', 'rgba(0,0,0,0.38)', true),  roughness:0.66, metalness:0.34, color:0xBEC7E8 }),
+    rust:   std({ map: concreteTexture('#6E4631'), roughness:0.88, metalness:0.18, color:0xD8BBA4 }),
+    hazard: std({ map: hazardTexture(), roughness:0.8, metalness:0.2 }),
+    pipe:   std({ color:0x4A5578, roughness:0.45, metalness:0.75 }),
+    dark:   std({ color:0x151B30, roughness:0.9, metalness:0.1 })
+  };
+  // walls are big, so tile their texture rather than stretching one panel over them
+  SURF.wall.map.repeat.set(8, 2);
+  SURF.wallB.map.repeat.set(4, 2);
+  SURF.floor.map.repeat.set(16, 16);
+  SURF.floor2.map.repeat.set(12, 12);
+  return SURF;
+}
+
+// a cheap environment so metal has something to reflect; without it PBR reads as grey
+function buildEnv(){
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 64);
+  grad.addColorStop(0,    '#070B18');
+  grad.addColorStop(0.46, '#1B2546');
+  grad.addColorStop(0.56, '#3A7E9E');
+  grad.addColorStop(1,    '#2A2142');
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 64);
+  const t = new THREE.CanvasTexture(c);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  try {
+    const pm = new THREE.PMREMGenerator(renderer);
+    pm.compileEquirectangularShader();
+    scene.environment = pm.fromEquirectangular(t).texture;
+    pm.dispose();
+  } catch (e){ console.warn('env map unavailable', e); }
+  t.dispose();
+}
+
 /* ===================== WORLD ===================== */
 const NEON = { amber:0xFFB13D, teal:0x37E0CF, rose:0xFF4F8B, violet:0x9A7BFF };
-const MAT = {
+let MAT = {
   floor:   new THREE.MeshLambertMaterial({ color:0x141A31 }),
   floor2:  new THREE.MeshLambertMaterial({ color:0x121729 }),
   grid:    new THREE.MeshBasicMaterial({ color:0x1C5E66 }),          // glowing inlay, not paint
@@ -964,6 +1104,103 @@ function flat(geo, mat, x, y, z){
   m.receiveShadow = true;
   worldGroup.add(m);
   return m;
+}
+
+/*
+  Decoration. None of it collides — the maps' spawn, reachability and climb checks were
+  verified against the collider list, and silhouette detail has no business changing
+  any of that. It exists purely to break up the boxes.
+*/
+const decoMeshes = [];      // cosmetic only -- the auto-quality ladder can shed all of it
+function deco(mesh){
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.userData.deco = true;
+  worldGroup.add(mesh);
+  decoMeshes.push(mesh);
+  return mesh;
+}
+function pipe(x1, z1, x2, z2, y, r, mat){
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.hypot(dx, dz);
+  const m = new THREE.Mesh(cylG(r, r, len, 8), mat || SURF.pipe);
+  m.position.set((x1+x2)/2, y, (z1+z2)/2);
+  m.rotation.z = Math.PI/2;
+  m.rotation.y = -Math.atan2(dz, dx);
+  // collars every few metres so a long run doesn't read as a single tube.
+  // Spacing is a draw-call budget, not a style choice -- these are separate meshes.
+  for (let d = 4.5; d < len; d += 9){
+    const c = new THREE.Mesh(cylG(r*1.5, r*1.5, 0.18, 8), SURF.dark);
+    c.position.set(0, (d - len/2), 0);
+    m.add(c);
+  }
+  return deco(m);
+}
+function pillarPost(x, z, y, h, r, mat){
+  return deco(Object.assign(new THREE.Mesh(cylG(r, r*1.15, h, 8), mat || SURF.pipe), {
+    position: new THREE.Vector3(x, y + h/2, z)
+  }));
+}
+function railing(cx, cz, hw, hd, y, color){
+  const mat = SURF.pipe;
+  const corners = [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]];
+  corners.forEach(([ox, oz]) => {
+    const post = new THREE.Mesh(cylG(0.045, 0.05, 1.0, 6), mat);
+    post.position.set(cx+ox, y + 0.5, cz+oz);
+    deco(post);
+  });
+  for (let i = 0; i < 4; i++){
+    const a = corners[i], b = corners[(i+1)%4];
+    pipe(cx+a[0], cz+a[1], cx+b[0], cz+b[1], y + 0.98, 0.038, mat);
+  }
+  if (color) addGlow(cx, y + 1.05, cz, color, 2.0);
+}
+function barrel(x, z, y, mat){
+  const b = new THREE.Mesh(cylG(0.34, 0.34, 0.92, 12), mat || SURF.rust);
+  b.position.set(x, y + 0.46, z);
+  deco(b);
+  const rim = new THREE.Mesh(cylG(0.36, 0.36, 0.07, 12), SURF.dark);
+  rim.position.set(0, 0.2, 0);
+  b.add(rim);
+  return b;
+}
+function mast(x, z, y, h, color){
+  const m = new THREE.Mesh(cylG(0.055, 0.1, h, 6), SURF.pipe);
+  m.position.set(x, y + h/2, z);
+  deco(m);
+  const dish = new THREE.Mesh(cylG(0.02, 0.34, 0.3, 10), SURF.dark);
+  dish.position.set(0, h/2 - 0.1, 0);
+  m.add(dish);
+  if (color) addGlow(x, y + h, z, color, 2.6);
+  return m;
+}
+/*
+  Hazard striping around a ledge. Doubles as a readability cue: these are exactly the
+  edges a player can stand on or drop off, so marking them is honest, not just decor.
+*/
+function hazardRim(cx, cz, hw, hd, y){
+  const t = 0.09, w = 0.42;
+  [[hw*2 + w*2, w, 0, -hd - w/2], [hw*2 + w*2, w, 0, hd + w/2],
+   [w, hd*2, -hw - w/2, 0],       [w, hd*2, hw + w/2, 0]]
+   .forEach(([sw, sd, ox, oz]) => {
+     const m = new THREE.Mesh(boxG(sw, t, sd), SURF.hazard);
+     m.position.set(cx + ox, y + t/2, cz + oz);
+     deco(m);
+   });
+}
+function girder(x1, z1, x2, z2, y){
+  const dx = x2-x1, dz = z2-z1, len = Math.hypot(dx, dz);
+  const g = new THREE.Mesh(boxG(len, 0.22, 0.14), SURF.pipe);
+  g.position.set((x1+x2)/2, y, (z1+z2)/2);
+  g.rotation.y = -Math.atan2(dz, dx);
+  deco(g);
+  const n = Math.max(2, Math.round(len/5));        // zig-zag web, so it reads as a truss
+  for (let i = 0; i < n; i++){
+    const b = new THREE.Mesh(boxG(4.6, 0.09, 0.11), SURF.pipe);
+    b.position.set(-len/2 + (i+0.5)*(len/n), -0.26, 0);
+    b.rotation.z = (i % 2 ? 1 : -1) * 0.62;
+    g.add(b);
+  }
+  return g;
 }
 
 /* ---------------- MAP 1 — THE PIT: wide open, long sightlines ---------------- */
@@ -1032,6 +1269,23 @@ const PIT = {
       addGlow(x, 4.8, z, NEON.teal, 4.5);
       strip(x, 2.2, z + (z > 0 ? -3.05 : 3.05), 4.4, 0.16, 0.1, MAT.accent3, NEON.rose, 3);
     });
+
+    // ---- non-colliding dressing ----
+    const hh2 = h - 1.1;
+    [[-1,1],[1,1],[1,-1],[-1,-1]].forEach(([sx, sz]) => {
+      pipe(sx*hh2, -hh2, sx*hh2, hh2, 6.4, 0.16);           // service runs near the ceiling line
+      pipe(sx*hh2 - sx*0.5, -hh2, sx*hh2 - sx*0.5, hh2, 5.9, 0.1);
+    });
+    for (let i = -1; i <= 1; i++) girder(-h, i*17, h, i*17, 7.4);   // roof trusses overhead
+    railing(0, 0, 6.3, 6.3, 2.0, NEON.teal);                        // platform edge
+    hazardRim(0, 0, 6.3, 6.3, 1.99);                                // marks the drop
+    [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => {
+      mast(x, 4.5, z, 2.6, NEON.rose);
+      pillarPost(x > 0 ? x-3.4 : x+3.4, z, 0, 4.4, 0.13);
+    });
+    [[-27,-20],[27,-20],[-27,20],[27,20],[-20,27],[20,27],[-20,-27],[20,-27]]
+      .forEach(([x,z], i) => barrel(x, z, 0, i % 3 ? SURF.rust : SURF.crateB));
+    [[-14,8],[14,-8],[8,14],[-8,-14]].forEach(([x,z]) => pillarPost(x, z, 0, 7.6, 0.17));
 
     const cover = [
       [-11,-22, 3,1.35,3], [11,-22, 3,1.35,3], [-11,22, 3,1.35,3], [11,22, 3,1.35,3],
@@ -1133,6 +1387,20 @@ const STACKS = {
     [[-9.4, 0], [9.4, 0]].forEach(([x, z]) => strip(x, 3.9, z, 0.12, 0.1, 18.8, MAT.accent2, NEON.teal, 0));
     [[-9.4,-9.4],[9.4,-9.4],[-9.4,9.4],[9.4,9.4]].forEach(([x,z]) => addGlow(x, 3.95, z, NEON.teal, 4));
 
+    // ---- non-colliding dressing ----
+    railing(0, 0, 9.2, 9.2, 3.8, 0);                        // roof edge, both sides
+    hazardRim(0, 0, 9.2, 9.2, 3.79);                        // marks the drop
+    for (let i = -1; i <= 1; i++) girder(-h, i*13, h, i*13, 6.3);
+    [[-1,1],[1,-1]].forEach(([sx, sz]) => {
+      pipe(sx*(h-1.2), -(h-1.2), sx*(h-1.2), (h-1.2), 5.2, 0.15);
+    });
+    pipe(-9.4, -9.9, 9.4, -9.9, 2.9, 0.12);                 // conduit along the depot walls
+    pipe(-9.4,  9.9, 9.4,  9.9, 2.9, 0.12);
+    [[-19,-19],[19,-19],[-19,19],[19,19]].forEach(([x,z]) => mast(x, 2.6, z, 2.2, NEON.rose));
+    [[-13,-3],[13,3],[-3,13],[3,-13],[-20,-12],[20,12]].forEach(([x,z], i) =>
+      barrel(x, z, 0, i % 2 ? SURF.rust : SURF.crateA));
+    [[-6.2,-6.2],[6.2,6.2]].forEach(([x,z]) => pillarPost(x, z, 0, 3.4, 0.14));
+
     const beacon = new THREE.Mesh(new THREE.BoxGeometry(1, 0.25, 1), MAT.accent2);
     beacon.position.set(0, 4.0, 0); worldGroup.add(beacon);
     addGlow(0, 4.1, 0, NEON.teal, 5);
@@ -1159,12 +1427,16 @@ function buildPickupMeshes(){
 }
 
 function loadMap(id){
+  buildSurfaces();            // decoration reads SURF directly; never let a map build outrun it
   if (worldGroup){
-    worldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    worldGroup.traverse(o => {
+      if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
+    });
     scene.remove(worldGroup);
   }
   worldGroup = new THREE.Group();
   scene.add(worldGroup);
+  decoMeshes.length = 0;
   solids.length = 0;
   colliders.length = 0;
   for (const k in pickupMeshes) delete pickupMeshes[k];
@@ -1174,6 +1446,8 @@ function loadMap(id){
   SPAWNS = m.spawns;
   PICKUPS = m.pickups;
   m.build();
+  // a map swap rebuilds decoration from scratch; honour a detail-off ladder step
+  if (perf && perf.bare) decoMeshes.forEach(d => { d.visible = false; });
   buildPickupMeshes();
   scene.fog = new THREE.Fog(0x16203C, m.fog[0], m.fog[1]);
   if (sun) sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
@@ -1214,56 +1488,146 @@ function updateTag(spr, hp, hpMax){
   u.tex.needsUpdate = true;
 }
 
-function buildAvatar(colorHex, name){
-  const g = new THREE.Group();
-  const suit = new THREE.MeshLambertMaterial({ color:colorHex });
-  const dark = new THREE.MeshLambertMaterial({ color:0x20263A });
+/*
+  Geometry cache. Every avatar used to allocate its own boxes, so eight drones meant
+  eight copies of identical buffers. Sharing them keeps creation cheap and the GPU tidy.
+*/
+const _geo = {};
+/*
+  Shared geometry cache. Anything handed out here is referenced by avatars AND map
+  decoration, so it carries a flag and loadMap's teardown must not dispose it --
+  freeing it on a map switch would blank every player model still on screen.
+*/
+function _share(g){ g.userData.shared = true; return g; }
+function boxG(w,h,d){ const k = 'b'+w+'_'+h+'_'+d; return _geo[k] || (_geo[k] = _share(new THREE.BoxGeometry(w,h,d))); }
+function cylG(rt,rb,h,seg){ const k = 'c'+rt+'_'+rb+'_'+h+'_'+seg; return _geo[k] || (_geo[k] = _share(new THREE.CylinderGeometry(rt,rb,h,seg))); }
+function sphG(r,a,b){ const k = 's'+r+'_'+a+'_'+b; return _geo[k] || (_geo[k] = _share(new THREE.SphereGeometry(r,a,b))); }
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.75, 0.36), suit);
-  torso.position.y = 1.12; torso.castShadow = true;
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.26, 0.34), dark);
-  hips.position.y = 0.68;
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.62, 0.26), dark);
-  legL.position.set(-0.15, 0.31, 0); legL.castShadow = true;
-  const legR = legL.clone(); legR.position.x = 0.15;
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.18), suit);
-  armL.position.set(-0.4, 1.12, 0); armL.castShadow = true;
-  const armR = armL.clone(); armR.position.x = 0.4;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), dark);
-  head.position.y = 1.68; head.castShadow = true;
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.11, 0.03), new THREE.MeshBasicMaterial({ color:colorHex }));
-  visor.position.set(0, 1.7, -0.18);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTex(), color: colorHex, transparent:true, opacity:0.5,
-    blending: THREE.AdditiveBlending, depthWrite:false
-  }));
-  halo.position.set(0, 1.7, -0.22);
-  halo.scale.setScalar(1.1);
-  halo.visible = glowOn;
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.72), dark);
-  gun.position.set(0.3, 1.16, -0.36);
+function part(geo, mat, x, y, z, parent, shadow){
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  if (shadow !== false) m.castShadow = true;
+  parent.add(m);
+  return m;
+}
+
+/*
+  A figure rather than a stack of boxes: tapered torso, shoulder pads, jointed arms that
+  actually hold the weapon, thighs and shins that bend, and boots. The arms and the gun
+  live in one "upper" group, so aiming rotates the whole assembly the way a person
+  shoulders a rifle — the old version parented the gun to the chest, which is why it
+  looked like a stick poking out of the ribs.
+
+  Drones get the same skeleton with a different head and shoulders, so friend and foe
+  read apart instantly at a distance even before you see the colour.
+*/
+function buildAvatar(colorHex, name, isDrone){
+  const g = new THREE.Group();
+  // Standard, not Lambert: Lambert ignores scene.environment, so a player would read
+  // as flat paint next to the reflective world surfaces.
+  const suit  = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.55, metalness: 0.25 });
+  const dark  = new THREE.MeshStandardMaterial({ color: 0x1A2036, roughness: 0.75, metalness: 0.35 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x39435F, roughness: 0.32, metalness: 0.85 });
+  const lit   = new THREE.MeshBasicMaterial({ color: colorHex });
+
+  // ---- pelvis and legs ----
+  part(boxG(0.40, 0.22, 0.30), dark, 0, 0.74, 0, g);
+
+  function leg(side){
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.14, 0.70, 0);
+    g.add(hip);
+    part(cylG(0.115, 0.095, 0.40, 6), suit, 0, -0.20, 0, hip);      // thigh
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.40, 0);
+    hip.add(knee);
+    part(cylG(0.095, 0.075, 0.34, 6), dark, 0, -0.17, 0, knee);     // shin
+    part(boxG(0.17, 0.10, 0.27), metal, 0, -0.33, 0.03, knee);      // boot
+    return { hip, knee };
+  }
+  const L = leg(-1), R = leg(1);
+
+  // ---- torso ----
+  const chest = part(cylG(0.30, 0.24, 0.56, 6), suit, 0, 1.18, 0, g);
+  chest.rotation.y = Math.PI / 6;                                    // flat face forward
+  part(boxG(0.34, 0.26, 0.12), dark, 0, 1.22, -0.20, g);             // chest plate
+  part(boxG(0.26, 0.05, 0.05), lit, 0, 1.30, -0.26, g, false);       // status light
+  part(boxG(0.22, 0.30, 0.20), metal, 0, 1.12, 0.20, g);             // back pack
+
+  // ---- head ----
+  const head = new THREE.Group();
+  head.position.set(0, 1.56, 0);
+  g.add(head);
+  let visor, eye = null;
+
+  if (isDrone){
+    part(cylG(0.055, 0.10, 0.20, 6), metal, 0, 0.08, 0, head);       // neck stalk
+    const pod = part(boxG(0.30, 0.20, 0.34), dark, 0, 0.24, -0.02, head);
+    pod.rotation.x = -0.12;
+    visor = part(boxG(0.055, 0.055, 0.04), lit, 0, 0.25, -0.20, head, false);   // single eye
+    eye = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color: colorHex, transparent:true, opacity:0.95,
+      blending: THREE.AdditiveBlending, depthWrite:false
+    }));
+    eye.position.set(0, 0.25, -0.23);
+    eye.scale.setScalar(0.65);
+    eye.visible = glowOn;
+    head.add(eye);
+    [-1, 1].forEach(sx => {                                          // angular shoulder spikes
+      const sp = part(cylG(0.01, 0.10, 0.34, 4), metal, sx * 0.30, 1.40, 0, g);
+      sp.rotation.z = sx * -0.5;
+    });
+  } else {
+    part(boxG(0.28, 0.28, 0.30), dark, 0, 0.20, 0, head);            // helmet
+    part(boxG(0.30, 0.09, 0.05), metal, 0, 0.31, 0, head);           // crest
+    visor = part(boxG(0.24, 0.10, 0.04), lit, 0, 0.19, -0.16, head, false);
+    [-1, 1].forEach(sx => part(boxG(0.13, 0.13, 0.26), suit, sx * 0.27, 1.38, 0, g));  // shoulder pads
+  }
+
+  // ---- arms and weapon, as one shouldered assembly ----
+  const upper = new THREE.Group();
+  upper.position.set(0, 1.30, 0);
+  g.add(upper);
+
+  // right arm: bent, holding the grip
+  part(cylG(0.075, 0.065, 0.30, 6), suit, 0.26, -0.13, -0.02, upper);
+  part(cylG(0.065, 0.06, 0.26, 6), dark, 0.26, -0.29, -0.20, upper).rotation.x = -1.1;
+  // left arm: forward, supporting the barrel
+  part(cylG(0.075, 0.065, 0.28, 6), suit, -0.24, -0.14, -0.04, upper);
+  part(cylG(0.062, 0.058, 0.28, 6), dark, -0.20, -0.26, -0.28, upper).rotation.x = -1.25;
+
+  const gun = new THREE.Group();
+  gun.position.set(0.04, -0.28, -0.34);
+  upper.add(gun);
+  part(boxG(0.09, 0.11, 0.46), dark, 0, 0, 0, gun);                  // receiver
+  part(boxG(0.055, 0.055, 0.40), metal, 0, 0.02, -0.40, gun);        // barrel
+  part(boxG(0.07, 0.15, 0.10), dark, 0, -0.11, 0.05, gun);           // magazine
+  part(boxG(0.07, 0.09, 0.16), metal, 0, -0.01, 0.28, gun);          // stock
+  part(boxG(0.03, 0.04, 0.10), lit, 0, 0.08, -0.05, gun, false);     // sight glow
 
   const flash = new THREE.Mesh(
     new THREE.PlaneGeometry(0.42, 0.42),
     new THREE.MeshBasicMaterial({ map:glowTex(), color:0xFFCE7A, transparent:true, opacity:0.95, depthWrite:false, blending:THREE.AdditiveBlending })
   );
-  flash.position.set(0.3, 1.16, -0.78);
+  flash.position.set(0, 0.02, -0.64);
   flash.visible = false;
+  gun.add(flash);
 
-  g.add(torso, hips, legL, legR, armL, armR, head, visor, halo, gun, flash);
-
-  // invisible hit volumes used by the raycaster
-  const bodyHit = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.45, 0.6), new THREE.MeshBasicMaterial({ visible:false }));
+  // hit volumes, unchanged shape so aiming feels the same as before
+  const bodyHit = new THREE.Mesh(boxG(0.8, 1.45, 0.6), new THREE.MeshBasicMaterial({ visible:false }));
   bodyHit.position.y = 0.75;
-  const headHit = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), new THREE.MeshBasicMaterial({ visible:false }));
-  headHit.position.y = 1.68;
+  const headHit = new THREE.Mesh(boxG(0.42, 0.42, 0.42), new THREE.MeshBasicMaterial({ visible:false }));
+  headHit.position.y = 1.72;
   g.add(bodyHit, headHit);
 
   const tag = makeTag(name, hex(colorHex));
   tag.position.y = 2.25;
   g.add(tag);
 
-  return { group:g, tag, bodyHit, headHit, legL, legR, armL, armR, head, gun, visor, flash };
+  return {
+    group:g, tag, bodyHit, headHit, head, visor, eye, gun, flash, upper,
+    legL:L.hip, legR:R.hip, kneeL:L.knee, kneeR:R.knee
+  };
 }
 
 /* ===================== PROJECTILES ===================== */
@@ -1383,6 +1747,34 @@ function stepProjectiles(dt){
   }
 }
 
+/*
+  Walk cycle. Hips swing, and the knee bends only on the back-swing — a straight leg
+  scything through the floor is what makes simple rigs look like puppets. The arms stay
+  put: they are holding a weapon, so the upper body just takes the aim angle and a
+  little counter-bob.
+*/
+function animateAvatar(av, pitch, moving, dt, k, st){
+  av.upper.rotation.x = pitch;
+  av.head.rotation.x = pitch * 0.55;
+
+  if (moving){
+    st.walk = (st.walk || 0) + dt * 9;
+    const sw = Math.sin(st.walk) * 0.55;
+    av.legL.rotation.x = sw;
+    av.legR.rotation.x = -sw;
+    av.kneeL.rotation.x = Math.max(0, -sw) * 1.15;
+    av.kneeR.rotation.x = Math.max(0, sw) * 1.15;
+    av.upper.position.y = 1.30 + Math.abs(Math.sin(st.walk)) * 0.018;
+    av.upper.rotation.z = Math.sin(st.walk) * 0.035;
+  } else {
+    av.legL.rotation.x = lerp(av.legL.rotation.x, 0, k);
+    av.legR.rotation.x = lerp(av.legR.rotation.x, 0, k);
+    av.kneeL.rotation.x = lerp(av.kneeL.rotation.x, 0, k);
+    av.kneeR.rotation.x = lerp(av.kneeR.rotation.x, 0, k);
+    av.upper.rotation.z = lerp(av.upper.rotation.z, 0, k);
+  }
+}
+
 /* ===================== EFFECTS ===================== */
 const fx = { tracers:[], decals:[], sparks:[], blasts:[] };
 const tracerMat = new THREE.LineBasicMaterial({ color:0xFFD27A, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false });
@@ -1448,8 +1840,8 @@ function buildViewmodel(){
   camera.add(viewGroup);
   scene.add(camera);
 
-  const dark = new THREE.MeshLambertMaterial({ color:0x2A3145 });
-  const mid  = new THREE.MeshLambertMaterial({ color:0x3C465F });
+  const dark = new THREE.MeshStandardMaterial({ color:0x2A3145, roughness:0.38, metalness:0.80 });
+  const mid  = new THREE.MeshStandardMaterial({ color:0x3C465F, roughness:0.30, metalness:0.88 });
 
   function gun(parts){
     const g = new THREE.Group();
@@ -3004,7 +3396,7 @@ function writeState(dt){
 /* ===================== REMOTE ENTITIES (players + networked drones) ===================== */
 function addEntity(id, v, isBot){
   if (!v || remotes.has(id)) return;
-  const av = buildAvatar(v.color || 0x4FA8FF, v.name || 'Operator');
+  const av = buildAvatar(v.color || 0x4FA8FF, v.name || 'Operator', !!isBot);
   scene.add(av.group);
   remotes.set(id, {
     uid:id, isBot: !!isBot,
@@ -3085,18 +3477,7 @@ function stepRemotes(dt){
     const g = r.avatar.group;
     g.position.copy(r.pos);
     g.rotation.y = r.ry;
-    r.avatar.head.rotation.x = r.rx;
-    r.avatar.visor.rotation.x = r.rx;
-    r.avatar.gun.rotation.x = r.rx * 0.8;
-    if (r.mv){
-      r.walk += dt * 9;
-      const s = Math.sin(r.walk) * 0.5;
-      r.avatar.legL.rotation.x = s; r.avatar.legR.rotation.x = -s;
-      r.avatar.armL.rotation.x = -s*0.6; r.avatar.armR.rotation.x = s*0.4;
-    } else {
-      r.avatar.legL.rotation.x = lerp(r.avatar.legL.rotation.x, 0, k);
-      r.avatar.legR.rotation.x = lerp(r.avatar.legR.rotation.x, 0, k);
-    }
+    animateAvatar(r.avatar, r.rx, r.mv, dt, k, r);
     r.stale = r.ts > 0 && (net.now() - r.ts) > 20000;
     if (r.stale) r.avatar.group.visible = false;
     r.avatar.tag.material.opacity = clamp(1 - (r.pos.distanceTo(me.pos) - 45)/20, 0.15, 1);
@@ -3711,7 +4092,7 @@ function spawnBots(n){
   for (let i=0;i<n;i++){
     const c = COLORS[(i+2) % COLORS.length].hex;
     const name = ['Drone-A','Drone-B','Drone-C','Drone-D'][i] || ('Drone-' + i);
-    const av = buildAvatar(c, name);
+    const av = buildAvatar(c, name, true);
     scene.add(av.group);
     const s = pickSpawnPoint(0, false);
     bots.set('bot'+i, {
@@ -3774,10 +4155,7 @@ function stepBots(dt){
     updateTag(b.avatar.tag, b.hp);
 
     if (b.avatar.flash.visible && now > (b.flashUntil || 0)) b.avatar.flash.visible = false;
-    if (b.mv) b.walk += dt * 8;
-    const sw = b.mv ? Math.sin(b.walk) * 0.5 : lerp(b.avatar.legL.rotation.x, 0, clamp(dt*8,0,1));
-    b.avatar.legL.rotation.x = sw;
-    b.avatar.legR.rotation.x = -sw;
+    animateAvatar(b.avatar, 0, b.mv, dt, clamp(dt*10,0,1), b);
     b.avatar.group.position.copy(b.pos);
     b.avatar.group.rotation.y = b.ry;
   });
@@ -4449,7 +4827,7 @@ function leaveArena(){
 const perf = {
   show: localStorage.getItem('eonarena.stats') === '1',
   auto: localStorage.getItem('eonarena.autoq') !== '0',
-  frames: 0, acc: 0, fps: 60, scale: 1, checks: 0, dropped: false, worstAcc: 0
+  frames: 0, acc: 0, fps: 60, scale: 1, checks: 0, dropped: false, bare: false, worstAcc: 0
 };
 const PIX_CAP = () => Math.min(devicePixelRatio, (matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0) ? 1.5 : 2);
 
@@ -4480,6 +4858,17 @@ function stepPerf(dt){
       renderer.shadowMap.enabled = false;
       scene.traverse(o => { if (o.isMesh && o.material) o.material.needsUpdate = true; });
       addFeed('Frame rate low — shadows off', true);
+    }
+    // last rung. Decoration is pipes, railings and barrels -- nothing collides and nothing
+    // scores, so it is the cheapest thing left to give up on a weak phone.
+    else if (perf.fps < 28 && perf.dropped && !perf.bare && decoMeshes.length){
+      perf.bare = true;
+      decoMeshes.forEach(m => { m.visible = false; });
+      addFeed('Frame rate low — detail off', true);
+    }
+    else if (perf.fps > 52 && perf.bare){
+      perf.bare = false;
+      decoMeshes.forEach(m => { m.visible = true; });
     }
   }
 
