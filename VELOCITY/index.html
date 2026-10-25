@@ -1509,6 +1509,12 @@ var RIM_TEX = (function () {
 var CANOPY_GEO = new THREE.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56);
 var NOZZLE_GEO = new THREE.CylinderGeometry(0.42, 0.52, 0.9, 14, 1, true);
 NOZZLE_GEO.rotateX(Math.PI / 2);
+// Widest low bodywork is the side pods: half-width 2.95, underside at y 0.12,
+// and the car floats 0.7 above the road. Rolling by t sinks that corner by
+// 2.95*sin(t), so the limit below keeps roughly 5cm of clearance even with
+// the nose pitched down under braking.
+var ROLL_MAX = 0.185;
+
 var PLUME_GEO = new THREE.ConeGeometry(0.5, 3.4, 14, 1, true);
 PLUME_GEO.rotateX(-Math.PI / 2);        // apex points +z, behind the car
 PLUME_GEO.translate(0, 0, 1.7);
@@ -1761,7 +1767,7 @@ function buildCar(colour, accent, detail, num) {
     for (var f = -1; f <= 1; f += 2) {
       var hub = new THREE.Group();
       hub.position.set(s * 2.32, 0.28, f * 3.05);   // radius 0.95 - 0.67 => tyre meets the tarmac
-      tilt.add(hub);
+      root.add(hub);            // unsprung: the body leans, the tyres stay planted
 
       var spinner = new THREE.Group();
       hub.add(spinner);
@@ -1828,7 +1834,7 @@ function buildCar(colour, accent, detail, num) {
     map: GLOW_TEX, color: colour, transparent: true, opacity: 0.5,
     blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
   }));
-  under.rotation.x = -Math.PI / 2; under.position.y = 0.1; tilt.add(under);
+  under.rotation.x = -Math.PI / 2; under.position.y = 0.1; root.add(under);
 
   var beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 26), new THREE.MeshBasicMaterial({
     map: GLOW_TEX, color: 0xbcd6ff, transparent: true, opacity: 0.2,
@@ -3072,7 +3078,9 @@ function drive(r, dt, steer, gas, brake, wantBoost) {
   // heading, relative to the track direction
   var authority = 2.15 * (0.42 + 0.58 * Math.min(1, 120 / (r.v + 60)));
   var grip = (brake > 0.4 ? 1.7 : 3.5) * car.grip;
-  r.yaw += steer * authority * dt;
+  // a parked car turns its wheels, it doesn't rotate: no roll without roll
+  var rolling = Math.min(1, r.v / 16);
+  r.yaw += steer * authority * rolling * dt;
   r.yaw -= curv * r.v * Math.cos(r.yaw) * dt;   // the circuit turns beneath the car
   r.yaw -= r.yaw * grip * dt;                    // tyres pull it straight again
   if (r.yaw > 0.95) r.yaw = 0.95;
@@ -3238,7 +3246,9 @@ function placeCar(r, dt) {
 
   var tilt = ud.tilt;
   tilt.rotation.x = ud.pitch;
-  tilt.rotation.z += ((-r.yaw * 0.5) - tilt.rotation.z) * Math.min(1, dt * 8);
+  // body roll, limited so the widest, lowest bodywork stays clear of the road
+  var wantRoll = Math.max(-ROLL_MAX, Math.min(ROLL_MAX, -r.yaw * 0.5));
+  tilt.rotation.z += (wantRoll - tilt.rotation.z) * Math.min(1, dt * 8);
   // exhaust: length tracks throttle, with a flicker so it never looks static
   var load = Math.min(1, r.v / MAXV);
   ud.flick = ud.flick * 0.72 + Math.random() * 0.28;
