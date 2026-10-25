@@ -276,6 +276,8 @@
       <div class="settingrow">
         <button class="chip" id="chipMusic" aria-pressed="true">Music</button>
         <input id="musicVol" class="slider" type="range" min="0" max="100" value="55" aria-label="Music volume">
+        <span>SFX</span>
+        <input id="sfxVol" class="slider" type="range" min="0" max="100" value="90" aria-label="Effects volume">
         <button class="chip" id="chipGhost" aria-pressed="true">Ghost lap</button>
       </div>
 
@@ -415,6 +417,7 @@ var CFG = {
   car: 0,
   music: true,
   musicVol: 0.55,
+  sfxVol: 0.9,
   ghost: true,
   camMode: 0,
   autoGas: isTouch,
@@ -819,7 +822,6 @@ var sunHalo = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), new THREE.Mesh
   blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false
 }));
 sunHalo.position.set(0, 210, -3140); sunHalo.renderOrder = -3; sky.add(sunHalo);
-sky.add(moon); sky.add(moonHalo);
 
 function hazeTexture(th) {
   var c = cnv(8, 128), g = c.getContext("2d");
@@ -866,6 +868,7 @@ var moonHalo = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshB
   blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false
 }));
 moonHalo.position.set(900, 760, -3120); moonHalo.renderOrder = -3;
+sky.add(moon); sky.add(moonHalo);
 
 var grid = new THREE.GridHelper(7000, 130, 0xff2d95, 0x1c3a86);
 grid.material.transparent = true; grid.material.opacity = 0.3;
@@ -1959,8 +1962,53 @@ function gatherInput() {
 /* =====================================================================
    AUDIO
    ===================================================================== */
-var audio = { ctx: null, on: false, gear: 0, gearDip: 0 };
+var audio = { ctx: null, on: false, gear: 0, gearDip: 0, samples: {}, crackle: 0, lastScrape: 0 };
 var GEARS = 6;
+
+/* ---------------------------------------------------------------
+   YOUR OWN SOUND FILES (optional)
+   Drop audio files next to this HTML and name them below. Anything
+   left null is synthesised instead, so the game works either way.
+
+   The four files below ship with the game. Swap in your own any time:
+
+     engine   a STEADY engine loop at constant revs, 2-4 seconds,
+              seamless. It gets pitch-shifted across the rev range,
+              so don't use a recording that revs up and down. If you
+              record your own, set ENGINE_SAMPLE_PITCH below to
+              (its fundamental in Hz) / 150.
+     screech  a looping tyre squeal, 1-2 seconds, seamless.
+     impact   a one-shot crash/thud.
+     boost    a one-shot nitro whoosh.
+
+   Set any entry to null to fall back to the synthesised version.
+   --------------------------------------------------------------- */
+var SOUND_FILES = {
+  engine: "engine-loop.mp3",
+  screech: "screech.mp3",
+  impact: "impact.mp3",
+  boost: "boost.mp3"
+};
+// the supplied engine loop sits at 95Hz; 95/150 keeps the pitch shift sane
+var ENGINE_SAMPLE_PITCH = 0.633;
+
+function noiseBuffer(ctx, secs) {
+  var len = Math.floor(ctx.sampleRate * secs);
+  var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  var d = buf.getChannelData(0);
+  for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+// soft clipping: what turns a clean sawtooth into something with rasp
+function driveCurve(amount) {
+  var n = 1024, curve = new Float32Array(n), k = amount;
+  for (var i = 0; i < n; i++) {
+    var x = (i * 2) / n - 1;
+    curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+  }
+  return curve;
+}
 
 function initAudio() {
   if (audio.ctx || !CFG.sound) return;
@@ -1970,98 +2018,328 @@ function initAudio() {
 
   var master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
 
-  // --- engine: two saws an octave apart through a moving lowpass ---
-  var engGain = ctx.createGain(); engGain.gain.value = 1; engGain.connect(master);
-  var filter = ctx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 900; filter.connect(engGain);
-  var o1 = ctx.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = 70; o1.connect(filter);
-  var o2 = ctx.createOscillator(); o2.type = "square"; o2.frequency.value = 35;
-  var g2 = ctx.createGain(); g2.gain.value = 0.32; o2.connect(g2); g2.connect(filter);
-  o1.start(); o2.start();
+  /* ---- engine: a harmonic stack through a soft clipper ---- */
+  var engineBus = ctx.createGain(); engineBus.gain.value = 1;
+  var shaper = ctx.createWaveShaper();
+  shaper.curve = driveCurve(2.2);
+  shaper.oversample = "2x";
+  var tone = ctx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 900; tone.Q.value = 1.1;
+  engineBus.connect(shaper); shaper.connect(tone); tone.connect(master);
 
-  // --- noise bed: doubles as wind rush and tyre scrub ---
-  var len = Math.floor(ctx.sampleRate * 1.5);
-  var buf = ctx.createBuffer(1, len, ctx.sampleRate);
-  var data = buf.getChannelData(0);
-  for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-  var noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true;
-  var noiseFilter = ctx.createBiquadFilter(); noiseFilter.type = "bandpass";
-  noiseFilter.frequency.value = 1400; noiseFilter.Q.value = 0.9;
-  var noiseGain = ctx.createGain(); noiseGain.gain.value = 0;
-  noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(master);
-  noise.start();
+  // fundamental, a detuned twin for beating, a sub, and two upper harmonics
+  function osc(type, mult, gain) {
+    var o = ctx.createOscillator(); o.type = type; o.frequency.value = 80 * mult;
+    var g = ctx.createGain(); g.gain.value = gain;
+    o.connect(g); g.connect(engineBus); o.start();
+    return { o: o, g: g, mult: mult };
+  }
+  var parts = [
+    osc("sawtooth", 1.000, 0.50),
+    osc("sawtooth", 1.006, 0.34),   // detune beat
+    osc("square",   0.500, 0.30),   // sub
+    osc("sawtooth", 2.000, 0.16),
+    osc("sawtooth", 3.010, 0.09)
+  ];
+  var turbo = ctx.createOscillator(); turbo.type = "sine"; turbo.frequency.value = 600;
+  var turboGain = ctx.createGain(); turboGain.gain.value = 0;
+  turbo.connect(turboGain); turboGain.connect(master); turbo.start();
 
-  audio.ctx = ctx; audio.master = master; audio.filter = filter;
-  audio.o1 = o1; audio.o2 = o2; audio.engGain = engGain;
-  audio.noiseFilter = noiseFilter; audio.noiseGain = noiseGain;
+  // firing-rate wobble so the idle isn't a pure drone
+  var lfo = ctx.createOscillator(); lfo.type = "sawtooth"; lfo.frequency.value = 30;
+  var lfoGain = ctx.createGain(); lfoGain.gain.value = 0.1;
+  lfo.connect(lfoGain); lfoGain.connect(engineBus.gain); lfo.start();
+
+  /* ---- shared noise bed: wind, tyre squeal, scrape ---- */
+  var nbuf = noiseBuffer(ctx, 2);
+
+  var wind = ctx.createBufferSource(); wind.buffer = nbuf; wind.loop = true;
+  var windFilter = ctx.createBiquadFilter(); windFilter.type = "lowpass"; windFilter.frequency.value = 700;
+  var windGain = ctx.createGain(); windGain.gain.value = 0;
+  wind.connect(windFilter); windFilter.connect(windGain); windGain.connect(master); wind.start();
+
+  // squeal: two resonant peaks, which is what makes noise sound like rubber
+  var tyre = ctx.createBufferSource(); tyre.buffer = nbuf; tyre.loop = true;
+  var tyreA = ctx.createBiquadFilter(); tyreA.type = "bandpass"; tyreA.frequency.value = 1150; tyreA.Q.value = 9;
+  var tyreB = ctx.createBiquadFilter(); tyreB.type = "bandpass"; tyreB.frequency.value = 2400; tyreB.Q.value = 12;
+  var tyreGain = ctx.createGain(); tyreGain.gain.value = 0;
+  tyre.connect(tyreA); tyre.connect(tyreB);
+  tyreA.connect(tyreGain); tyreB.connect(tyreGain);
+  tyreGain.connect(master); tyre.start();
+  // slight warble on the squeal
+  var tyreLfo = ctx.createOscillator(); tyreLfo.type = "sine"; tyreLfo.frequency.value = 7.5;
+  var tyreLfoGain = ctx.createGain(); tyreLfoGain.gain.value = 180;
+  tyreLfo.connect(tyreLfoGain); tyreLfoGain.connect(tyreA.frequency); tyreLfo.start();
+
+  /* ---- a rival alongside you, panned to their side ---- */
+  var rivalOsc = ctx.createOscillator(); rivalOsc.type = "sawtooth"; rivalOsc.frequency.value = 90;
+  var rivalFilter = ctx.createBiquadFilter(); rivalFilter.type = "lowpass"; rivalFilter.frequency.value = 700;
+  var rivalGain = ctx.createGain(); rivalGain.gain.value = 0;
+  var rivalPan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  rivalOsc.connect(rivalFilter); rivalFilter.connect(rivalGain);
+  if (rivalPan) { rivalGain.connect(rivalPan); rivalPan.connect(master); }
+  else rivalGain.connect(master);
+  rivalOsc.start();
+
+  audio.ctx = ctx; audio.master = master;
+  audio.engineBus = engineBus; audio.tone = tone; audio.parts = parts;
+  audio.turbo = turbo; audio.turboGain = turboGain; audio.lfo = lfo; audio.lfoGain = lfoGain;
+  audio.noise = nbuf;
+  audio.windFilter = windFilter; audio.windGain = windGain;
+  audio.tyreA = tyreA; audio.tyreB = tyreB; audio.tyreGain = tyreGain;
+  audio.rivalOsc = rivalOsc; audio.rivalFilter = rivalFilter; audio.rivalGain = rivalGain; audio.rivalPan = rivalPan;
   audio.on = true;
+
+  loadSoundFiles();
 }
 
-// v = speed, drift = 0..1 slide amount
-function audioUpdate(dt, v, boosting, drift, silent) {
+/* ---- optional sample loading ---- */
+function loadSoundFiles() {
+  if (!audio.ctx || !window.fetch) return;
+  Object.keys(SOUND_FILES).forEach(function (key) {
+    var url = SOUND_FILES[key];
+    if (!url) return;
+    fetch(url).then(function (r) {
+      if (!r.ok) throw new Error("missing");
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      return new Promise(function (res, rej) {
+        var done = audio.ctx.decodeAudioData(buf, res, rej);
+        if (done && done.then) done.then(res, rej);
+      });
+    }).then(function (decoded) {
+      audio.samples[key] = decoded;
+      if (key === "engine") startEngineSample();
+      if (key === "screech") startScreechSample();
+    }).catch(function () {
+      // a missing or unreadable file just leaves the synthesised version in place
+    });
+  });
+}
+
+// mp3/aac decoding prepends and appends silence; left alone a looping sample
+// clicks once per cycle. Trimming to the audible region restores a clean loop.
+function trimSilence(buf) {
+  var ctx = audio.ctx;
+  var ch = buf.getChannelData(0);
+  var thresh = 0.0025, start = 0, end = ch.length - 1;
+  while (start < ch.length && Math.abs(ch[start]) < thresh) start++;
+  while (end > start && Math.abs(ch[end]) < thresh) end--;
+  if (start === 0 && end === ch.length - 1) return buf;
+  var len = end - start + 1;
+  if (len < 1000) return buf;
+  var out = ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate);
+  for (var c = 0; c < buf.numberOfChannels; c++) {
+    out.getChannelData(c).set(buf.getChannelData(c).subarray(start, start + len));
+  }
+  return out;
+}
+
+function startEngineSample() {
+  var ctx = audio.ctx;
+  var src = ctx.createBufferSource();
+  src.buffer = trimSilence(audio.samples.engine);
+  src.loop = true;
+  src.loopStart = 0;
+  src.loopEnd = src.buffer.duration;
+  var g = ctx.createGain(); g.gain.value = 1;
+  src.connect(g); g.connect(audio.tone);
+  src.start();
+  audio.engineSrc = src; audio.engineSampleGain = g;
+  // fade the synth stack out; the sample is the engine now
+  for (var i = 0; i < audio.parts.length; i++) {
+    audio.parts[i].g.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+  }
+  audio.lfoGain.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+}
+
+function startScreechSample() {
+  var ctx = audio.ctx;
+  var src = ctx.createBufferSource();
+  src.buffer = trimSilence(audio.samples.screech);
+  src.loop = true;
+  src.loopStart = 0;
+  src.loopEnd = src.buffer.duration;
+  var g = ctx.createGain(); g.gain.value = 0;
+  src.connect(g); g.connect(audio.master);
+  src.start();
+  audio.screechSrc = src; audio.screechGain = g;
+  audio.tyreGain.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+}
+
+function playSample(key, vol) {
+  if (!audio.on || !audio.ctx || !audio.samples[key]) return false;
+  var src = audio.ctx.createBufferSource();
+  src.buffer = audio.samples[key];
+  var g = audio.ctx.createGain();
+  g.gain.value = (vol === undefined ? 1 : vol) * CFG.sfxVol;
+  src.connect(g); g.connect(audio.ctx.destination);
+  src.start();
+  return true;
+}
+
+/* ---- per-frame engine state ---- */
+function audioUpdate(dt, v, boosting, drift, silent, gas) {
   if (!audio.on || !audio.ctx) return;
   var t = audio.ctx.currentTime;
+  var sfx = CFG.sfxVol;
   var frac = Math.min(1.15, v / MAXV);
+  gas = gas || 0;
 
-  // step through six ratios so the revs climb, shift and climb again
+  // six ratios: revs climb, drop on the shift, climb again
   var g = Math.min(GEARS - 1, Math.floor(frac * GEARS));
-  var revs = frac * GEARS - g;                       // 0..1 within the gear
-  if (g !== audio.gear) {
-    audio.gearDip = 0.12;                            // brief cut on the shift
+  var revs = frac * GEARS - g;
+  if (g !== audio.gear && t - (audio.lastShift || 0) > 0.35) {
+    audio.gearDip = 0.13;
+    if (g > audio.gear && v > 40) shiftClunk();
     audio.gear = g;
+    audio.lastShift = t;
   }
   audio.gearDip = Math.max(0, audio.gearDip - dt);
 
-  var freq = 58 + revs * 118 + g * 7 + (boosting ? 30 : 0);
-  audio.o1.frequency.setTargetAtTime(freq, t, 0.045);
-  audio.o2.frequency.setTargetAtTime(freq * 0.5, t, 0.045);
-  audio.filter.frequency.setTargetAtTime(420 + revs * 900 + v * 3, t, 0.08);
-  audio.engGain.gain.setTargetAtTime(audio.gearDip > 0 ? 0.35 : 1, t, 0.03);
+  var hz = 46 + revs * 104 + g * 6 + (boosting ? 26 : 0);
 
-  // wind rises with speed, scrub rides on top of it while sliding
-  var wind = frac * frac * 0.05;
-  var scrub = Math.min(0.16, drift * 0.34);
-  audio.noiseFilter.frequency.setTargetAtTime(scrub > 0.02 ? 2600 : 900 + v * 4, t, 0.08);
-  audio.noiseGain.gain.setTargetAtTime(silent ? 0 : wind + scrub, t, 0.09);
+  if (audio.engineSrc) {
+    // sample: pitch it around the rev range instead of driving oscillators
+    var rate = (hz / 150) / ENGINE_SAMPLE_PITCH;
+    audio.engineSrc.playbackRate.setTargetAtTime(Math.max(0.25, Math.min(3.2, rate)), t, 0.05);
+    audio.engineSampleGain.gain.setTargetAtTime(silent ? 0 : (0.85 - audio.gearDip * 3) * sfx, t, 0.04);
+  } else {
+    for (var i = 0; i < audio.parts.length; i++) {
+      audio.parts[i].o.frequency.setTargetAtTime(hz * audio.parts[i].mult, t, 0.04);
+    }
+    // on throttle the upper harmonics come up; off throttle it goes hollow
+    var bite = 0.35 + gas * 0.65;
+    audio.parts[3].g.gain.setTargetAtTime(0.16 * bite, t, 0.08);
+    audio.parts[4].g.gain.setTargetAtTime(0.10 * bite, t, 0.08);
+    audio.lfo.frequency.setTargetAtTime(Math.max(8, hz * 0.5), t, 0.05);
+    audio.lfoGain.gain.setTargetAtTime(0.14 - frac * 0.09, t, 0.1);
+  }
 
-  audio.master.gain.setTargetAtTime(silent ? 0 : 0.055 + Math.min(0.06, v / 4200), t, 0.15);
+  audio.tone.frequency.setTargetAtTime(380 + revs * 760 + v * 4 + gas * 500, t, 0.07);
+  audio.engineBus.gain.setTargetAtTime(audio.gearDip > 0 ? 0.3 : 1, t, 0.025);
+
+  // turbo whine rises with revs, loudest on boost
+  audio.turbo.frequency.setTargetAtTime(hz * 7.5, t, 0.08);
+  audio.turboGain.gain.setTargetAtTime(silent ? 0 : (0.004 + frac * 0.012 + (boosting ? 0.02 : 0)) * sfx, t, 0.12);
+
+  // overrun crackle when you lift at high revs
+  audio.crackle -= dt;
+  if (!silent && gas < 0.2 && frac > 0.45 && audio.crackle <= 0 && Math.random() < 0.3) {
+    audio.crackle = 0.07 + Math.random() * 0.14;
+    popCrackle();
+  }
+
+  // wind noise
+  audio.windFilter.frequency.setTargetAtTime(300 + v * 5.5, t, 0.1);
+  audio.windGain.gain.setTargetAtTime(silent ? 0 : frac * frac * 0.075 * sfx, t, 0.1);
+
+  // tyre squeal: louder and higher the harder the slide
+  var squeal = Math.max(0, Math.min(1, (drift - 0.07) * 2.6));
+  if (audio.screechGain) {
+    audio.screechGain.gain.setTargetAtTime(silent ? 0 : squeal * 0.5 * sfx, t, 0.07);
+  } else {
+    audio.tyreA.frequency.setTargetAtTime(950 + squeal * 700, t, 0.08);
+    audio.tyreB.frequency.setTargetAtTime(2100 + squeal * 1100, t, 0.08);
+    audio.tyreGain.gain.setTargetAtTime(silent ? 0 : squeal * 0.1 * sfx, t, 0.07);
+  }
+
+  // nearest rival, panned to whichever side they're on
+  var near = null, bestGap = 1e9;
+  if (!silent && typeof racers !== "undefined" && player) {
+    for (var r = 0; r < racers.length; r++) {
+      if (racers[r] === player) continue;
+      var gap = Math.abs(racers[r].dist - player.dist);
+      if (gap < bestGap) { bestGap = gap; near = racers[r]; }
+    }
+  }
+  if (near && bestGap < 55) {
+    var closeness = 1 - bestGap / 55;
+    audio.rivalOsc.frequency.setTargetAtTime(44 + (near.v / MAXV) * 150, t, 0.06);
+    audio.rivalFilter.frequency.setTargetAtTime(500 + near.v * 2.5, t, 0.1);
+    audio.rivalGain.gain.setTargetAtTime(closeness * closeness * 0.07 * sfx, t, 0.12);
+    if (audio.rivalPan) {
+      var side = Math.max(-1, Math.min(1, (near.n - player.n) / 12));
+      audio.rivalPan.pan.setTargetAtTime(side, t, 0.1);
+    }
+  } else {
+    audio.rivalGain.gain.setTargetAtTime(0, t, 0.2);
+  }
+
+  audio.master.gain.setTargetAtTime(silent ? 0 : (0.06 + Math.min(0.07, v / 4000)) * sfx, t, 0.15);
+}
+
+function popCrackle() {
+  var ctx = audio.ctx;
+  var src = ctx.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 1.6;
+  var f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1400; f.Q.value = 2.5;
+  var g = ctx.createGain();
+  g.gain.setValueAtTime(0.1 * CFG.sfxVol, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.08);
+  src.connect(f); f.connect(g); g.connect(ctx.destination);
+  src.start(); src.stop(ctx.currentTime + 0.09);
+}
+
+function shiftClunk() {
+  var ctx = audio.ctx;
+  var o = ctx.createOscillator(); o.type = "square";
+  o.frequency.setValueAtTime(180, ctx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.06);
+  var g = ctx.createGain();
+  g.gain.setValueAtTime(0.07 * CFG.sfxVol, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime + 0.1);
 }
 
 function beep(freq, len, vol) {
   if (!audio.on || !audio.ctx) return;
   var ctx = audio.ctx, o = ctx.createOscillator(), g = ctx.createGain();
   o.type = "triangle"; o.frequency.value = freq;
-  g.gain.setValueAtTime(vol || 0.12, ctx.currentTime);
+  g.gain.setValueAtTime((vol || 0.12) * CFG.sfxVol, ctx.currentTime);
   g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + len);
   o.connect(g); g.connect(ctx.destination);
   o.start(); o.stop(ctx.currentTime + len + 0.02);
 }
 
-// low thud for barrier scrapes and contact
+// barrier contact: a body thud plus a metallic scrape
 function thud(strength) {
   if (!audio.on || !audio.ctx) return;
+  if (playSample("impact", Math.min(1, strength))) return;
   var ctx = audio.ctx, o = ctx.createOscillator(), g = ctx.createGain();
   o.type = "sine";
   o.frequency.setValueAtTime(150, ctx.currentTime);
   o.frequency.exponentialRampToValueAtTime(45, ctx.currentTime + 0.18);
-  g.gain.setValueAtTime(Math.min(0.3, strength * 0.35), ctx.currentTime);
+  g.gain.setValueAtTime(Math.min(0.3, strength * 0.35) * CFG.sfxVol, ctx.currentTime);
   g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
   o.connect(g); g.connect(ctx.destination);
   o.start(); o.stop(ctx.currentTime + 0.24);
+
+  if (ctx.currentTime - audio.lastScrape < 0.12) return;
+  audio.lastScrape = ctx.currentTime;
+  var src = ctx.createBufferSource(); src.buffer = audio.noise;
+  var f = ctx.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 6;
+  f.frequency.setValueAtTime(2600, ctx.currentTime);
+  f.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.3);
+  var sg = ctx.createGain();
+  sg.gain.setValueAtTime(0.11 * strength * CFG.sfxVol, ctx.currentTime);
+  sg.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.32);
+  src.connect(f); f.connect(sg); sg.connect(ctx.destination);
+  src.start(); src.stop(ctx.currentTime + 0.33);
 }
 
-// rising whoosh when the nitro lights up
+// nitro
 function whoosh() {
   if (!audio.on || !audio.ctx) return;
+  if (playSample("boost", 1)) return;
   var ctx = audio.ctx;
-  var len = Math.floor(ctx.sampleRate * 0.5);
-  var buf = ctx.createBuffer(1, len, ctx.sampleRate);
-  var d = buf.getChannelData(0);
-  for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-  var src = ctx.createBufferSource(); src.buffer = buf;
+  var src = ctx.createBufferSource(); src.buffer = audio.noise;
   var f = ctx.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 1.2;
   f.frequency.setValueAtTime(400, ctx.currentTime);
   f.frequency.exponentialRampToValueAtTime(3800, ctx.currentTime + 0.4);
-  var g = ctx.createGain(); g.gain.value = 0.16;
+  var g = ctx.createGain();
+  g.gain.setValueAtTime(0.16 * CFG.sfxVol, ctx.currentTime);
   g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
   src.connect(f); f.connect(g); g.connect(ctx.destination);
   src.start(); src.stop(ctx.currentTime + 0.52);
@@ -3067,7 +3345,7 @@ function loop(now) {
       if (input.gas > 0.4 || input.brake > 0.4 || Math.abs(input.steer) > 0.4 || skipHeld) flyby = 0;
       for (i = 0; i < racers.length; i++) placeCar(racers[i], dt);
       flybyCamera(dt);
-      audioUpdate(dt, 8, false, 0, false);
+      audioUpdate(dt, 8, false, 0, false, 0);
       if (flyby <= 0) {
         el.banner.classList.remove("show");
         el.hud.hidden = false;
@@ -3098,7 +3376,7 @@ function loop(now) {
       for (i = 0; i < racers.length; i++) placeCar(racers[i], dt);
       updateCamera(dt);
       updateHud(dt);
-      audioUpdate(dt, 20, false, 0, false);
+      audioUpdate(dt, 20, false, 0, false, input.gas);
     } else {
       raceTime += dt;
       gatherInput();
@@ -3120,7 +3398,7 @@ function loop(now) {
       for (i = 0; i < racers.length; i++) placeCar(racers[i], dt);
       updateCamera(dt);
       updateHud(dt);
-      audioUpdate(dt, player.v, boosting, Math.abs(player.yaw) * (player.v / MAXV), false);
+      audioUpdate(dt, player.v, boosting, Math.abs(player.yaw) * (player.v / MAXV), false, input.gas);
 
       ghostPlace(raceTime - player.lapStart);
 
@@ -3149,9 +3427,9 @@ function loop(now) {
     camera.fov += (66 - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();
     followSky();
-    audioUpdate(dt, 0, false, 0, true);
+    audioUpdate(dt, 0, false, 0, true, 0);
   } else {
-    audioUpdate(dt, 0, false, 0, true);
+    audioUpdate(dt, 0, false, 0, true, 0);
   }
 
   if (beacons) beacons.material.color.setRGB(1, 0.18 + Math.abs(Math.sin(now * 0.0016)) * 0.22, 0.3);
@@ -3277,6 +3555,12 @@ toggleChip("chipMusic", function () { return CFG.music; }, function (v) {
   CFG.music = v;
   if (v) musicPlay(); else musicStop();
 });
+var sfxSlider = document.getElementById("sfxVol");
+sfxSlider.value = String(Math.round(CFG.sfxVol * 100));
+sfxSlider.addEventListener("input", function () {
+  CFG.sfxVol = parseInt(sfxSlider.value, 10) / 100;
+});
+
 var volSlider = document.getElementById("musicVol");
 volSlider.value = String(Math.round(CFG.musicVol * 100));
 volSlider.addEventListener("input", function () {
