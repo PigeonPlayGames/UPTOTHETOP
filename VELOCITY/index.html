@@ -882,7 +882,7 @@ function seeded(seed) { var s = seed; return function () { s = (s * 1664525 + 10
 var envMapTex = null;                 // sky reflection, rebuilt per circuit
 var padMat = null;                    // shared so all boost pads pulse as one draw state
 var TRACK_W = 27, TRACK_LEN = 1, SEG_LEN = 1, EDGE = 24;
-var frames = [], pads = [], traffic = [], worldObjs = [], builtTrack = null, trafficMesh = null;
+var frames = [], pads = [], worldObjs = [], builtTrack = null;
 var beacons = null;                   // roof beacons, pulsed from the main loop
 var mmPts = [], mmBounds = { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
 
@@ -902,7 +902,7 @@ function disposeWorld() {
       }
     });
   }
-  worldObjs = []; pads = []; traffic = []; trafficMesh = null; padMat = null; beacons = null;
+  worldObjs = []; pads = []; padMat = null; beacons = null;
 }
 
 function frameIndex(s) {
@@ -1296,22 +1296,6 @@ function buildTrack(def) {
   bar.rotateX(-Math.PI / 2);
   bar.renderOrder = 3;
 
-  /* --- sky traffic --- */
-  var tgeo = new THREE.BoxGeometry(7, 1.3, 1.3);
-  var tcols = [th.kerbL, th.kerbR, 0xffb020];
-  var tcount = CFG.quality === "low" ? 14 : 28;
-  trafficMesh = new THREE.InstancedMesh(tgeo,
-    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, toneMapped: false }), tcount);
-  var tcol = new THREE.Color();
-  for (i = 0; i < tcount; i++) {
-    traffic.push({ a: rnd() * Math.PI * 2, r: def.base * 0.55 + rnd() * def.base * 1.5,
-      y: 130 + rnd() * 320, sp: (0.05 + rnd() * 0.11) * (rnd() < 0.5 ? -1 : 1) });
-    if (trafficMesh.setColorAt) trafficMesh.setColorAt(i, tcol.setHex(tcols[i % 3]));
-  }
-  if (trafficMesh.instanceColor) trafficMesh.instanceColor.needsUpdate = true;
-  trafficMesh.frustumCulled = false;
-  track(trafficMesh);
-
   /* --- minimap outline --- */
   mmPts = [];
   var minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
@@ -1327,20 +1311,6 @@ function buildTrack(def) {
   ghost.personal = null; ghost.personalTime = Infinity;
   ghostSetActive(null, Infinity, "best", "personal");
   loadGhost();
-}
-
-var _tm = new THREE.Matrix4(), _tq = new THREE.Quaternion(), _tp = new THREE.Vector3();
-var _tone = new THREE.Vector3(1, 1, 1), _tyAxis = new THREE.Vector3(0, 1, 0);
-function updateTraffic(dt) {
-  if (!trafficMesh) return;
-  for (var i = 0; i < traffic.length; i++) {
-    var t = traffic[i];
-    t.a += t.sp * dt;
-    _tp.set(Math.cos(t.a) * t.r, t.y, Math.sin(t.a) * t.r);
-    _tq.setFromAxisAngle(_tyAxis, -t.a + (t.sp > 0 ? Math.PI / 2 : -Math.PI / 2));
-    trafficMesh.setMatrixAt(i, _tm.compose(_tp, _tq, _tone));
-  }
-  trafficMesh.instanceMatrix.needsUpdate = true;
 }
 
 /* ---- sparks ---- */
@@ -1502,10 +1472,34 @@ var CAR_POD = loftHull([
   { z:  3.1, w: 0.40, h: 0.40 }
 ], 14);
 
-var WHEEL_GEO = new THREE.CylinderGeometry(1, 1, 1, 18);
+var WHEEL_GEO = new THREE.CylinderGeometry(1, 1, 1, 22);
 WHEEL_GEO.rotateZ(Math.PI / 2);                     // axle along x
-var RIM_GEO = new THREE.TorusGeometry(0.74, 0.07, 8, 20);
-RIM_GEO.rotateY(Math.PI / 2);
+var HUB_GEO = new THREE.CircleGeometry(0.66, 18);
+HUB_GEO.rotateY(Math.PI / 2);
+
+// five-spoke rim face, drawn once and reused by every wheel
+var RIM_TEX = (function () {
+  var c = cnv(128, 128), g = c.getContext("2d"), i;
+  g.clearRect(0, 0, 128, 128);
+  g.fillStyle = "#171d33";
+  g.beginPath(); g.arc(64, 64, 62, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = "#39456e"; g.lineWidth = 5;
+  g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = "#5d6ca3"; g.lineWidth = 11; g.lineCap = "round";
+  for (i = 0; i < 5; i++) {
+    var a = i / 5 * Math.PI * 2 + 0.3;
+    g.beginPath();
+    g.moveTo(64 + Math.cos(a) * 14, 64 + Math.sin(a) * 14);
+    g.lineTo(64 + Math.cos(a) * 50, 64 + Math.sin(a) * 50);
+    g.stroke();
+  }
+  g.fillStyle = "#8fa0cc";
+  g.beginPath(); g.arc(64, 64, 15, 0, Math.PI * 2); g.fill();
+  // brake disc glimpsed behind the spokes
+  g.strokeStyle = "rgba(255,140,90,.5)"; g.lineWidth = 7;
+  g.beginPath(); g.arc(64, 64, 36, 0.6, 2.2); g.stroke();
+  return colourTex(c);
+})();
 var CANOPY_GEO = new THREE.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56);
 var NOZZLE_GEO = new THREE.CylinderGeometry(0.42, 0.52, 0.9, 14, 1, true);
 NOZZLE_GEO.rotateX(Math.PI / 2);
@@ -1527,17 +1521,43 @@ function buildCar(colour, accent, simple) {
     color: 0x0a1026, metalness: 1.0, roughness: 0.08, envMap: envMapTex, envMapIntensity: 2.0,
     transparent: true, opacity: 0.86
   });
-  var rubber = new THREE.MeshStandardMaterial({ color: 0x0b0d18, metalness: 0.1, roughness: 0.85 });
+  var rubber = new THREE.MeshStandardMaterial({ color: 0x0c0e1a, metalness: 0.05, roughness: 0.92 });
+  var rimMat = new THREE.MeshStandardMaterial({
+    map: RIM_TEX, metalness: 0.85, roughness: 0.3, envMap: envMapTex, envMapIntensity: 1.1,
+    transparent: true, side: THREE.DoubleSide
+  });
   var neon = new THREE.MeshBasicMaterial({ color: accent, toneMapped: false });
 
   var hull = new THREE.Mesh(CAR_HULL, paint); tilt.add(hull);
-  var wheels = [], plumes = [], cores = [];
+  var spinners = [], steerHubs = [], plumes = [], cores = [];
 
   // cockpit bubble
   var canopy = new THREE.Mesh(CANOPY_GEO, glass);
   canopy.scale.set(0.98, 0.72, 1.9);
   canopy.position.set(0, 1.26, -0.5);
   tilt.add(canopy);
+
+  // headlight bar and brake light bar
+  var headMat = new THREE.MeshBasicMaterial({ color: 0xdfeaff, toneMapped: false });
+  var head = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 0.3), headMat);
+  head.position.set(0, 0.86, -4.95); tilt.add(head);
+
+  var brakeMat = new THREE.MeshBasicMaterial({ color: 0x3a0a14, toneMapped: false });
+  var brakeBar = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.18, 0.22), brakeMat);
+  brakeBar.position.set(0, 1.42, 4.78); tilt.add(brakeBar);
+
+  // a driver under the glass sells the scale
+  if (!simple) {
+    var helmet = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshStandardMaterial({
+      color: 0xf2f5ff, roughness: 0.3, metalness: 0.2, envMap: envMapTex, envMapIntensity: 0.8
+    }));
+    helmet.position.set(0, 1.3, -0.35); tilt.add(helmet);
+    var visor = new THREE.Mesh(new THREE.SphereGeometry(0.43, 14, 10, 0, Math.PI, 1.0, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x0d1428, roughness: 0.1, metalness: 1 }));
+    visor.position.set(0, 1.3, -0.35);
+    visor.rotation.y = Math.PI;
+    tilt.add(visor);
+  }
 
   // nose blade and rear wing
   if (!simple) {
@@ -1569,19 +1589,26 @@ function buildCar(colour, accent, simple) {
       strip.position.set(s * 2.9, 0.92, 0.3); tilt.add(strip);
     }
 
-    // wheels, front and rear
+    // wheels: wide slicks on a steering hub up front
     for (var f = -1; f <= 1; f += 2) {
+      var hub = new THREE.Group();
+      hub.position.set(s * 2.32, 0.28, f * 3.05);   // radius 0.95 - 0.67 => tyre meets the tarmac
+      tilt.add(hub);
+
+      var spinner = new THREE.Group();
+      hub.add(spinner);
+      spinners.push(spinner);
+      if (f < 0) steerHubs.push(hub);
+
       var wheel = new THREE.Mesh(WHEEL_GEO, rubber);
-      wheel.scale.set(0.46, 0.92, 0.92);
-      wheel.position.set(s * 2.3, 0.72, f * 3.0);
-      tilt.add(wheel);
-      wheels.push(wheel);
+      wheel.scale.set(1.02, 0.95, 0.95);            // noticeably wider than before
+      spinner.add(wheel);
+
       if (!simple) {
-        var rim = new THREE.Mesh(RIM_GEO, neon);
-        rim.position.set(s * 2.52, 0.72, f * 3.0);
-        rim.scale.setScalar(0.86);
-        tilt.add(rim);
-        wheels.push(rim);
+        var face = new THREE.Mesh(HUB_GEO, rimMat);
+        face.position.x = s * 0.53;
+        face.scale.setScalar(1.02);
+        spinner.add(face);
       }
     }
 
@@ -1636,8 +1663,9 @@ function buildCar(colour, accent, simple) {
   shadow.renderOrder = 2;
   root.add(shadow);                       // outside tilt, so it stays flat on the road
 
-  root.userData = { tilt: tilt, glow: glow, glowMat: glowMat, wheels: wheels, spin: 0,
-                    plumes: plumes, cores: cores, flick: 0 };
+  root.userData = { tilt: tilt, glow: glow, glowMat: glowMat, spin: 0,
+                    spinners: spinners, steerHubs: steerHubs, brakeMat: brakeMat,
+                    plumes: plumes, cores: cores, flick: 0, pitch: 0 };
   return root;
 }
 
@@ -2547,6 +2575,7 @@ function updateSlipstream() {
 }
 
 function drive(r, dt, steer, gas, brake, wantBoost) {
+  r.steerIn = steer; r.gasIn = gas; r.brakeIn = brake;
   var smp = sampleTrack(r.s, r.sample);
   var curv = smp.curv;
   var car = r.car;
@@ -2720,12 +2749,21 @@ function placeCar(r, dt) {
   }
 
   var ud = r.mesh.userData;
-  if (ud.wheels.length) {
-    ud.spin = (ud.spin + r.v * dt * 1.1) % (Math.PI * 2);
-    for (var wi = 0; wi < ud.wheels.length; wi++) ud.wheels[wi].rotation.x = ud.spin;
+  ud.spin = (ud.spin + r.v * dt * 0.95) % (Math.PI * 2);
+  for (var wi = 0; wi < ud.spinners.length; wi++) ud.spinners[wi].rotation.x = ud.spin;
+  for (var si = 0; si < ud.steerHubs.length; si++) {
+    var want = -(r.steerIn || 0) * 0.42;
+    ud.steerHubs[si].rotation.y += (want - ud.steerHubs[si].rotation.y) * Math.min(1, dt * 12);
   }
 
+  // brake lights, and the nose dipping under braking / lifting on power
+  var braking = (r.brakeIn || 0) > 0.25;
+  ud.brakeMat.color.setHex(braking ? 0xff2a3c : 0x3a0a14);
+  var wantPitch = (r.brakeIn || 0) * 0.055 - (r.gasIn || 0) * 0.022;
+  ud.pitch += (wantPitch - ud.pitch) * Math.min(1, dt * 6);
+
   var tilt = ud.tilt;
+  tilt.rotation.x = ud.pitch;
   tilt.rotation.z += ((-r.yaw * 0.5) - tilt.rotation.z) * Math.min(1, dt * 8);
   // exhaust: length tracks throttle, with a flicker so it never looks static
   var load = Math.min(1, r.v / MAXV);
@@ -3035,7 +3073,6 @@ function loop(now) {
     padMat.opacity = 0.72 + Math.sin(now * 0.005) * 0.22;
     if (padMat.map) padMat.map.offset.y = (now * 0.00055) % 1;   // chevrons flow forward
   }
-  updateTraffic(dt);
   updateSparks(dt);
   updateSmoke(dt);
   musicUpdate(dt, state === "race" ? (paused ? 0.3 : 1) : (state === "menu" ? 0.85 : 0.7));
