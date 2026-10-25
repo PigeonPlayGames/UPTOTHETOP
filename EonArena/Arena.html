@@ -1407,7 +1407,7 @@ const STACKS = {
   spawns:[ {x:-15,z:-15},{x:15,z:-15},{x:-15,z:15},{x:15,z:15},
            {x:0,z:-18},{x:0,z:18},{x:-18,z:0},{x:18,z:0} ],
   teamSpawns:[[0,1,4,6],[2,3,5,7]],
-  pickups:[ {id:'p0',x:0,z:7.6,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
+  pickups:[ {id:'p0',x:7.5,z:0,y:3.8},{id:'p1',x:-5.5,z:0,y:0},{id:'p2',x:5.5,z:0,y:0},
             {id:'p3',x:0,z:-15,y:0},{id:'p4',x:0,z:15,y:0},{id:'p5',x:0,z:-3.6,y:7.7} ],
   /*
     Two flights. 'from' is the deck a flight starts on, so a drone climbs one storey
@@ -1415,8 +1415,8 @@ const STACKS = {
   */
   climbs:[ {base:{x:17.6,z:0},  top:{x:6,z:0},  y:3.8, w:13,  from:0},
            {base:{x:-17.6,z:0}, top:{x:-6,z:0}, y:3.8, w:13,  from:0},
-           {base:{x:7.65,z:-6.3},  top:{x:5.0,z:4.1},  y:7.7, w:3.5, from:3.8},
-           {base:{x:-7.65,z:-6.3}, top:{x:-5.0,z:4.1}, y:7.7, w:3.5, from:3.8} ],
+           {base:{x:-6.0,z:7.35},  top:{x:1.5,z:7.35},  y:7.7, w:2.7, from:3.8},
+           {base:{x:-6.0,z:-7.35}, top:{x:1.5,z:-7.35}, y:7.7, w:2.7, from:3.8} ],
   build(){
     const S = 44, H = 11, h = S/2;
     flat(new THREE.PlaneGeometry(S,S), MAT.floor2, 0, 0, 0);
@@ -1476,24 +1476,28 @@ const STACKS = {
       you cannot bang your head indoors.
     */
     const U = 3.8, UH = 3.5, UT = 0.7, uSeg = 4.1, uOff = 3.45;
-    box(-uOff, U, -5.5, uSeg, UH, UT, MAT.wallB);     // north face, centre doorway
-    box( uOff, U, -5.5, uSeg, UH, UT, MAT.wallB);
-    box(-uOff, U,  5.5, uSeg, UH, UT, MAT.wallB);     // south face, centre doorway
-    box( uOff, U,  5.5, uSeg, UH, UT, MAT.wallB);
-    box(-5.5, U, 0, UT, UH, 11.7, MAT.wallB);         // east/west faces solid: the
-    box( 5.5, U, 0, UT, UH, 11.7, MAT.wallB);         // stairs run outside them
+    box(-5.5, U, -uOff, UT, UH, uSeg, MAT.wallB);     // east face, centre doorway
+    box(-5.5, U,  uOff, UT, UH, uSeg, MAT.wallB);
+    box( 5.5, U, -uOff, UT, UH, uSeg, MAT.wallB);     // west face, centre doorway
+    box( 5.5, U,  uOff, UT, UH, uSeg, MAT.wallB);
+    box(0, U, -5.5, 11.7, UH, UT, MAT.wallB);         // north/south faces solid: the
+    box(0, U,  5.5, 11.7, UH, UT, MAT.wallB);         // stairs run outside them
     box(0, U + UH, 0, 12.2, 0.4, 12.2, MAT.wall);     // high roof, top 7.7
 
-    // a stair on each side ring, rising north to south
-    [-1, 1].forEach(sx => {
+    /*
+      Stairs live on the NORTH and SOUTH rings. They used to run up the east and west
+      rings -- which is exactly where the ground terraces arrive, so coming up the
+      terrace at z=0 you met the side of the staircase instead of open deck.
+    */
+    [-1, 1].forEach(sz => {
       for (let i = 0; i < 7; i++){
-        box(sx*7.65, U, -5.5 + i*1.6, 3.5, 0.557*(i+1), 1.6, i%2 ? MAT.crateA : MAT.crateB);
+        box(-5.5 + i*1.1, U, sz*7.35, 1.1, 0.557*(i+1), 2.7, i%2 ? MAT.crateA : MAT.crateB);
       }
     });
     strip(0, 7.8, -6.0, 12.2, 0.1, 0.12, MAT.accent2, NEON.teal, 0);   // high roof trim
     strip(0, 7.8,  6.0, 12.2, 0.1, 0.12, MAT.accent2, NEON.teal, 0);
-    [[0,-5.9],[0,5.9]].forEach(([x,z]) =>                              // upper doorway lights
-      strip(x, 7.1, z, 2.6, 0.12, 0.1, MAT.accent, NEON.amber, 3.0));
+    [[-5.9,0],[5.9,0]].forEach(([x,z]) =>                              // upper doorway lights
+      strip(x, 7.1, z, 0.1, 0.12, 2.6, MAT.accent, NEON.amber, 3.0));
 
     // interior: solid core plus two low crates to break the room up
     box(0, 0, 0, 4, WH, 4, MAT.wallB);
@@ -1747,6 +1751,7 @@ function loadMap(id){
   SPAWNS = m.spawns;
   PICKUPS = m.pickups;
   m.build();
+  buildNav();                 // colliders are final now, so the graph can be built
   // a map swap rebuilds decoration from scratch; honour a detail-off ladder step
   if (perf && perf.bare) decoMeshes.forEach(d => { d.visible = false; });
   buildPickupMeshes();
@@ -3891,7 +3896,7 @@ function spawnBot(i){
     id, team, name: (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
     color: isWaves() ? 0xFF5470 : (isTeam() ? CFG.teamColors[team] : 0x8892A6),
     hpMax, mv: 0, moveDir: 0,
-    pos: new THREE.Vector3(sp.x, 0, sp.z), goal: new THREE.Vector3(rand(-24,24), 0, rand(-24,24)),
+    pos: new THREE.Vector3(sp.x, 0, sp.z), goal: null,   // first think picks a patrol point
     ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
   };
   net.botAI.set(id, ai);
@@ -4113,6 +4118,204 @@ function blockedAt(x, z, feetY){
 
 // try the desired heading, then progressively wider deflections — drones slide along
 // walls and round crates instead of stalling and picking a new waypoint
+/* ===================== NAVIGATION =====================
+  Reactive steering can round a crate but not a building. It deflects, the straight
+  line pulls it back, and the drone grinds along a wall with the player on the other
+  side -- and because the unstick nudge pushed toward the map centre, drones on a big
+  map drifted into a heap around the middle structure instead of patrolling.
+
+  So: build a real navigation graph from the map's own colliders when the map loads.
+  One node per (grid cell, standing height), which means a stair tread, a deck and a
+  catwalk are all just nodes; an edge exists where a drone could step between them.
+  Drones then follow a breadth-first distance field down to their goal.
+
+  The graph is static for a map, so a field computed for a goal node stays correct
+  for as long as that map is loaded -- they are cached and never recomputed.
+*/
+const NAV = {
+  cell: 1.4, cols: 0, minX: 0, minZ: 0,
+  cellNodes: [], nodeY: [], nodeCell: [], edges: [],
+  fields: new Map()
+};
+const NAV_CLEAR = 1.8;        // headroom a drone needs to stand somewhere
+
+function buildNav(){
+  NAV.cellNodes = []; NAV.nodeY = []; NAV.nodeCell = []; NAV.edges = [];
+  NAV.fields.clear();
+  const map = currentMap();
+  if (!map) return;
+
+  const half = map.half - 1.6;              // matches the movement clamp
+  const cell = NAV.cell;
+  const cols = Math.max(2, Math.ceil((half * 2) / cell));
+  NAV.cols = cols; NAV.minX = -half; NAV.minZ = -half;
+
+  const boxes = colliders;
+  /*
+    Testing every collider against every cell is O(cells x colliders) -- on the big
+    map that is half a million checks and a visible hitch on a phone. Bucket the
+    colliders by region first so each cell only looks at what is near it.
+  */
+  const BK = 10, bw = (half * 2) / BK;
+  const buckets = new Array(BK * BK);
+  for (let i = 0; i < BK * BK; i++) buckets[i] = [];
+  for (let i = 0; i < boxes.length; i++){
+    const b = boxes[i];
+    const x0 = clamp(Math.floor((b.min.x - NAV.minX - 0.2) / bw), 0, BK - 1);
+    const x1 = clamp(Math.floor((b.max.x - NAV.minX + 0.2) / bw), 0, BK - 1);
+    const z0 = clamp(Math.floor((b.min.z - NAV.minZ - 0.2) / bw), 0, BK - 1);
+    const z1 = clamp(Math.floor((b.max.z - NAV.minZ + 0.2) / bw), 0, BK - 1);
+    for (let bz = z0; bz <= z1; bz++)
+      for (let bx = x0; bx <= x1; bx++) buckets[bz * BK + bx].push(b);
+  }
+
+  const hit = [];
+  for (let cz = 0; cz < cols; cz++){
+    for (let cx = 0; cx < cols; cx++){
+      const x = NAV.minX + (cx + 0.5) * cell;
+      const z = NAV.minZ + (cz + 0.5) * cell;
+      const idx = cz * cols + cx;
+
+      const bucket = buckets[
+        clamp(Math.floor((z - NAV.minZ) / bw), 0, BK - 1) * BK +
+        clamp(Math.floor((x - NAV.minX) / bw), 0, BK - 1)];
+      hit.length = 0;
+      for (let i = 0; i < bucket.length; i++){
+        const b = bucket[i];
+        if (x < b.min.x - 0.15 || x > b.max.x + 0.15) continue;
+        if (z < b.min.z - 0.15 || z > b.max.z + 0.15) continue;
+        hit.push(b);
+      }
+
+      const tops = [0];
+      for (let i = 0; i < hit.length; i++) tops.push(hit[i].max.y);
+      tops.sort((p, q) => p - q);
+
+      const list = [];
+      for (let i = 0; i < tops.length; i++){
+        const h = tops[i];
+        if (list.length && h - list[list.length - 1] < 0.45) continue;
+        let clear = true;
+        for (let k = 0; k < hit.length; k++){
+          const b = hit[k];
+          if (b.max.y > h + 0.12 && b.min.y < h + NAV_CLEAR){ clear = false; break; }
+        }
+        if (clear) list.push(h);
+      }
+
+      const ids = [];
+      for (let i = 0; i < list.length; i++){
+        ids.push(NAV.nodeY.length);
+        NAV.nodeY.push(list[i]);
+        NAV.nodeCell.push(idx);
+      }
+      NAV.cellNodes.push(ids);
+    }
+  }
+
+  for (let i = 0; i < NAV.nodeY.length; i++) NAV.edges.push([]);
+  const NB = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  for (let cz = 0; cz < cols; cz++){
+    for (let cx = 0; cx < cols; cx++){
+      const here = NAV.cellNodes[cz * cols + cx];
+      if (!here.length) continue;
+      for (let n = 0; n < NB.length; n++){
+        const ox = NB[n][0], oz = NB[n][1];
+        const ax = cx + ox, az = cz + oz;
+        if (ax < 0 || az < 0 || ax >= cols || az >= cols) continue;
+        const there = NAV.cellNodes[az * cols + ax];
+        if (!there.length) continue;
+        // never cut a diagonal between two blocked cells -- that is how a drone
+        // ends up trying to walk through the corner of a building
+        if (ox && oz){
+          if (!NAV.cellNodes[cz * cols + ax].length) continue;
+          if (!NAV.cellNodes[az * cols + cx].length) continue;
+        }
+        for (let a = 0; a < here.length; a++){
+          for (let b = 0; b < there.length; b++){
+            if (Math.abs(NAV.nodeY[here[a]] - NAV.nodeY[there[b]]) <= DRONE_STEP)
+              NAV.edges[here[a]].push(there[b]);
+          }
+        }
+      }
+    }
+  }
+}
+
+function navNodeAt(x, z, y){
+  if (!NAV.nodeY.length) return -1;
+  const cx = Math.floor((x - NAV.minX) / NAV.cell);
+  const cz = Math.floor((z - NAV.minZ) / NAV.cell);
+  if (cx < 0 || cz < 0 || cx >= NAV.cols || cz >= NAV.cols) return -1;
+  const list = NAV.cellNodes[cz * NAV.cols + cx];
+  if (!list || !list.length) return -1;
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < list.length; i++){
+    const d = Math.abs(NAV.nodeY[list[i]] - y);
+    if (d < bd){ bd = d; best = list[i]; }
+  }
+  // Too far from any surface in this cell to really be standing on it (mid-fall, or
+  // wedged inside geometry). Say so, and let the caller fall back.
+  return bd > DRONE_STEP + 1.0 ? -1 : best;
+}
+function navNodePos(id, out){
+  const idx = NAV.nodeCell[id];
+  const cx = idx % NAV.cols, cz = (idx - cx) / NAV.cols;
+  out = out || {};
+  out.x = NAV.minX + (cx + 0.5) * NAV.cell;
+  out.z = NAV.minZ + (cz + 0.5) * NAV.cell;
+  out.y = NAV.nodeY[id];
+  return out;
+}
+// Distances to one goal across the whole graph. Static graph, so cache and keep.
+function navField(goal){
+  let f = NAV.fields.get(goal);
+  if (f) return f;
+  const n = NAV.nodeY.length;
+  f = new Int32Array(n).fill(-1);
+  const q = new Int32Array(n);
+  let head = 0, tail = 0;
+  f[goal] = 0; q[tail++] = goal;
+  while (head < tail){
+    const cur = q[head++], d = f[cur] + 1, e = NAV.edges[cur];
+    for (let i = 0; i < e.length; i++){
+      if (f[e[i]] < 0){ f[e[i]] = d; q[tail++] = e[i]; }
+    }
+  }
+  if (NAV.fields.size > 64) NAV.fields.clear();   // ~1MB on the big map, then recycle
+  NAV.fields.set(goal, f);
+  return f;
+}
+
+/*
+  Next step toward (tx,tz,ty). Returns .ok false when the drone or the goal is off
+  the graph, so the caller can fall back to heading straight there.
+*/
+const navPt = { x:0, z:0, ok:false };
+function navTo(ai, tx, tz, ty){
+  navPt.ok = false;
+  const from = navNodeAt(ai.pos.x, ai.pos.z, ai.pos.y);
+  const goal = navNodeAt(tx, tz, ty);
+  if (from < 0 || goal < 0) return navPt;
+  if (from === goal){ navPt.x = tx; navPt.z = tz; navPt.ok = true; return navPt; }
+  const f = navField(goal);
+  const d0 = f[from];
+  if (d0 < 0) return navPt;                        // nothing connects the two
+  let best = -1, bd = d0;
+  const e = NAV.edges[from];
+  for (let i = 0; i < e.length; i++){
+    const d = f[e[i]];
+    if (d >= 0 && d < bd){ bd = d; best = e[i]; }
+  }
+  if (best < 0) return navPt;
+  navNodePos(best, navPt);
+  // aim at the real goal once it is the next cell along, so drones do not visibly
+  // snap between cell centres on the last step
+  if (bd === 0){ navPt.x = tx; navPt.z = tz; }
+  navPt.ok = true;
+  return navPt;
+}
+
 function steerMove(ai, dirX, dirZ, speed, dt){
   const len = Math.hypot(dirX, dirZ);
   if (len < 0.001){ ai.mv = 0; return false; }
@@ -4173,6 +4376,17 @@ function nearestCanister(pos){
   platform) would just make them stand underneath it. Route via the map's stairways:
   head for the foot of the nearest one, then along it, then on to the real goal.
 */
+/*
+  Where to head next. The navigation graph answers properly when it can; routeTo
+  below is the old stairway-only router, kept as a fallback for a drone that has
+  ended up off the graph (wedged in geometry, or mid-fall).
+*/
+function goTo(ai, tx, tz, ty){
+  const n = navTo(ai, tx, tz, ty);
+  if (n.ok) return n;
+  return routeTo(ai, tx, tz, ty);
+}
+
 const routePt = { x:0, z:0 };
 function routeTo(ai, tx, tz, ty){
   routePt.x = tx; routePt.z = tz;
@@ -4232,7 +4446,28 @@ function routeTo(ai, tx, tz, ty){
   return routePt;
 }
 
-function patrolPoint(){
+/*
+  Patrol used to pick a spawn and jitter it, which on an 80m map meant drones orbited
+  the spawn ring. Sample the navigation graph instead and favour somewhere far off,
+  so they actually sweep the place.
+*/
+function patrolPoint(ai){
+  const n = NAV.nodeY.length;
+  if (n){
+    let best = null, bestScore = -1;
+    const probe = {};
+    for (let k = 0; k < 16; k++){
+      const id = (Math.random() * n) | 0;
+      // Skip islands: a crate top with almost nothing joined to it is somewhere a
+      // drone can see but never walk to, and heading there just stalls it.
+      if (NAV.edges[id].length < 3) continue;
+      navNodePos(id, probe);
+      const d = ai ? Math.hypot(probe.x - ai.pos.x, probe.z - ai.pos.z) : 1;
+      const score = d * (0.55 + Math.random());
+      if (score > bestScore){ bestScore = score; best = new THREE.Vector3(probe.x, probe.y, probe.z); }
+    }
+    if (best) return best;
+  }
   const sp = pick(SPAWNS);
   return new THREE.Vector3(sp.x + rand(-5,5), 0, sp.z + rand(-5,5));
 }
@@ -4303,8 +4538,10 @@ function droneThink(ai, dt, targets, hooks){
     const d = to.length() || 1;
     to.divideScalar(d);
     const above = seen.pos.y - ai.pos.y;
-    if (above > 1.2 || (ai.onRamp && above > 0.4)){
-      const rp = routeTo(ai, seen.pos.x, seen.pos.z, seen.pos.y);   // they're above us: take the stairs
+    // Closing distance, or a target above, both need a route. Strafing at knife
+    // range does not -- that stays direct so combat still reads as combat.
+    if (above > 1.2 || (ai.onRamp && above > 0.4) || d > ai.hold + 6){
+      const rp = goTo(ai, seen.pos.x, seen.pos.z, seen.pos.y);
       steerMove(ai, rp.x - ai.pos.x, rp.z - ai.pos.z, D.speed, dt);
     } else {
       const strafeX = -to.z * ai.strafeDir, strafeZ = to.x * ai.strafeDir;
@@ -4330,7 +4567,7 @@ function droneThink(ai, dt, targets, hooks){
   } else if (mode === 'hunt'){
     const aim = (now - ai.threatAt < 4000 && now - ai.seenAt > 1200) ? ai.threat : ai.lastSeen;
     if (aim){
-      const rp = routeTo(ai, aim.x, aim.z, aim.y);
+      const rp = goTo(ai, aim.x, aim.z, aim.y);
       const to = dA.set(rp.x - ai.pos.x, 0, rp.z - ai.pos.z);
       if (to.length() < 2.5){ ai.seenAt = -1e9; ai.threatAt = -1e9; }
       else {
@@ -4339,7 +4576,7 @@ function droneThink(ai, dt, targets, hooks){
       }
     }
   } else if (mode === 'heal'){
-    const rp = routeTo(ai, can.x, can.z, can.y);
+    const rp = goTo(ai, can.x, can.z, can.y);
     const to = dA.set(rp.x - ai.pos.x, 0, rp.z - ai.pos.z);
     if (Math.hypot(can.x - ai.pos.x, can.z - ai.pos.z) < 1.3 && Math.abs(ai.pos.y - can.y) < 1.2){
       ai.hp = Math.min(ai.hpMax || CFG.maxHp, ai.hp + PICKUP_HEAL);
@@ -4364,13 +4601,20 @@ function droneThink(ai, dt, targets, hooks){
       }
     }
     if (stalk){
-      const rp = routeTo(ai, stalk.pos.x, stalk.pos.z, stalk.pos.y);
+      const rp = goTo(ai, stalk.pos.x, stalk.pos.z, stalk.pos.y);
       steerMove(ai, rp.x - ai.pos.x, rp.z - ai.pos.z, D.speed * 0.95, dt);
       ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
     } else {
-      if (!ai.goal || ai.pos.distanceTo(ai.goal) < 2.2) ai.goal = patrolPoint();
-      const to = dA.copy(ai.goal).sub(ai.pos); to.y = 0;
-      if (!steerMove(ai, to.x, to.z, D.speed * 0.8, dt)) ai.goal = patrolPoint();
+      if (!ai.goal || ai.pos.distanceTo(ai.goal) < 2.2) ai.goal = patrolPoint(ai);
+      let rp = navTo(ai, ai.goal.x, ai.goal.z, ai.goal.y);
+      if (!rp.ok){                       // unreachable: re-pick now, don't stall on it
+        ai.goal = patrolPoint(ai);
+        rp = navTo(ai, ai.goal.x, ai.goal.z, ai.goal.y);
+      }
+      const to = rp.ok ? dA.set(rp.x - ai.pos.x, 0, rp.z - ai.pos.z)
+                       : dA.copy(ai.goal).sub(ai.pos);
+      to.y = 0;
+      if (!steerMove(ai, to.x, to.z, D.speed * 0.8, dt)) ai.goal = patrolPoint(ai);
       ai.ry = angLerp(ai.ry, ai.moveDir == null ? ai.ry : ai.moveDir, clamp(dt*4, 0, 1));
     }
   }
@@ -4381,9 +4625,19 @@ function droneThink(ai, dt, targets, hooks){
     ai.stuckT = (ai.stuckT || 0) + dt;
     if (ai.stuckT > 1.2){
       ai.stuckT = 0;
-      const r = Math.hypot(ai.pos.x, ai.pos.z) || 1;
-      ai.pos.x -= (ai.pos.x / r) * 0.7;
-      ai.pos.z -= (ai.pos.z / r) * 0.7;
+      // Move to the nearest place the navigation graph says is standable. The old
+      // version eased toward the map centre, which on a big map quietly herded every
+      // wedged drone into the middle structure.
+      const id = navNodeAt(ai.pos.x, ai.pos.z, ai.pos.y);
+      if (id >= 0){
+        const p = navNodePos(id, {});
+        ai.pos.x += (p.x - ai.pos.x) * 0.6;
+        ai.pos.z += (p.z - ai.pos.z) * 0.6;
+      } else {
+        const r = Math.hypot(ai.pos.x, ai.pos.z) || 1;
+        ai.pos.x -= (ai.pos.x / r) * 0.7;
+        ai.pos.z -= (ai.pos.z / r) * 0.7;
+      }
       ai.pos.y = groundAt(ai.pos.x, ai.pos.z, ai.pos.y, DRONE_STEP);
       ai.goal = null;
     }
@@ -5277,7 +5531,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r12-solid-rails · 2026-10-18 20:23 UTC';
+const BUILD = 'r13-navmesh · 2026-10-25 18:37 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
