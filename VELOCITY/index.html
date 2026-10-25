@@ -1513,9 +1513,73 @@ var PLUME_GEO = new THREE.ConeGeometry(0.5, 3.4, 14, 1, true);
 PLUME_GEO.rotateX(-Math.PI / 2);        // apex points +z, behind the car
 PLUME_GEO.translate(0, 0, 1.7);
 
+// Panel seams and carbon weave as a normal map, built once from a height
+// field via Sobel. Colour-independent, so every car shares it.
+var CAR_NORMAL_TEX = (function () {
+  var N = 256;
+  var hc = cnv(N, N), h = hc.getContext("2d"), i, j;
+  h.fillStyle = "#808080"; h.fillRect(0, 0, N, N);
+  // carbon weave
+  for (i = 0; i < N; i += 4) {
+    h.fillStyle = (i / 4) % 2 ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.06)";
+    h.fillRect(i, 0, 2, N);
+    h.fillRect(0, i, N, 2);
+  }
+  // panel seams: grooves across the body and along the spine
+  h.strokeStyle = "rgba(0,0,0,.85)"; h.lineWidth = 3;
+  for (i = 1; i < 5; i++) { h.beginPath(); h.moveTo(0, i * 48); h.lineTo(N, i * 48); h.stroke(); }
+  [51, 73].forEach(function (x) { h.beginPath(); h.moveTo(x, 0); h.lineTo(x, N); h.stroke(); });
+  // louvre vents on the flanks
+  for (i = 0; i < 5; i++) {
+    h.fillStyle = "rgba(0,0,0,.7)";
+    h.fillRect(100, 150 + i * 7, 26, 3);
+    h.fillRect(228, 150 + i * 7, 26, 3);
+  }
+
+  var src = h.getImageData(0, 0, N, N).data;
+  var nc = cnv(N, N), ng = nc.getContext("2d");
+  var out = ng.createImageData(N, N);
+  function at(x, y) {
+    x = (x + N) % N; y = (y + N) % N;
+    return src[(y * N + x) * 4] / 255;
+  }
+  for (j = 0; j < N; j++) {
+    for (i = 0; i < N; i++) {
+      var dx = (at(i + 1, j) - at(i - 1, j)) * 3.0;
+      var dy = (at(i, j + 1) - at(i, j - 1)) * 3.0;
+      var len = Math.sqrt(dx * dx + dy * dy + 1);
+      var o = (j * N + i) * 4;
+      out.data[o] = ((-dx / len) * 0.5 + 0.5) * 255;
+      out.data[o + 1] = ((-dy / len) * 0.5 + 0.5) * 255;
+      out.data[o + 2] = (1 / len) * 255;
+      out.data[o + 3] = 255;
+    }
+  }
+  ng.putImageData(out, 0, 0);
+  var t = new THREE.CanvasTexture(nc);      // data map: no sRGB
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+})();
+
+// gloss paint over most of the body, matte carbon at nose and tail
+var CAR_ROUGH_TEX = (function () {
+  var c = cnv(64, 256), g = c.getContext("2d");
+  g.fillStyle = "#3a3a3a"; g.fillRect(0, 0, 64, 256);      // glossy
+  g.fillStyle = "#c8c8c8";                                  // matte carbon
+  g.fillRect(0, 0, 64, 34); g.fillRect(0, 232, 64, 24);
+  for (var i = 0; i < 300; i++) {
+    g.fillStyle = "rgba(255,255,255," + (Math.random() * 0.12) + ")";
+    g.fillRect(Math.random() * 64, Math.random() * 256, 2, 2);
+  }
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+})();
+
 // u runs around the hull (0.25 = roof, 0.75 = floor), v runs nose to tail
 function liveryTexture(colour, accent, num) {
   var c = cnv(256, 256), g = c.getContext("2d"), i;
+  num = num || 1;
   var base = "#" + ("000000" + colour.toString(16)).slice(-6);
   var acc = "#" + ("000000" + accent.toString(16)).slice(-6);
   g.fillStyle = base; g.fillRect(0, 0, 256, 256);
@@ -1534,9 +1598,26 @@ function liveryTexture(colour, accent, num) {
   g.fillRect(0, 0, 256, 34);
   g.fillRect(0, 232, 256, 24);
 
-  // spine stripe over the roof
-  g.fillStyle = acc;
-  g.globalAlpha = 0.9; g.fillRect(55, 0, 18, 256); g.globalAlpha = 1;
+  // each car gets a different scheme so rivals are told apart at a glance
+  var scheme = num % 4;
+  g.globalAlpha = 0.9;
+  if (scheme === 0) {                       // single spine stripe
+    g.fillStyle = acc; g.fillRect(55, 0, 18, 256);
+  } else if (scheme === 1) {                // twin stripes
+    g.fillStyle = acc; g.fillRect(46, 0, 8, 256); g.fillRect(74, 0, 8, 256);
+  } else if (scheme === 2) {                // chevrons down the spine
+    g.fillStyle = acc;
+    for (i = 0; i < 9; i++) {
+      g.beginPath();
+      g.moveTo(50, i * 30); g.lineTo(64, i * 30 + 16); g.lineTo(78, i * 30);
+      g.lineTo(78, i * 30 + 10); g.lineTo(64, i * 30 + 26); g.lineTo(50, i * 30 + 10);
+      g.closePath(); g.fill();
+    }
+  } else {                                  // dark rear section
+    g.fillStyle = "rgba(10,12,26,.8)"; g.fillRect(0, 150, 256, 82);
+    g.fillStyle = acc; g.fillRect(0, 144, 256, 7);
+  }
+  g.globalAlpha = 1;
   g.fillStyle = "rgba(10,12,24,.85)";
   g.fillRect(51, 0, 4, 256); g.fillRect(73, 0, 4, 256);
 
@@ -1561,14 +1642,20 @@ function liveryTexture(colour, accent, num) {
   return t;
 }
 
-function buildCar(colour, accent, simple, num) {
+// detail: 2 = the player's car, 1 = rivals, 0 = rivals on low effects
+function buildCar(colour, accent, detail, num) {
+  var simple = detail === 0;
+  var hero = detail === 2;
   var root = new THREE.Group();
   var tilt = new THREE.Group(); root.add(tilt);
 
   var paint = new THREE.MeshStandardMaterial({
     map: liveryTexture(colour, accent, num || 1),
-    metalness: 0.6, roughness: 0.26, envMap: envMapTex, envMapIntensity: 1.3
+    normalMap: CAR_NORMAL_TEX,
+    roughnessMap: CAR_ROUGH_TEX,
+    metalness: 0.62, roughness: 1, envMap: envMapTex, envMapIntensity: 1.35
   });
+  paint.normalScale.set(0.55, 0.55);
   var trim = new THREE.MeshStandardMaterial({
     color: 0x151a33, metalness: 0.85, roughness: 0.35, envMap: envMapTex, envMapIntensity: 0.9
   });
@@ -1602,9 +1689,9 @@ function buildCar(colour, accent, simple, num) {
   brakeBar.position.set(0, 1.42, 4.78); tilt.add(brakeBar);
 
   // a driver under the glass sells the scale
-  if (!simple) {
+  if (hero) {
     var helmet = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshStandardMaterial({
-      color: 0xf2f5ff, roughness: 0.3, metalness: 0.2, envMap: envMapTex, envMapIntensity: 0.8
+      color: accent, roughness: 0.25, metalness: 0.3, envMap: envMapTex, envMapIntensity: 0.9
     }));
     helmet.position.set(0, 1.3, -0.35); tilt.add(helmet);
     var visor = new THREE.Mesh(new THREE.SphereGeometry(0.43, 14, 10, 0, Math.PI, 1.0, 1.1),
@@ -1612,6 +1699,25 @@ function buildCar(colour, accent, simple, num) {
     visor.position.set(0, 1.3, -0.35);
     visor.rotation.y = Math.PI;
     tilt.add(visor);
+  }
+
+  // roll hoop and intake scoop behind the cockpit
+  if (hero) {
+    var hoop = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.11, 8, 16, Math.PI), trim);
+    hoop.position.set(0, 1.42, 1.0);
+    hoop.rotation.y = Math.PI / 2;
+    tilt.add(hoop);
+    var scoop = new THREE.Mesh(new THREE.ConeGeometry(0.42, 2.2, 10), trim);
+    scoop.rotation.x = -Math.PI / 2;
+    scoop.position.set(0, 1.46, 2.3);
+    tilt.add(scoop);
+    // dive planes either side of the nose
+    for (var dp = -1; dp <= 1; dp += 2) {
+      var plane = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.07, 0.5), trim);
+      plane.position.set(dp * 1.35, 0.72, -3.9);
+      plane.rotation.z = dp * 0.2;
+      tilt.add(plane);
+    }
   }
 
   // nose blade and rear wing
@@ -1626,6 +1732,13 @@ function buildCar(colour, accent, simple, num) {
   tilt.add(wing);
   var wingLip = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.1, 0.16), neon);
   wingLip.position.set(0, 2.14, 4.62); tilt.add(wingLip);
+  if (hero) {
+    for (var ep = -1; ep <= 1; ep += 2) {
+      var plate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.78, 1.5), trim);
+      plate.position.set(ep * 2.5, 1.9, 4.1);
+      tilt.add(plate);
+    }
+  }
   if (!simple) {
     for (var w = -1; w <= 1; w += 2) {
       var stay = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.5), trim);
@@ -1664,6 +1777,12 @@ function buildCar(colour, accent, simple, num) {
         face.position.x = s * 0.53;
         face.scale.setScalar(1.02);
         spinner.add(face);
+      }
+      if (hero) {
+        // brake caliper rides on the upright, so it doesn't spin with the wheel
+        var caliper = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.62, 0.3), trim);
+        caliper.position.set(s * 0.3, 0.46, -0.1);
+        hub.add(caliper);
       }
     }
 
@@ -1729,7 +1848,7 @@ function buildCar(colour, accent, simple, num) {
 
   root.userData = { tilt: tilt, glow: glow, glowMat: glowMat, spin: 0,
                     spinners: spinners, steerHubs: steerHubs, brakeMat: brakeMat,
-                    plumes: plumes, cores: cores, flick: 0, pitch: 0 };
+                    wing: wing, plumes: plumes, cores: cores, flick: 0, pitch: 0 };
   return root;
 }
 
@@ -1739,7 +1858,8 @@ var NAMES = ["NOVA", "K-ZERO", "RAIJIN", "VOLT", "SABLE", "ORYX", "HEX"];
 
 function makeRacer(isPlayer, i) {
   var pal = isPlayer ? [carDef().colour, carDef().accent] : PALETTE[(i + 1) % PALETTE.length];
-  var mesh = buildCar(pal[0], pal[1], !isPlayer && CFG.quality === "low", isPlayer ? 1 : (i + 1));
+  var detail = isPlayer ? 2 : (CFG.quality === "low" ? 0 : 1);
+  var mesh = buildCar(pal[0], pal[1], detail, isPlayer ? 1 : (i + 1));
   scene.add(mesh);
   return {
     player: isPlayer,
@@ -1979,15 +2099,13 @@ var GEARS = 6;
               (its fundamental in Hz) / 150.
      screech  a looping tyre squeal, 1-2 seconds, seamless.
      impact   a one-shot crash/thud.
-     boost    a one-shot nitro whoosh.
 
    Set any entry to null to fall back to the synthesised version.
    --------------------------------------------------------------- */
 var SOUND_FILES = {
   engine: "engine-loop.mp3",
   screech: "screech.mp3",
-  impact: "impact.mp3",
-  boost: "boost.mp3"
+  impact: "impact.mp3"
 };
 // the supplied engine loop sits at 95Hz; 95/150 keeps the pitch shift sane
 var ENGINE_SAMPLE_PITCH = 0.633;
@@ -2327,22 +2445,6 @@ function thud(strength) {
   sg.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.32);
   src.connect(f); f.connect(sg); sg.connect(ctx.destination);
   src.start(); src.stop(ctx.currentTime + 0.33);
-}
-
-// nitro
-function whoosh() {
-  if (!audio.on || !audio.ctx) return;
-  if (playSample("boost", 1)) return;
-  var ctx = audio.ctx;
-  var src = ctx.createBufferSource(); src.buffer = audio.noise;
-  var f = ctx.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 1.2;
-  f.frequency.setValueAtTime(400, ctx.currentTime);
-  f.frequency.exponentialRampToValueAtTime(3800, ctx.currentTime + 0.4);
-  var g = ctx.createGain();
-  g.gain.setValueAtTime(0.16 * CFG.sfxVol, ctx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
-  src.connect(f); f.connect(g); g.connect(ctx.destination);
-  src.start(); src.stop(ctx.currentTime + 0.52);
 }
 
 /* =====================================================================
@@ -2954,7 +3056,6 @@ function drive(r, dt, steer, gas, brake, wantBoost) {
     r.boost = Math.max(0, r.boost - dt * 0.4 / car.tank);
     top *= BOOST_MULT;
     boosting = true;
-    if (r.player && r.boosting < 0.05) whoosh();
     r.boosting = Math.min(1, r.boosting + dt * 5);
   } else {
     r.boosting = Math.max(0, r.boosting - dt * 3);
@@ -3121,6 +3222,12 @@ function placeCar(r, dt) {
   for (var si = 0; si < ud.steerHubs.length; si++) {
     var want = -(r.steerIn || 0) * 0.42;
     ud.steerHubs[si].rotation.y += (want - ud.steerHubs[si].rotation.y) * Math.min(1, dt * 12);
+  }
+
+  // wing flattens out under boost and stands up again for downforce
+  if (ud.wing) {
+    var wantTilt = -0.14 + r.boosting * 0.13;
+    ud.wing.rotation.x += (wantTilt - ud.wing.rotation.x) * Math.min(1, dt * 5);
   }
 
   // brake lights, and the nose dipping under braking / lifting on power
