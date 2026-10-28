@@ -513,7 +513,7 @@
       <div class="opt"><label class="toggle"><input type="checkbox" id="statsIn"> Performance readout</label><small>FPS and ping in game (toggle with ` or F3)</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="autoQIn" checked> Auto quality</label><small>Drops resolution if the frame rate sags</small></div>
       <div class="opt"><label class="toggle"><input type="checkbox" id="glowIn" checked> Glow effects</label><small>Light halos and dust — turn off on old phones</small></div>
-      <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match</small></div>
+      <div class="opt"><label class="toggle"><input type="checkbox" id="musicIn" checked> Music</label><small id="musicNote">Loops, quieter in a match · boss theme on wave 5</small></div>
       <div class="opt"><label for="musicVol">Music volume</label><input id="musicVol" type="range" min="0" max="100" value="60"><small id="musicVolVal">60%</small></div>
     </div>
 
@@ -584,6 +584,7 @@ const firebaseConfig = {
    the game just hides the music controls.
    --------------------------------------------------------------------- */
 const MUSIC_FILE = 'EonArena1.mp3';
+const BOSS_MUSIC_FILE = 'EonBoss.mp3';   // crossfades in while a Warden is alive
 
 /* ===================== TUNABLES ===================== */
 const CFG = {
@@ -756,7 +757,9 @@ function audioBearing(pos){
 */
 const music = {
   el:null, on:true, level:0.6, ready:false, missing:false, started:false,
-  menuGain:0.75, gameGain:0.22
+  menuGain:0.75, gameGain:0.22,
+  // boss track
+  boss:null, bossMissing:false, bossPlaying:false, bossWanted:false, bossGain:0.34
 };
 
 function initMusic(){
@@ -779,6 +782,19 @@ function initMusic(){
   });
   el.src = MUSIC_FILE;
   music.el = el;
+
+  /*
+    Boss track. Entirely optional: if EonBoss.mp3 is not sitting next to Arena.html the
+    flag is set and everything else carries on with the normal track, because a missing
+    extra should never cost you the music you do have.
+  */
+  const b = new Audio();
+  b.loop = true;
+  b.preload = 'auto';
+  b.volume = 0;
+  b.addEventListener('error', () => { music.bossMissing = true; });
+  b.src = BOSS_MUSIC_FILE;
+  music.boss = b;
 }
 
 // browsers refuse audio until the page has been interacted with, so the first
@@ -789,19 +805,57 @@ function startMusic(){
   if (p && p.catch) p.catch(() => { music.started = false; });
   music.started = true;
 }
+// Turning music off has to silence the boss track as well, or it keeps playing alone.
+function stopAllMusic(){
+  if (music.boss){ music.boss.pause(); music.boss.volume = 0; music.bossPlaying = false; music.bossWanted = false; }
+  if (music.el) music.el.volume = 0;
+}
+// true while a Warden is on the field, which is what swaps the track over
+function bossMusicWanted(){
+  return music.on && !music.bossMissing && mode !== 'menu' && isWaves() && !!findBoss();
+}
 function musicTarget(){
   if (!music.on || music.missing) return 0;
+  if (music.bossWanted) return 0;                 // step aside for the boss track
   return (mode === 'menu' ? music.menuGain : music.gameGain) * music.level;
 }
-function stepMusic(dt){
-  if (!music.el) return;
-  const want = musicTarget();
-  const now = music.el.volume;
+// one fader, used for both tracks
+function fadeTo(el, want, dt){
+  const now = el.volume;
   const next = clamp(now + (want - now) * clamp(dt * 1.8, 0, 1), 0, 1);
   // writing this property every frame is a real cost in some browsers, and pointless
   // once the fade has settled
-  if (Math.abs(next - now) > 0.002) music.el.volume = next;
-  if (music.on && !music.started && want > 0) startMusic();
+  if (Math.abs(next - now) > 0.002) el.volume = next;
+  return next;
+}
+function stepMusic(dt){
+  if (!music.el) return;
+
+  const wantBoss = bossMusicWanted();
+  if (wantBoss !== music.bossWanted){
+    music.bossWanted = wantBoss;
+    if (wantBoss && music.boss){
+      // start the boss theme from its opening, not wherever it was left
+      try { music.boss.currentTime = 0; } catch(e){}
+      const p = music.boss.play();
+      if (p && p.catch) p.catch(() => {});
+      music.bossPlaying = true;
+    }
+  }
+
+  const want = musicTarget();
+  fadeTo(music.el, want, dt);
+
+  if (music.boss && music.bossPlaying){
+    const bWant = (music.bossWanted && music.on) ? music.bossGain * music.level : 0;
+    const v = fadeTo(music.boss, bWant, dt);
+    if (!music.bossWanted && v < 0.004){        // faded out: stop decoding it
+      music.boss.pause();
+      music.bossPlaying = false;
+    }
+  }
+
+  if (music.on && !music.started && (want > 0 || music.bossWanted)) startMusic();
 }
 
 /* ===================== RENDERER / SCENE ===================== */
@@ -1946,6 +2000,7 @@ function part(geo, mat, x, y, z, parent, shadow){
 */
 function buildAvatar(colorHex, name, isDrone, isBoss){
   const g = new THREE.Group();
+  let bossCore = null;
   // Standard, not Lambert: Lambert ignores scene.environment, so a player would read
   // as flat paint next to the reflective world surfaces.
   const suit  = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.55, metalness: 0.25 });
@@ -2048,34 +2103,91 @@ function buildAvatar(colorHex, name, isDrone, isBoss){
   g.add(tag);
 
   /*
-    The boss reuses the drone rig rather than being a second model: scaled up, with
-    pauldrons, a chest plate and a crest so it reads as a different thing at a glance.
-    Hit boxes are children of the group, so they scale too and aiming needs no
-    special case.
+    THE WARDEN. It keeps the drone's skeleton so animateAvatar still drives it and the
+    hit boxes still scale with the group -- but almost nothing of the drone's look
+    survives. Hunched and top-heavy: layered chest armour over an exposed core, a wide
+    visor instead of a single eye, a shoulder cannon, and back exhausts. The core and
+    visor are emissive, so it stays legible in the dark where a drone goes flat.
   */
   if (isBoss){
     g.scale.setScalar(CFG.bossScale);
-    const plate = new THREE.MeshStandardMaterial({ color: 0x2A1230, roughness: 0.42, metalness: 0.78 });
-    part(boxG(0.92, 0.34, 0.52), plate, 0, 1.33, 0.04, g);          // chest plate
-    [-1, 1].forEach(sx => {
-      part(boxG(0.30, 0.26, 0.46), plate, sx * 0.44, 1.46, 0, g);   // pauldrons
-      const spike = new THREE.Mesh(cylG(0.015, 0.11, 0.42, 6), plate);
-      spike.position.set(sx * 0.44, 1.76, 0);
-      spike.castShadow = true;
-      g.add(spike);
+    const shell = new THREE.MeshStandardMaterial({
+      color: 0x241036, roughness: 0.38, metalness: 0.82,
+      emissive: 0x2A0A3A, emissiveIntensity: 0.35
     });
-    part(boxG(0.26, 0.10, 0.26), plate, 0, 1.92, 0, g);             // crest
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTex(), color: 0xFF4FD0, transparent: true, opacity: 0.8,
+    const trim = new THREE.MeshStandardMaterial({
+      color: 0x8A2BE2, roughness: 0.3, metalness: 0.6,
+      emissive: 0xC23BFF, emissiveIntensity: 1.5
+    });
+    const vent = new THREE.MeshBasicMaterial({ color: 0xFF4FD0 });
+
+    // ---- bulked torso: layered plates, widest at the shoulder ----
+    part(boxG(1.06, 0.30, 0.60), shell, 0, 1.44, 0.02, g);          // shoulder yoke
+    part(boxG(0.86, 0.26, 0.54), shell, 0, 1.19, 0.02, g);          // mid plate
+    part(boxG(0.62, 0.22, 0.46), shell, 0, 0.97, 0.02, g);          // waist plate
+    part(boxG(0.84, 0.05, 0.08), trim, 0, 1.32, -0.27, g, false);   // trim line
+    part(boxG(0.60, 0.05, 0.08), trim, 0, 1.07, -0.24, g, false);
+
+    // exposed core between the plates -- the thing you shoot at
+    const core = new THREE.Mesh(sphG(0.17, 14, 10), vent);
+    core.position.set(0, 1.32, -0.20);
+    g.add(core);
+    const coreGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color: 0xFF4FD0, transparent: true, opacity: 0.95,
       blending: THREE.AdditiveBlending, depthWrite: false
     }));
-    halo.position.set(0, 1.62, 0.22);
-    halo.scale.setScalar(1.6);
-    g.add(halo);
+    coreGlow.position.copy(core.position);
+    coreGlow.scale.setScalar(1.25);
+    g.add(coreGlow);
+
+    // ---- pauldrons, swept back and down so it reads as hunched ----
+    [-1, 1].forEach(sx => {
+      const pa = part(boxG(0.34, 0.34, 0.52), shell, sx * 0.56, 1.46, 0.02, g);
+      pa.rotation.z = sx * 0.22;
+      part(boxG(0.30, 0.07, 0.46), trim, sx * 0.56, 1.63, 0.02, g, false);
+      const horn = new THREE.Mesh(cylG(0.012, 0.085, 0.5, 6), shell);
+      horn.position.set(sx * 0.6, 1.78, 0.06);
+      horn.rotation.z = sx * 0.3;
+      horn.castShadow = true;
+      g.add(horn);
+    });
+
+    // ---- shoulder cannon, on the side the gun is not ----
+    const barrel = new THREE.Mesh(cylG(0.085, 0.095, 0.62, 10), shell);
+    barrel.position.set(-0.46, 1.66, -0.3);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.castShadow = true;
+    g.add(barrel);
+    part(boxG(0.1, 0.1, 0.1), vent, -0.46, 1.66, -0.62, g, false);
+
+    // ---- back exhausts ----
+    [-1, 1].forEach(sx => {
+      const st2 = new THREE.Mesh(cylG(0.075, 0.09, 0.44, 8), shell);
+      st2.position.set(sx * 0.26, 1.52, 0.34);
+      st2.castShadow = true;
+      g.add(st2);
+      part(cylG(0.055, 0.055, 0.04, 8), vent, sx * 0.26, 1.745, 0.34, g, false);
+    });
+
+    // ---- head: a wide visor bar, not the drone's single eye ----
+    if (eye) eye.visible = false;
+    part(boxG(0.40, 0.11, 0.1), vent, 0, 1.90, -0.19, g, false);
+    part(boxG(0.46, 0.22, 0.30), shell, 0, 1.95, 0, g);
+    const visorGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color: 0xFF4FD0, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    visorGlow.position.set(0, 1.90, -0.22);
+    visorGlow.scale.setScalar(0.95);
+    g.add(visorGlow);
+
+    bossCore = { core, coreGlow, visorGlow };
   }
 
   return {
     group:g, tag, bodyHit, headHit, head, visor, eye, gun, flash, upper, boss: !!isBoss,
+    core: bossCore && bossCore.core, coreGlow: bossCore && bossCore.coreGlow,
+    visorGlow: bossCore && bossCore.visorGlow,
     legL:L.hip, legR:R.hip, kneeL:L.knee, kneeR:R.knee
   };
 }
@@ -2238,6 +2350,15 @@ function animateAvatar(av, pitch, moving, dt, k, st){
     av.kneeL.rotation.x = lerp(av.kneeL.rotation.x, 0, k);
     av.kneeR.rotation.x = lerp(av.kneeR.rotation.x, 0, k);
     av.upper.rotation.z = lerp(av.upper.rotation.z, 0, k);
+  }
+
+  // The Warden's core breathes, so it reads as powered rather than as a statue.
+  if (av.core){
+    st.pulse = (st.pulse || 0) + dt * 2.6;
+    const p = 0.86 + Math.sin(st.pulse) * 0.14;
+    av.core.scale.setScalar(p);
+    if (av.coreGlow) av.coreGlow.scale.setScalar(1.25 * p);
+    if (av.visorGlow) av.visorGlow.material.opacity = 0.65 + Math.sin(st.pulse * 1.7) * 0.2;
   }
 }
 
@@ -3227,6 +3348,54 @@ function respawn(){
 }
 
 /* ===================== PICKUPS ===================== */
+/*
+  LIFE DROP. A Warden leaves one behind; collecting it gives the squad another life.
+
+  Deliberately carried on the existing 'events' path rather than a new node in the
+  database: a new path means new security rules, and a path added without them is
+  exactly what caused the permission error early on. Every client spawns the drop
+  from the same kill event, so no one has to publish its position separately.
+*/
+const lifeDrop = { active:false, claimed:false, mesh:null, pos:new THREE.Vector3(), at:0 };
+
+function clearLifeDrop(){
+  if (lifeDrop.mesh && lifeDrop.mesh.parent) lifeDrop.mesh.parent.remove(lifeDrop.mesh);
+  lifeDrop.active = false; lifeDrop.claimed = false; lifeDrop.mesh = null;
+}
+function spawnLifeDrop(x, y, z){
+  clearLifeDrop();
+  const g = new THREE.Group();
+  // a cross, so at a glance it is not mistaken for another health canister
+  const m = new THREE.MeshBasicMaterial({ color: 0x7CFFB2 });
+  g.add(new THREE.Mesh(boxG(0.56, 0.17, 0.17), m));
+  g.add(new THREE.Mesh(boxG(0.17, 0.56, 0.17), m));
+  addGlow(0, 0, 0, 0x7CFFB2, 3.2, g);
+  g.position.set(x, y + 0.95, z);
+  worldGroup.add(g);            // so a map change takes it with them
+  lifeDrop.active = true; lifeDrop.claimed = false;
+  lifeDrop.mesh = g; lifeDrop.pos.set(x, y, z); lifeDrop.at = net.now();
+  addFeed('The Warden dropped a life', false, '#7CFFB2');
+}
+function stepLifeDrop(dt, now){
+  if (!lifeDrop.active || !lifeDrop.mesh) return;
+  if (net.now() - lifeDrop.at > 60000){ clearLifeDrop(); return; }   // don't let it linger
+  lifeDrop.mesh.rotation.y += dt * 1.9;
+  lifeDrop.mesh.position.y = lifeDrop.pos.y + 0.95 + Math.sin(now / 400) * 0.12;
+  if (lifeDrop.claimed || !me.alive) return;
+  const d = Math.hypot(me.pos.x - lifeDrop.pos.x, me.pos.z - lifeDrop.pos.z);
+  if (d < 1.5 && Math.abs(me.pos.y - lifeDrop.pos.y) < 2.0){
+    /*
+      Hide it and stop collecting, but leave .active set: the keeper grants the life
+      when the event lands, and uses .active to make sure two players grabbing it in
+      the same instant only yields one life.
+    */
+    lifeDrop.claimed = true;
+    lifeDrop.mesh.visible = false;
+    Audio2.play('pickup');
+    pushEvent({ type:'life', by: me.uid, name: me.name });
+  }
+}
+
 function stepPickups(dt, now){
   PICKUPS.forEach(p => {
     const mesh = pickupMeshes[p.id];
@@ -3693,6 +3862,7 @@ function startWave(n){
   net.wave.left = waveCount(n);
   // clear anything left over, then field the new wave
   Array.from(net.botAI.keys()).forEach(id => despawnBot(id));
+  clearLifeDrop();                 // anything uncollected does not carry into a new wave
   const boss = isBossWave(n);
   for (let i = 1; i <= net.wave.left; i++) spawnBot(i, boss && i === 1);
   publishWave();
@@ -3822,9 +3992,19 @@ function pushEvent(obj){
 
 function handleEvent(v){
   if (v.type === 'kill'){
-    const col = (isTeam() && v.kt != null) ? hex(CFG.teamColors[v.kt]) : null;
+    const col = v.boss ? '#E09BFF' : ((isTeam() && v.kt != null) ? hex(CFG.teamColors[v.kt]) : null);
     addFeed((v.killer || 'The arena') + '  ✖  ' + v.victim + (v.head ? '  ·  head' : ''),
             v.ku === me.uid || v.vu === me.uid, col);
+    if (v.boss && v.bx != null) spawnLifeDrop(v.bx, v.by || 0, v.bz);
+  } else if (v.type === 'life'){
+    // only the keeper may move the squad's life count, and only while a drop is live
+    if (net.isKeeper && lifeDrop.active){
+      net.wave.lives = Math.min(5, (net.wave.lives || 0) + 1);
+      publishWave();
+    }
+    clearLifeDrop();
+    addFeed((v.name || 'Someone') + ' recovered a life', v.by === me.uid, '#7CFFB2');
+    updateHud();
   } else if (v.type === 'chat'){
     addChat(v.name, v.text, v.color);
     if (v.u !== me.uid) Audio2.play('chat');
@@ -4145,6 +4325,10 @@ function applyBotHit(v){
     const shooter = v.by === me.uid ? { team: me.team } : remotes.get(v.by);
     pushEvent({ type:'kill', killer: v.byName || 'someone', victim: ai.name, head: !!v.head,
                 ku: v.by || null, vu: ai.id, boss: !!ai.boss,
+                // where it fell, so every client can place the drop itself
+                bx: ai.boss ? Math.round(ai.pos.x * 100) / 100 : null,
+                by: ai.boss ? Math.round(ai.pos.y * 100) / 100 : null,
+                bz: ai.boss ? Math.round(ai.pos.z * 100) / 100 : null,
                 kt: shooter ? (shooter.team || 0) : null });
     if (v.by === me.uid){
       // credit ourselves straight away so the sound and the counter land with the kill,
@@ -5477,7 +5661,7 @@ function initMenu(){
     music.on = musicIn.checked;
     localStorage.setItem('eonarena.music', music.on ? '1' : '0');
     if (music.on) startMusic();
-    else if (music.el){ music.el.pause(); music.started = false; }
+    else if (music.el){ music.el.pause(); music.started = false; stopAllMusic(); }
   };
   musicVol.oninput = () => {
     music.level = musicVol.value / 100;
@@ -5792,6 +5976,7 @@ function frame(){
 
     stepProjectiles(dt);
     stepPickups(dt, now);
+    stepLifeDrop(dt, now);
     writeState(dt);
     if (mode === 'online'){ stepNetBots(dt); checkTeamWin(dt); stepWaves(dt); }
     if (mode === 'solo') stepBots(dt);
@@ -5825,7 +6010,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r14-warden · 2026-10-28 20:16 UTC';
+const BUILD = 'r15-warden-theme · 2026-10-28 20:48 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
