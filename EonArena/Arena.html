@@ -725,6 +725,14 @@ const Audio2 = (() => {
       tone(90, 0.5, 'sawtooth', 0.26, 38);
       noise(0.16, 0.2, 2200, 1.1);
     },
+    bossDown(){
+      noise(0.75, 0.50, 150, 0.6, 'lowpass');
+      tone(70, 0.95, 'sawtooth', 0.30, 26);
+      setTimeout(() => tone(540, 1.5, 'sine', 0.19, 58), 250);        // core spinning down
+      setTimeout(() => tone(300, 1.2, 'triangle', 0.13, 44), 430);
+      setTimeout(() => noise(0.55, 0.20, 420, 0.8, 'lowpass'), 720);  // debris
+      setTimeout(() => tone(130, 0.9, 'sine', 0.11, 48), 1150);
+    },
     chat(){ tone(1000, 0.05, 'sine', 0.08); },
     join(){ tone(500, 0.10, 'sine', 0.10, 800); },
     win(){ [660,880,1100,1320].forEach((f,i)=>setTimeout(()=>tone(f,0.30,'triangle',0.16), i*130)); },
@@ -759,8 +767,10 @@ const music = {
   el:null, on:true, level:0.6, ready:false, missing:false, started:false,
   menuGain:0.75, gameGain:0.22,
   // boss track
-  boss:null, bossMissing:false, bossPlaying:false, bossWanted:false, bossGain:0.34
+  boss:null, bossMissing:false, bossPlaying:false, bossGain:0.34,
+  phase:'main', quietUntil:0
 };
+const MUSIC_QUIET_MS = 6000;   // defeat sting, then a breather, before the theme returns
 
 function initMusic(){
   const el = new Audio();
@@ -816,46 +826,83 @@ function bossMusicWanted(){
 }
 function musicTarget(){
   if (!music.on || music.missing) return 0;
-  if (music.bossWanted) return 0;                 // step aside for the boss track
   return (mode === 'menu' ? music.menuGain : music.gameGain) * music.level;
 }
 // one fader, used for both tracks
-function fadeTo(el, want, dt){
+function fadeTo(el, want, dt, rate){
   const now = el.volume;
-  const next = clamp(now + (want - now) * clamp(dt * 1.8, 0, 1), 0, 1);
-  // writing this property every frame is a real cost in some browsers, and pointless
-  // once the fade has settled
-  if (Math.abs(next - now) > 0.002) el.volume = next;
+  let next = now + (want - now) * clamp(dt * (rate || 1.8), 0, 1);
+  /*
+    Snap once we are nearly there. An exponential approach shrinks its own step, and
+    the old version skipped any write smaller than 0.002 -- so a fade-out stalled
+    around 0.04 and never actually reached zero. That left the previous track quietly
+    playing underneath, and meant a track waiting for silence waited forever.
+  */
+  if (Math.abs(next - want) < 0.006) next = want;
+  next = clamp(next, 0, 1);
+  if (next !== now) el.volume = next;        // only write when it genuinely changed
   return next;
 }
+/*
+  Fade a track out and then actually pause it. Leaving it playing at zero is what let
+  two songs run at once: inaudible is not the same as stopped, and the moment the other
+  track's fade crossed over you could hear both.
+*/
+function silenceTrack(el, dt, onStopped, rate){
+  if (!el || el.paused) return true;
+  const v = fadeTo(el, 0, dt, rate || 3.2);
+  if (v < 0.012){ el.volume = 0; el.pause(); if (onStopped) onStopped(); return true; }
+  return false;
+}
+
+/*
+  Music runs as three phases, and only one source is ever allowed to be audible:
+
+    main   the normal theme
+    boss   the Warden theme, from its opening
+    quiet  a held silence after a Warden dies, over the defeat sting
+
+  The winner is not permitted to start until the loser has faded out AND paused, so
+  the two tracks can never overlap.
+*/
 function stepMusic(dt){
   if (!music.el) return;
+  const now = performance.now();
 
-  const wantBoss = bossMusicWanted();
-  if (wantBoss !== music.bossWanted){
-    music.bossWanted = wantBoss;
-    if (wantBoss && music.boss){
-      // start the boss theme from its opening, not wherever it was left
-      try { music.boss.currentTime = 0; } catch(e){}
-      const p = music.boss.play();
-      if (p && p.catch) p.catch(() => {});
-      music.bossPlaying = true;
-    }
+  if (mode === 'menu'){
+    music.phase = 'main';                       // leaving a match is not a boss kill
+  } else if (bossMusicWanted()){
+    music.phase = 'boss';
+  } else if (music.phase === 'boss'){
+    music.phase = 'quiet';
+    music.quietUntil = now + MUSIC_QUIET_MS;
+    Audio2.play('bossDown');
+  } else if (music.phase === 'quiet' && now >= music.quietUntil){
+    music.phase = 'main';
   }
 
-  const want = musicTarget();
-  fadeTo(music.el, want, dt);
-
-  if (music.boss && music.bossPlaying){
-    const bWant = (music.bossWanted && music.on) ? music.bossGain * music.level : 0;
-    const v = fadeTo(music.boss, bWant, dt);
-    if (!music.bossWanted && v < 0.004){        // faded out: stop decoding it
-      music.boss.pause();
-      music.bossPlaying = false;
+  const bossOk = music.on && !music.bossMissing && !!music.boss;
+  if (music.phase === 'boss' && bossOk){
+    if (silenceTrack(music.el, dt, () => { music.started = false; })){
+      if (!music.bossPlaying){
+        try { music.boss.currentTime = 0; } catch(e){}   // from the top, every time
+        const p = music.boss.play();
+        if (p && p.catch) p.catch(() => {});
+        music.bossPlaying = true;
+      }
+      fadeTo(music.boss, music.bossGain * music.level, dt);
     }
+  } else if (music.phase === 'main' && music.on && !music.missing){
+    if (silenceTrack(music.boss, dt, () => { music.bossPlaying = false; })){
+      startMusic();
+      fadeTo(music.el, musicTarget(), dt);
+    }
+  } else {
+    // Quiet phase, or music switched off. Drop out briskly so the defeat sting is
+    // heard over silence rather than over a long tail of the boss theme.
+    silenceTrack(music.el, dt, () => { music.started = false; }, 6);
+    silenceTrack(music.boss, dt, () => { music.bossPlaying = false; }, 6);
   }
-
-  if (music.on && !music.started && (want > 0 || music.bossWanted)) startMusic();
 }
 
 /* ===================== RENDERER / SCENE ===================== */
@@ -3815,14 +3862,28 @@ function teamTotals(){
 */
 function isBossWave(n){ return n > 0 && n % CFG.bossEvery === 0; }
 /*
-  On a boss wave the escort is thinned out: the boss itself soaks most of the
-  difficulty, and a full wave alongside it is just unfair rather than hard.
+  How many Wardens. One from wave 5, two from wave 10, three from wave 20 -- because by
+  then a single boss with more health is just a longer version of the same fight,
+  whereas two of them have to be split up or kited apart.
+*/
+function bossCount(n){ return isBossWave(n) ? Math.min(3, 1 + Math.floor(n / 10)) : 0; }
+/*
+  On a boss wave the escort is thinned out: the bosses soak most of the difficulty, and
+  a full wave alongside them is just unfair rather than hard.
 */
 function waveCount(n){
   const base = Math.min(CFG.waveMaxDrones, 2 + Math.ceil(n * 0.8));
-  return isBossWave(n) ? Math.max(2, Math.round(base * 0.45)) + 1 : base;
+  const bc = bossCount(n);
+  return bc ? Math.max(2, Math.round(base * 0.45)) + bc : base;
 }
-function bossHp(n){ return Math.round(CFG.maxHp * waveHpMul(n) * CFG.bossHpMul); }
+/*
+  Several Wardens share a health budget rather than each carrying a full one, so two
+  of them is a harder fight than one -- not double the bullet sponge.
+*/
+function bossHp(n, count){
+  const share = 1 + 0.45 * (Math.max(1, count || 1) - 1);
+  return Math.round(CFG.maxHp * waveHpMul(n) * CFG.bossHpMul / share);
+}
 function waveHpMul(n){ return Math.min(2.5, 1 + 0.15 * (n - 1)); }
 function waveDmgMul(n){ return 1 + 0.05 * (n - 1); }
 function waveTier(n){ return clamp(diffIdx + Math.floor((n - 1) / 4), 0, DIFF.length - 1); }
@@ -3849,8 +3910,9 @@ function publishWave(){
 }
 
 function announceWave(n){
-  if (!isBossWave(n)) return;
-  addFeed('WARDEN INBOUND — wave ' + n, false, '#E09BFF');
+  const bc = bossCount(n);
+  if (!bc) return;
+  addFeed((bc > 1 ? bc + ' WARDENS INBOUND' : 'WARDEN INBOUND') + ' — wave ' + n, false, '#E09BFF');
   Audio2.play('boom');
 }
 
@@ -3863,8 +3925,8 @@ function startWave(n){
   // clear anything left over, then field the new wave
   Array.from(net.botAI.keys()).forEach(id => despawnBot(id));
   clearLifeDrop();                 // anything uncollected does not carry into a new wave
-  const boss = isBossWave(n);
-  for (let i = 1; i <= net.wave.left; i++) spawnBot(i, boss && i === 1);
+  const bc = bossCount(n);
+  for (let i = 1; i <= net.wave.left; i++) spawnBot(i, i <= bc);
   publishWave();
 }
 
@@ -4250,11 +4312,13 @@ function spawnBot(i, isBoss){
   const team = isTeam() ? botTeam() : 0;
   const sp = isWaves() ? farSpawn() : pickSpawnPoint(team, false);
   const wn = net.wave.n || 1;
-  const hpMax = isBoss ? bossHp(wn)
+  const bc = bossCount(wn);
+  const hpMax = isBoss ? bossHp(wn, bc)
               : (isWaves() ? Math.round(CFG.maxHp * waveHpMul(wn)) : CFG.maxHp);
   const ai = {
     id, team, boss: !!isBoss,
-    name: isBoss ? 'WARDEN' : (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
+    name: isBoss ? (bc > 1 ? 'WARDEN-' + i : 'WARDEN')
+                 : (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
     color: isBoss ? 0xC23BFF : (isWaves() ? 0xFF5470 : (isTeam() ? CFG.teamColors[team] : 0x8892A6)),
     // The boss is tall, so it only routes where it fits -- see NAV.nodeClear.
     navClear: isBoss ? CFG.bossClear : 0,
@@ -5238,12 +5302,16 @@ function updateHud(){
   entity, so look in both places rather than assuming either.
 */
 function findBoss(){
-  let b = null;
-  net.botAI.forEach(ai => { if (ai.boss && ai.alive) b = { hp: ai.hp, hpMax: ai.hpMax, name: ai.name }; });
-  if (!b) remotes.forEach(r => {
-    if (r.boss && r.alive && !r.stale) b = { hp: r.hp, hpMax: r.hpMax || 1, name: r.name };
+  // Aggregate, so two Wardens read as one bar that only empties when both are down.
+  let hp = 0, hpMax = 0, count = 0;
+  net.botAI.forEach(ai => {
+    if (ai.boss && ai.alive){ hp += ai.hp; hpMax += ai.hpMax || 1; count++; }
   });
-  return b;
+  if (!count) remotes.forEach(r => {
+    if (r.boss && r.alive && !r.stale){ hp += r.hp; hpMax += r.hpMax || 1; count++; }
+  });
+  if (!count) return null;
+  return { hp, hpMax, count, name: count > 1 ? 'WARDEN ×' + count : 'WARDEN' };
 }
 let bossBarOn = false;
 function updateBossBar(){
@@ -5252,7 +5320,9 @@ function updateBossBar(){
     if (bossBarOn){ $('bossBar').classList.remove('on'); bossBarOn = false; }
     return;
   }
-  if (!bossBarOn){ $('bossBar').classList.add('on'); bossBarOn = true; $('bossName').textContent = b.name; }
+  if (!bossBarOn){ $('bossBar').classList.add('on'); bossBarOn = true; }
+  // the label changes as they fall, so keep it in step rather than setting it once
+  if ($('bossName').textContent !== b.name) $('bossName').textContent = b.name;
   const frac = clamp(b.hp / (b.hpMax || 1), 0, 1);
   $('bossFill').style.transform = 'scaleX(' + frac.toFixed(3) + ')';
 }
@@ -6010,7 +6080,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r15-warden-theme · 2026-10-28 20:48 UTC';
+const BUILD = 'r16-two-wardens · 2026-10-28 21:19 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
