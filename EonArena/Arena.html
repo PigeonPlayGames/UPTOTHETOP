@@ -304,6 +304,25 @@
   body.touch #arms{bottom:calc(206px + env(safe-area-inset-bottom)); right:calc(22px + env(safe-area-inset-right))}
   body.touch #wlist{display:none}
   body.touch #vitals{left:calc(20px + env(safe-area-inset-left)); bottom:calc(20px + env(safe-area-inset-bottom))}
+  #bossBar{
+    position:absolute; left:50%; top:18px; transform:translateX(-50%);
+    width:min(520px, 62vw); display:none; text-align:center; pointer-events:none;
+  }
+  #bossBar.on{display:block}
+  #bossName{
+    font-size:12px; letter-spacing:.34em; color:#E09BFF; margin-bottom:5px;
+    text-shadow:0 0 12px rgba(194,59,255,.55);
+  }
+  #bossTrack{
+    height:9px; background:rgba(10,14,23,.72); border:1px solid rgba(194,59,255,.45);
+    overflow:hidden;
+  }
+  #bossFill{
+    display:block; height:100%; width:100%; transform-origin:left center;
+    background:linear-gradient(90deg,#8A2BE2,#FF4FD0);
+    transition:transform .16s linear;
+  }
+  body.touch #bossBar{top:calc(12px + env(safe-area-inset-top)); width:70vw}
   body.touch #feed{top:64px; max-width:40vw}
   body.touch #mini{width:112px; height:112px; left:calc(16px + env(safe-area-inset-left)); top:calc(14px + env(safe-area-inset-top))}
   body.touch #modeTag{left:calc(16px + env(safe-area-inset-left)); top:calc(134px + env(safe-area-inset-top))}
@@ -330,6 +349,10 @@
   <div id="mini"><canvas id="miniC" width="300" height="300" style="width:100%;height:100%"></canvas></div>
   <div id="modeTag">—</div>
   <div id="score">Frags <b id="scoreMe">0</b> &nbsp;/&nbsp; Target <b id="scoreTarget">25</b></div>
+  <div id="bossBar">
+    <div id="bossName">WARDEN</div>
+    <div id="bossTrack"><i id="bossFill"></i></div>
+  </div>
   <div id="feed"></div>
   <div id="cross"><i class="h1"></i><i class="h2"></i><i class="v1"></i><i class="v2"></i><i class="dot"></i></div>
   <div id="vitals">
@@ -572,6 +595,10 @@ const CFG = {
   waveBreak: 9,           // seconds of quiet between waves
   waveLives: 3,           // shared respawns for the squad
   waveMaxDrones: 8,
+  bossEvery: 5,           // a boss arrives on wave 5 and every 5th after
+  bossHpMul: 8,           // multiplies the wave's normal drone health
+  bossScale: 1.6,         // ~2.85m tall, so it still fits the 3.4m doorways
+  bossClear: 2.95,        // headroom it needs; the nav graph routes it accordingly
   teamNames: ['AMBER','TEAL'],
   teamColors: [0xE8B04B, 0x4FD6C8],
   maxHp: 100,
@@ -807,9 +834,11 @@ function initRender(){
   sun = new THREE.DirectionalLight(0xFFD49A, 1.55);
   sun.position.set(28, 42, 18);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(coarse ? 512 : 1024, coarse ? 512 : 1024);
+  sun.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
+  sun.shadow.bias = -0.0008;          // the relief maps make acne more visible
+  sun.shadow.normalBias = 0.02;
   const sc = sun.shadow.camera;
-  sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 130;
+  sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 160;
   scene.add(sun);
   const rim = new THREE.DirectionalLight(0x37E0CF, 0.55);
   rim.position.set(-20, 16, -26);
@@ -1013,6 +1042,70 @@ function hazardTexture(){
   }, 1);
 }
 
+/*
+  Normal maps, derived from the albedo canvases the textures are already drawn into.
+  Sobel on luminance gives a believable relief: seams, rivets and cracks catch the
+  light instead of being painted-on shading that stays flat as you move.
+
+  Capped at 256 because the maps tile anyway -- relief at the source 512 costs four
+  times as much to generate for detail nobody can see, and this runs at load on a
+  phone.
+*/
+function normalFrom(srcTex, strength){
+  const c = srcTex.image;
+  const sw = c.width, sh = c.height;
+  const n = Math.min(256, sw);
+  const step = sw / n;
+  const src = c.getContext('2d').getImageData(0, 0, sw, sh).data;
+
+  const lum = new Float32Array(n * n);
+  for (let y = 0; y < n; y++){
+    const sy = Math.min(sh - 1, (y * step) | 0);
+    for (let x = 0; x < n; x++){
+      const sx = Math.min(sw - 1, (x * step) | 0);
+      const i = (sy * sw + sx) * 4;
+      lum[y * n + x] = (src[i] * 0.299 + src[i+1] * 0.587 + src[i+2] * 0.114) / 255;
+    }
+  }
+
+  const out = document.createElement('canvas');
+  out.width = n; out.height = n;
+  const og = out.getContext('2d');
+  const img = og.createImageData(n, n);
+  const d = img.data;
+  // wrapped neighbour indices up front, so the inner loop is plain array reads
+  const xm = new Int32Array(n), xp = new Int32Array(n);
+  for (let x = 0; x < n; x++){ xm[x] = (x + n - 1) % n; xp[x] = (x + 1) % n; }
+  for (let y = 0; y < n; y++){
+    const r0 = ((y + n - 1) % n) * n, r1 = y * n, r2 = ((y + 1) % n) * n;
+    for (let x = 0; x < n; x++){
+      const a = xm[x], b = xp[x];
+      const gx = (lum[r0+b] + 2*lum[r1+b] + lum[r2+b]) - (lum[r0+a] + 2*lum[r1+a] + lum[r2+a]);
+      const gy = (lum[r2+a] + 2*lum[r2+x] + lum[r2+b]) - (lum[r0+a] + 2*lum[r0+x] + lum[r0+b]);
+      const nx = -gx * strength, ny = -gy * strength;
+      const inv = 1 / Math.sqrt(nx*nx + ny*ny + 1);
+      const o = (r1 + x) * 4;
+      d[o]   = (nx * inv * 0.5 + 0.5) * 255;
+      d[o+1] = (ny * inv * 0.5 + 0.5) * 255;
+      d[o+2] = (inv * 0.5 + 0.5) * 255;
+      d[o+3] = 255;
+    }
+  }
+  og.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(out);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = srcTex.anisotropy;
+  return t;
+}
+// Relief and albedo must tile identically or the lighting slides off the detail.
+function addRelief(mat, strength, scale){
+  if (!mat.map) return mat;
+  mat.normalMap = normalFrom(mat.map, strength);
+  mat.normalMap.repeat.copy(mat.map.repeat);
+  mat.normalScale = new THREE.Vector2(scale, scale);
+  return mat;
+}
+
 let SURF = null;
 function buildSurfaces(){
   if (SURF) return SURF;
@@ -1037,6 +1130,17 @@ function buildSurfaces(){
   SURF.wallB.map.repeat.set(4, 2);
   SURF.floor.map.repeat.set(9, 9);
   SURF.floor2.map.repeat.set(7, 7);
+
+  // relief last, so each normal map inherits the albedo's final repeat
+  addRelief(SURF.floor,  2.4, 0.85);
+  addRelief(SURF.floor2, 2.4, 0.85);
+  addRelief(SURF.wall,   3.0, 1.05);
+  addRelief(SURF.wallB,  3.0, 1.05);
+  addRelief(SURF.panel,  2.6, 0.9);
+  addRelief(SURF.crateA, 3.0, 1.0);
+  addRelief(SURF.crateB, 3.0, 1.0);
+  addRelief(SURF.rust,   2.2, 0.8);
+  addRelief(SURF.hazard, 1.8, 0.6);
   return SURF;
 }
 
@@ -1756,7 +1860,20 @@ function loadMap(id){
   if (perf && perf.bare) decoMeshes.forEach(d => { d.visible = false; });
   buildPickupMeshes();
   scene.fog = new THREE.Fog(0x16203C, m.fog[0], m.fog[1]);
-  if (sun) sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
+  if (sun){
+    sun.position.set(m.sun[0], m.sun[1], m.sun[2]);
+    /*
+      Fit the shadow camera to this map. It was fixed at +/-45 for every arena, so the
+      Stacks spent three quarters of its shadow map on empty space outside the walls --
+      the same texels cover a quarter of the area here, which is visibly sharper.
+    */
+    const r = m.half + 4;
+    const sc = sun.shadow.camera;
+    sc.left = -r; sc.right = r; sc.top = r; sc.bottom = -r;
+    sc.far = Math.max(120, r * 3.4);
+    sc.updateProjectionMatrix();
+    sun.shadow.needsUpdate = true;
+  }
 }
 
 /* ===================== AVATARS ===================== */
@@ -1827,7 +1944,7 @@ function part(geo, mat, x, y, z, parent, shadow){
   Drones get the same skeleton with a different head and shoulders, so friend and foe
   read apart instantly at a distance even before you see the colour.
 */
-function buildAvatar(colorHex, name, isDrone){
+function buildAvatar(colorHex, name, isDrone, isBoss){
   const g = new THREE.Group();
   // Standard, not Lambert: Lambert ignores scene.environment, so a player would read
   // as flat paint next to the reflective world surfaces.
@@ -1930,8 +2047,35 @@ function buildAvatar(colorHex, name, isDrone){
   tag.position.y = 2.25;
   g.add(tag);
 
+  /*
+    The boss reuses the drone rig rather than being a second model: scaled up, with
+    pauldrons, a chest plate and a crest so it reads as a different thing at a glance.
+    Hit boxes are children of the group, so they scale too and aiming needs no
+    special case.
+  */
+  if (isBoss){
+    g.scale.setScalar(CFG.bossScale);
+    const plate = new THREE.MeshStandardMaterial({ color: 0x2A1230, roughness: 0.42, metalness: 0.78 });
+    part(boxG(0.92, 0.34, 0.52), plate, 0, 1.33, 0.04, g);          // chest plate
+    [-1, 1].forEach(sx => {
+      part(boxG(0.30, 0.26, 0.46), plate, sx * 0.44, 1.46, 0, g);   // pauldrons
+      const spike = new THREE.Mesh(cylG(0.015, 0.11, 0.42, 6), plate);
+      spike.position.set(sx * 0.44, 1.76, 0);
+      spike.castShadow = true;
+      g.add(spike);
+    });
+    part(boxG(0.26, 0.10, 0.26), plate, 0, 1.92, 0, g);             // crest
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color: 0xFF4FD0, transparent: true, opacity: 0.8,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    halo.position.set(0, 1.62, 0.22);
+    halo.scale.setScalar(1.6);
+    g.add(halo);
+  }
+
   return {
-    group:g, tag, bodyHit, headHit, head, visor, eye, gun, flash, upper,
+    group:g, tag, bodyHit, headHit, head, visor, eye, gun, flash, upper, boss: !!isBoss,
     legL:L.hip, legR:R.hip, kneeL:L.knee, kneeR:R.knee
   };
 }
@@ -1969,6 +2113,22 @@ function spawnProjectile(origin, dir, weapon, owned){
     w: weapon,
     mine: !!owned            // only our own shots deal damage
   });
+}
+
+// The slam's visual only -- damage is already dealt through hooks.shoot.
+function bossSlamFx(pos){
+  const m = new THREE.Mesh(blastGeo, new THREE.MeshBasicMaterial({
+    color: 0xC23BFF, transparent: true, opacity: 0.6, depthWrite: false
+  }));
+  m.position.set(pos.x, pos.y + 0.4, pos.z);
+  m.scale.setScalar(0.4);
+  scene.add(m);
+  const fl = new THREE.PointLight(0xC23BFF, 4, 18);
+  fl.position.copy(m.position);
+  scene.add(fl);
+  fx.blasts.push({ mesh: m, t: 0, r: 6.5, light: fl });
+  const a = audioBearing(pos);
+  Audio2.playAt('boom', Math.max(a.gain, 0.3), a.pan);
 }
 
 function explode(point, w, mine, directId){
@@ -3369,6 +3529,7 @@ async function joinOnline(room, wantMode, wantDiff, wantMap){
     const wasState = net.wave.state;
     net.wave.n = v.n || 0;
     net.wave.state = v.state || 'idle';
+    if (wasState !== 'active' && net.wave.state === 'active') announceWave(net.wave.n);
     if (wasState !== 'active' && net.wave.state === 'active' && !me.alive){
       me.hadLife = true;                        // a new wave brings everyone back up
       me.respawnAt = performance.now();
@@ -3483,7 +3644,16 @@ function teamTotals(){
   cleared, breathe, spawn a harder one — and publishes it on config/wave, which is
   already writable so this needs no new database rule. Everyone else just renders it.
 */
-function waveCount(n){ return Math.min(CFG.waveMaxDrones, 2 + Math.ceil(n * 0.8)); }
+function isBossWave(n){ return n > 0 && n % CFG.bossEvery === 0; }
+/*
+  On a boss wave the escort is thinned out: the boss itself soaks most of the
+  difficulty, and a full wave alongside it is just unfair rather than hard.
+*/
+function waveCount(n){
+  const base = Math.min(CFG.waveMaxDrones, 2 + Math.ceil(n * 0.8));
+  return isBossWave(n) ? Math.max(2, Math.round(base * 0.45)) + 1 : base;
+}
+function bossHp(n){ return Math.round(CFG.maxHp * waveHpMul(n) * CFG.bossHpMul); }
 function waveHpMul(n){ return Math.min(2.5, 1 + 0.15 * (n - 1)); }
 function waveDmgMul(n){ return 1 + 0.05 * (n - 1); }
 function waveTier(n){ return clamp(diffIdx + Math.floor((n - 1) / 4), 0, DIFF.length - 1); }
@@ -3509,14 +3679,22 @@ function publishWave(){
   });
 }
 
+function announceWave(n){
+  if (!isBossWave(n)) return;
+  addFeed('WARDEN INBOUND — wave ' + n, false, '#E09BFF');
+  Audio2.play('boom');
+}
+
 function startWave(n){
   net.wave.n = n;
   net.wave.state = 'active';
+  announceWave(n);
   if (net.wave.lives < 1) net.wave.lives = 1;   // always one shot at the new wave
   net.wave.left = waveCount(n);
   // clear anything left over, then field the new wave
   Array.from(net.botAI.keys()).forEach(id => despawnBot(id));
-  for (let i = 1; i <= net.wave.left; i++) spawnBot(i);
+  const boss = isBossWave(n);
+  for (let i = 1; i <= net.wave.left; i++) spawnBot(i, boss && i === 1);
   publishWave();
 }
 
@@ -3702,10 +3880,10 @@ function writeState(dt){
 /* ===================== REMOTE ENTITIES (players + networked drones) ===================== */
 function addEntity(id, v, isBot){
   if (!v || remotes.has(id)) return;
-  const av = buildAvatar(v.color || 0x4FA8FF, v.name || 'Operator', !!isBot);
+  const av = buildAvatar(v.color || 0x4FA8FF, v.name || 'Operator', !!isBot, !!v.boss);
   scene.add(av.group);
   remotes.set(id, {
-    uid:id, isBot: !!isBot,
+    uid:id, isBot: !!isBot, boss: !!v.boss,
     name: v.name || 'Operator', color: v.color || 0x4FA8FF, team: v.team || 0, hpMax: v.hpMax || CFG.maxHp,
     avatar: av, alive: v.alive !== false, hp: v.hp == null ? 100 : v.hp,
     kills: v.kills || 0, deaths: v.deaths || 0,
@@ -3887,21 +4065,27 @@ function botTeam(){
   net.botAI.forEach(b => n[b.team || 0]++);
   return n[0] <= n[1] ? 0 : 1;
 }
-function spawnBot(i){
+function spawnBot(i, isBoss){
   const id = 'd' + i;
   const team = isTeam() ? botTeam() : 0;
   const sp = isWaves() ? farSpawn() : pickSpawnPoint(team, false);
-  const hpMax = isWaves() ? Math.round(CFG.maxHp * waveHpMul(net.wave.n || 1)) : CFG.maxHp;
+  const wn = net.wave.n || 1;
+  const hpMax = isBoss ? bossHp(wn)
+              : (isWaves() ? Math.round(CFG.maxHp * waveHpMul(wn)) : CFG.maxHp);
   const ai = {
-    id, team, name: (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
-    color: isWaves() ? 0xFF5470 : (isTeam() ? CFG.teamColors[team] : 0x8892A6),
+    id, team, boss: !!isBoss,
+    name: isBoss ? 'WARDEN' : (isWaves() ? 'DRONE ' + i : (BOT_NAMES[i-1] || ('DRONE-' + i))),
+    color: isBoss ? 0xC23BFF : (isWaves() ? 0xFF5470 : (isTeam() ? CFG.teamColors[team] : 0x8892A6)),
+    // The boss is tall, so it only routes where it fits -- see NAV.nodeClear.
+    navClear: isBoss ? CFG.bossClear : 0,
     hpMax, mv: 0, moveDir: 0,
     pos: new THREE.Vector3(sp.x, 0, sp.z), goal: null,   // first think picks a patrol point
-    ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0
+    ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, cool: rand(0.8,2.2), respawnAt: 0, mv: 0,
+    slamAt: 0
   };
   net.botAI.set(id, ai);
   net.ref.child('bots/' + id).set({
-    name: ai.name, color: ai.color, team: ai.team, bot: true, hpMax,
+    name: ai.name, color: ai.color, team: ai.team, bot: true, boss: !!isBoss, hpMax,
     x: sp.x, y: 0, z: sp.z, ry: 0, hp: hpMax, alive: true, kills: 0, deaths: 0, mv: 0,
     ts: firebase.database.ServerValue.TIMESTAMP
   });
@@ -3960,14 +4144,14 @@ function applyBotHit(v){
     net.ref.child('bots/' + ai.id).update({ hp:0, alive:false, deaths:ai.deaths });
     const shooter = v.by === me.uid ? { team: me.team } : remotes.get(v.by);
     pushEvent({ type:'kill', killer: v.byName || 'someone', victim: ai.name, head: !!v.head,
-                ku: v.by || null, vu: ai.id,
+                ku: v.by || null, vu: ai.id, boss: !!ai.boss,
                 kt: shooter ? (shooter.team || 0) : null });
     if (v.by === me.uid){
       // credit ourselves straight away so the sound and the counter land with the kill,
       // not a round trip later; the echo will match and pass silently
       me.kills++;
       me.localKillAt = performance.now();
-      awardCredits(12 + (v.head ? 6 : 0));
+      awardCredits(ai.boss ? 160 + 25 * (net.wave.n || 1) : 12 + (v.head ? 6 : 0));
       Audio2.play('frag');
       updateHud();
     }
@@ -4134,13 +4318,13 @@ function blockedAt(x, z, feetY){
 */
 const NAV = {
   cell: 1.4, cols: 0, minX: 0, minZ: 0,
-  cellNodes: [], nodeY: [], nodeCell: [], edges: [],
+  cellNodes: [], nodeY: [], nodeCell: [], nodeClear: [], edges: [],
   fields: new Map()
 };
 const NAV_CLEAR = 1.8;        // headroom a drone needs to stand somewhere
 
 function buildNav(){
-  NAV.cellNodes = []; NAV.nodeY = []; NAV.nodeCell = []; NAV.edges = [];
+  NAV.cellNodes = []; NAV.nodeY = []; NAV.nodeCell = []; NAV.nodeClear = []; NAV.edges = [];
   NAV.fields.clear();
   const map = currentMap();
   if (!map) return;
@@ -4191,22 +4375,29 @@ function buildNav(){
       for (let i = 0; i < hit.length; i++) tops.push(hit[i].max.y);
       tops.sort((p, q) => p - q);
 
-      const list = [];
+      /*
+        Keep the actual headroom, not a boolean. A normal drone needs NAV_CLEAR; the
+        wave boss is far taller, and routing it through a doorway it cannot fit under
+        would leave it grinding against a lintel.
+      */
+      const list = [], clears = [];
       for (let i = 0; i < tops.length; i++){
         const h = tops[i];
         if (list.length && h - list[list.length - 1] < 0.45) continue;
-        let clear = true;
+        let ceil = 99;
         for (let k = 0; k < hit.length; k++){
           const b = hit[k];
-          if (b.max.y > h + 0.12 && b.min.y < h + NAV_CLEAR){ clear = false; break; }
+          if (b.max.y > h + 0.12 && b.min.y < ceil) ceil = Math.max(h, b.min.y);
         }
-        if (clear) list.push(h);
+        const room = ceil - h;
+        if (room >= NAV_CLEAR){ list.push(h); clears.push(room); }
       }
 
       const ids = [];
       for (let i = 0; i < list.length; i++){
         ids.push(NAV.nodeY.length);
         NAV.nodeY.push(list[i]);
+        NAV.nodeClear.push(clears[i]);
         NAV.nodeCell.push(idx);
       }
       NAV.cellNodes.push(ids);
@@ -4268,8 +4459,9 @@ function navNodePos(id, out){
   return out;
 }
 // Distances to one goal across the whole graph. Static graph, so cache and keep.
-function navField(goal){
-  let f = NAV.fields.get(goal);
+function navField(goal, minClear){
+  const key = minClear ? goal + ':' + minClear : goal;
+  let f = NAV.fields.get(key);
   if (f) return f;
   const n = NAV.nodeY.length;
   f = new Int32Array(n).fill(-1);
@@ -4279,11 +4471,13 @@ function navField(goal){
   while (head < tail){
     const cur = q[head++], d = f[cur] + 1, e = NAV.edges[cur];
     for (let i = 0; i < e.length; i++){
-      if (f[e[i]] < 0){ f[e[i]] = d; q[tail++] = e[i]; }
+      if (f[e[i]] >= 0) continue;
+      if (minClear && NAV.nodeClear[e[i]] < minClear) continue;   // it would not fit
+      f[e[i]] = d; q[tail++] = e[i];
     }
   }
   if (NAV.fields.size > 64) NAV.fields.clear();   // ~1MB on the big map, then recycle
-  NAV.fields.set(goal, f);
+  NAV.fields.set(key, f);
   return f;
 }
 
@@ -4291,14 +4485,44 @@ function navField(goal){
   Next step toward (tx,tz,ty). Returns .ok false when the drone or the goal is off
   the graph, so the caller can fall back to heading straight there.
 */
-const navPt = { x:0, z:0, ok:false };
+/*
+  A big unit may be chasing someone into a space it cannot fit. Rather than letting
+  the field fail and the unit grind against a doorway, walk out from the goal to the
+  nearest node that does fit and head there -- it waits outside instead.
+*/
+function nearestFitting(goal, minClear){
+  if (NAV.nodeClear[goal] >= minClear) return goal;
+  const seen = new Set([goal]);
+  let frontier = [goal];
+  for (let step = 0; step < 6 && frontier.length; step++){
+    const next = [];
+    for (let i = 0; i < frontier.length; i++){
+      const e = NAV.edges[frontier[i]];
+      for (let k = 0; k < e.length; k++){
+        const id = e[k];
+        if (seen.has(id)) continue;
+        if (NAV.nodeClear[id] >= minClear) return id;
+        seen.add(id); next.push(id);
+      }
+    }
+    frontier = next;
+  }
+  return -1;
+}
+
+const navPt = { x:0, z:0, y:0, ok:false };
 function navTo(ai, tx, tz, ty){
   navPt.ok = false;
+  const minClear = ai.navClear || 0;               // a boss needs more room than a drone
   const from = navNodeAt(ai.pos.x, ai.pos.z, ai.pos.y);
-  const goal = navNodeAt(tx, tz, ty);
+  let goal = navNodeAt(tx, tz, ty);
   if (from < 0 || goal < 0) return navPt;
-  if (from === goal){ navPt.x = tx; navPt.z = tz; navPt.ok = true; return navPt; }
-  const f = navField(goal);
+  if (minClear){
+    goal = nearestFitting(goal, minClear);
+    if (goal < 0) return navPt;
+  }
+  if (from === goal){ navPt.x = tx; navPt.z = tz; navPt.y = NAV.nodeY[goal]; navPt.ok = true; return navPt; }
+  const f = navField(goal, minClear);
   const d0 = f[from];
   if (d0 < 0) return navPt;                        // nothing connects the two
   let best = -1, bd = d0;
@@ -4477,8 +4701,30 @@ function patrolPoint(ai){
   hooks.shoot / hooks.heal so practice and online can present the result differently.
   targets: [{ id, pos, team, moving }]
 */
+/*
+  The boss is not just a drone with more health: it is slower and clumsier but hits
+  far harder, sees further, never retreats, and wants to be close -- so the counter is
+  movement and range, not out-trading it.
+*/
+function bossStats(base){
+  return {
+    id: base.id, name: base.name,
+    sight: base.sight * 1.35,
+    react: base.react * 0.8,
+    aim: Math.min(0.9, base.aim + 0.18),
+    rate: [base.rate[0] * 1.9, base.rate[1] * 2.1],
+    dmg:  [base.dmg[0] * 2.3, base.dmg[1] * 2.6],
+    head: 0,                       // no headshots; it is punishing enough already
+    flee: 0,                       // never breaks off to heal
+    speed: base.speed * 0.72,
+    strafe: base.strafe * 0.4,
+    track: base.track * 0.75,
+    hold: [3, 9]
+  };
+}
+
 function droneThink(ai, dt, targets, hooks){
-  const D = diff();
+  const D = ai.boss ? bossStats(diff()) : diff();
   const now = performance.now();
 
   if (ai.strafeT == null){ ai.strafeT = 0; ai.strafeDir = 1; ai.perceptT = 0; ai.seenAt = -1e9; ai.threatAt = -1e9; ai.lastSeen = new THREE.Vector3(); ai.acquired = 0; ai.hold = rand(D.hold[0], D.hold[1]); }
@@ -4551,6 +4797,28 @@ function droneThink(ai, dt, targets, hooks){
       steerMove(ai, mx, mz, D.speed, dt);
     }
     ai.ry = angLerp(ai.ry, Math.atan2(-to.x, -to.z), clamp(dt * D.track, 0, 1));
+
+    /*
+      Ground slam. The boss is slow, so without this the answer is simply to stand
+      behind it. Delivered through hooks.shoot so damage routing, audio and the
+      victim-authoritative path all stay exactly as they are for a normal shot.
+    */
+    if (ai.boss && now > (ai.slamAt || 0) && !net.matchOver){
+      let anyone = false;
+      for (let i = 0; i < targets.length; i++){
+        const t = targets[i];
+        if (t.team === ai.team) continue;
+        const sd = ai.pos.distanceTo(t.pos);
+        if (sd > 6.5) continue;
+        anyone = true;
+        const falloff = 1 - clamp(sd / 6.5, 0, 1) * 0.55;
+        hooks.shoot(ai, t, Math.round(rand(26, 34) * falloff * waveDmgMul(net.wave.n || 1)), false);
+      }
+      if (anyone){
+        ai.slamAt = now + 4200;
+        bossSlamFx(ai.pos);
+      }
+    }
 
     if (now > ai.acquired && ai.cool <= 0 && !net.matchOver){
       ai.cool = rand(D.rate[0], D.rate[1]);
@@ -4763,7 +5031,9 @@ function updateHud(){
     const w = net.wave;
     const lives = '<span style="color:' + (w.lives > 1 ? 'var(--teal)' : 'var(--hostile)') + '">' + Math.max(0, w.lives) + '</span>';
     $('score').innerHTML =
-      '<span style="color:var(--amber);font-size:13px;letter-spacing:.24em">WAVE ' + Math.max(1, w.n) + '</span>' +
+      '<span style="color:' + (isBossWave(w.n) ? '#E09BFF' : 'var(--amber)') +
+        ';font-size:13px;letter-spacing:.24em">WAVE ' + Math.max(1, w.n) +
+        (isBossWave(w.n) ? ' · BOSS' : '') + '</span>' +
       '<div style="margin-top:5px">Drones left <b>' + w.left + '</b></div>' +
       '<div style="margin-top:3px">Squad lives ' + lives + '</div>' +
       '<div style="margin-top:3px">Credits <b>' + me.credits + '</b></div>';
@@ -4777,6 +5047,30 @@ function updateHud(){
       (mode === 'online' ? '<span style="color:var(--dim)">' + modeLabel().toUpperCase() + '</span><br>' : '') +
       'Frags <b id="scoreMe">' + me.kills + '</b> &nbsp;/&nbsp; Target <b id="scoreTarget">' + CFG.killTarget + '</b>';
   }
+}
+
+/*
+  The boss may be driven by this client (if we are the keeper) or arrive as a remote
+  entity, so look in both places rather than assuming either.
+*/
+function findBoss(){
+  let b = null;
+  net.botAI.forEach(ai => { if (ai.boss && ai.alive) b = { hp: ai.hp, hpMax: ai.hpMax, name: ai.name }; });
+  if (!b) remotes.forEach(r => {
+    if (r.boss && r.alive && !r.stale) b = { hp: r.hp, hpMax: r.hpMax || 1, name: r.name };
+  });
+  return b;
+}
+let bossBarOn = false;
+function updateBossBar(){
+  const b = isWaves() ? findBoss() : null;
+  if (!b){
+    if (bossBarOn){ $('bossBar').classList.remove('on'); bossBarOn = false; }
+    return;
+  }
+  if (!bossBarOn){ $('bossBar').classList.add('on'); bossBarOn = true; $('bossName').textContent = b.name; }
+  const frac = clamp(b.hp / (b.hpMax || 1), 0, 1);
+  $('bossFill').style.transform = 'scaleX(' + frac.toFixed(3) + ')';
 }
 
 const feedItems = [];
@@ -5513,7 +5807,7 @@ function frame(){
   stepFx(dt);
 
   miniAcc += dt;
-  if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); updateTagVisibility(); }
+  if (miniAcc > 0.08 && mode !== 'menu'){ miniAcc = 0; drawMini(); updateTagVisibility(); updateBossBar(); }
   if (mode !== 'menu'){ updateAimAssist(dt); watchWaveChanges(); updateObjective(); }
   boardAcc += dt;
   if (boardAcc > 1.5){ boardAcc = 0; if ($('board').classList.contains('on')) updateBoard(); }
@@ -5531,7 +5825,7 @@ function frame(){
 }
 
 /* ===================== BOOT ===================== */
-const BUILD = 'r13-navmesh · 2026-10-25 18:37 UTC';
+const BUILD = 'r14-warden · 2026-10-28 20:16 UTC';
 /*
   Printed first thing at boot, and shown on the menu. If this string is missing or
   older than expected, the browser or CDN is serving a cached copy and no code
