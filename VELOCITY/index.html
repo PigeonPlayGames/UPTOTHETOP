@@ -272,6 +272,7 @@
         <button class="chip" id="chipTilt">Tilt steering</button>
         <button class="chip" id="chipSound" aria-pressed="true">Sound</button>
         <button class="chip" id="chipQuality">Effects: high</button>
+        <button class="chip" id="chipBloom" aria-pressed="true">Glow</button>
       </div>
       <div class="settingrow">
         <button class="chip" id="chipMusic" aria-pressed="true">Music</button>
@@ -494,6 +495,28 @@ function plumeTex() {
   }
   var t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+// Soft border mask. Without it, distant boost pads mip down to a flat wash
+// and you see the rectangle they are painted on.
+function edgeMaskTexture() {
+  var N = 64, c = cnv(N, N), g = c.getContext("2d");
+  var img = g.createImageData(N, N), d = img.data;
+  for (var y = 0; y < N; y++) {
+    for (var x = 0; x < N; x++) {
+      var fx = Math.min(x, N - 1 - x) / (N * 0.26);
+      var fy = Math.min(y, N - 1 - y) / (N * 0.20);
+      var v = Math.max(0, Math.min(1, fx)) * Math.max(0, Math.min(1, fy));
+      v = v * v * (3 - 2 * v);
+      var o = (y * N + x) * 4;
+      d[o] = d[o + 1] = d[o + 2] = v * 255;
+      d[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
 }
 
@@ -1271,7 +1294,8 @@ function buildTrack(def) {
   var ptex = padTexture();
   ptex.repeat.set(1, 2);
   padMat = new THREE.MeshBasicMaterial({
-    map: ptex, color: 0xffc247, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending,
+    map: ptex, alphaMap: edgeMaskTexture(), color: 0xc8842e,
+    transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
     depthWrite: false, toneMapped: false
   });
   for (i = 0; i < padTotal; i++) {
@@ -1489,9 +1513,9 @@ var RIM_TEX = (function () {
   g.clearRect(0, 0, 128, 128);
   g.fillStyle = "#171d33";
   g.beginPath(); g.arc(64, 64, 62, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = "#39456e"; g.lineWidth = 5;
+  g.strokeStyle = "#232c4c"; g.lineWidth = 5;
   g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.stroke();
-  g.strokeStyle = "#5d6ca3"; g.lineWidth = 11; g.lineCap = "round";
+  g.strokeStyle = "#3b4675"; g.lineWidth = 11; g.lineCap = "round";
   for (i = 0; i < 5; i++) {
     var a = i / 5 * Math.PI * 2 + 0.3;
     g.beginPath();
@@ -1499,7 +1523,7 @@ var RIM_TEX = (function () {
     g.lineTo(64 + Math.cos(a) * 50, 64 + Math.sin(a) * 50);
     g.stroke();
   }
-  g.fillStyle = "#8fa0cc";
+  g.fillStyle = "#56628f";
   g.beginPath(); g.arc(64, 64, 15, 0, Math.PI * 2); g.fill();
   // brake disc glimpsed behind the spokes
   g.strokeStyle = "rgba(255,140,90,.5)"; g.lineWidth = 7;
@@ -1513,7 +1537,7 @@ NOZZLE_GEO.rotateX(Math.PI / 2);
 // and the car floats 0.7 above the road. Rolling by t sinks that corner by
 // 2.95*sin(t), so the limit below keeps roughly 5cm of clearance even with
 // the nose pitched down under braking.
-var ROLL_MAX = 0.185;
+var ROLL_MAX = 0.10;
 
 var PLUME_GEO = new THREE.ConeGeometry(0.5, 3.4, 14, 1, true);
 PLUME_GEO.rotateX(-Math.PI / 2);        // apex points +z, behind the car
@@ -1653,7 +1677,9 @@ function buildCar(colour, accent, detail, num) {
   var simple = detail === 0;
   var hero = detail === 2;
   var root = new THREE.Group();
-  var tilt = new THREE.Group(); root.add(tilt);
+  var tilt = new THREE.Group();
+  tilt.position.y = -0.26;        // drop the body onto the wheels
+  root.add(tilt);
 
   var paint = new THREE.MeshStandardMaterial({
     map: liveryTexture(colour, accent, num || 1),
@@ -1663,18 +1689,23 @@ function buildCar(colour, accent, detail, num) {
   });
   paint.normalScale.set(0.55, 0.55);
   var trim = new THREE.MeshStandardMaterial({
-    color: 0x151a33, metalness: 0.85, roughness: 0.35, envMap: envMapTex, envMapIntensity: 0.9
+    color: 0x141834, metalness: 0.6, roughness: 0.55, envMap: envMapTex, envMapIntensity: 0.4
   });
   var glass = new THREE.MeshStandardMaterial({
     color: 0x0a1026, metalness: 1.0, roughness: 0.08, envMap: envMapTex, envMapIntensity: 2.0,
     transparent: true, opacity: 0.86
   });
-  var rubber = new THREE.MeshStandardMaterial({ color: 0x0c0e1a, metalness: 0.05, roughness: 0.92 });
+  var rubber = new THREE.MeshStandardMaterial({
+    color: 0x090b14, metalness: 0.0, roughness: 0.97,
+    envMap: envMapTex, envMapIntensity: 0.06
+  });
   var rimMat = new THREE.MeshStandardMaterial({
-    map: RIM_TEX, metalness: 0.85, roughness: 0.3, envMap: envMapTex, envMapIntensity: 1.1,
+    map: RIM_TEX, metalness: 0.7, roughness: 0.5, envMap: envMapTex, envMapIntensity: 0.4,
     transparent: true, side: THREE.DoubleSide
   });
-  var neon = new THREE.MeshBasicMaterial({ color: accent, toneMapped: false });
+  // the accent is white on some cars, which blooms into a solid slab — the
+  // car's own colour keeps the light strips readable
+  var neon = new THREE.MeshBasicMaterial({ color: colour, toneMapped: false });
 
   var hull = new THREE.Mesh(CAR_HULL, paint); tilt.add(hull);
   var spinners = [], steerHubs = [], plumes = [], cores = [];
@@ -1736,7 +1767,7 @@ function buildCar(colour, accent, detail, num) {
   wing.position.set(0, 2.08, 4.1);
   wing.rotation.x = -0.14;
   tilt.add(wing);
-  var wingLip = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.1, 0.16), neon);
+  var wingLip = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.08, 0.13), neon);
   wingLip.position.set(0, 2.14, 4.62); tilt.add(wingLip);
   if (hero) {
     for (var ep = -1; ep <= 1; ep += 2) {
@@ -1766,7 +1797,7 @@ function buildCar(colour, accent, detail, num) {
     // wheels: wide slicks on a steering hub up front
     for (var f = -1; f <= 1; f += 2) {
       var hub = new THREE.Group();
-      hub.position.set(s * 2.32, 0.28, f * 3.05);   // radius 0.95 - 0.67 => tyre meets the tarmac
+      hub.position.set(s * 2.32, -0.06, f * 3.05);  // radius 0.62 - 0.66 => tyre meets the tarmac
       root.add(hub);            // unsprung: the body leans, the tyres stay planted
 
       var spinner = new THREE.Group();
@@ -1775,19 +1806,19 @@ function buildCar(colour, accent, detail, num) {
       if (f < 0) steerHubs.push(hub);
 
       var wheel = new THREE.Mesh(WHEEL_GEO, rubber);
-      wheel.scale.set(1.02, 0.95, 0.95);            // noticeably wider than before
+      wheel.scale.set(0.84, 0.62, 0.62);            // wide slick, sensibly sized
       spinner.add(wheel);
 
       if (!simple) {
         var face = new THREE.Mesh(HUB_GEO, rimMat);
-        face.position.x = s * 0.53;
-        face.scale.setScalar(1.02);
+        face.position.x = s * 0.44;
+        face.scale.setScalar(0.66);
         spinner.add(face);
       }
       if (hero) {
         // brake caliper rides on the upright, so it doesn't spin with the wheel
-        var caliper = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.62, 0.3), trim);
-        caliper.position.set(s * 0.3, 0.46, -0.1);
+        var caliper = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.4, 0.22), trim);
+        caliper.position.set(s * 0.26, 0.3, -0.08);
         hub.add(caliper);
       }
     }
@@ -1834,21 +1865,23 @@ function buildCar(colour, accent, detail, num) {
     map: GLOW_TEX, color: colour, transparent: true, opacity: 0.5,
     blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
   }));
-  under.rotation.x = -Math.PI / 2; under.position.y = 0.1; root.add(under);
+  under.rotation.x = -Math.PI / 2; under.position.y = -0.64; root.add(under);
 
   var beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 26), new THREE.MeshBasicMaterial({
-    map: GLOW_TEX, color: 0xbcd6ff, transparent: true, opacity: 0.2,
+    map: GLOW_TEX, color: 0x8fb4e8, transparent: true, opacity: 0.11,
     blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
   }));
   beam.rotation.x = -Math.PI / 2;
-  beam.position.set(0, 0.12, -11);
-  root.add(beam);                         // flat on the road, ahead of the nose
+  // the car's origin floats 0.7 above the road, so anything meant to lie ON
+  // the road has to be pushed back down by that much
+  beam.position.set(0, -0.66, -11);
+  root.add(beam);
 
   var shadow = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 13), new THREE.MeshBasicMaterial({
     map: SHADOW_TEX, transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false
   }));
   shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = 0.05;
+  shadow.position.y = -0.68;
   shadow.renderOrder = 2;
   root.add(shadow);                       // outside tilt, so it stays flat on the road
 
@@ -3446,6 +3479,231 @@ function updateHud(dt) {
 }
 
 /* =====================================================================
+   POST-PROCESSING
+   The scene is drawn into a texture, the bright parts are extracted and
+   blurred at two scales, then everything is recombined. That bloom is
+   what turns the neon from bright paint into light that spills onto its
+   surroundings. The composite also handles vignette, edge colour
+   fringing, a radial smear under boost and a touch of grain.
+   If anything here fails to set up, the game falls back to drawing
+   straight to the screen exactly as before.
+   ===================================================================== */
+var postFX = { ok: false, enabled: true, strength: 0.42, speed: 0, boost: 0 };
+
+var QUAD_CAM = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+var QUAD_GEO = new THREE.PlaneGeometry(2, 2);
+var quadMesh = null, quadScene = null;
+
+var VERT = [
+  "varying vec2 vUv;",
+  "void main() {",
+  "  vUv = uv;",
+  "  gl_Position = vec4(position.xy, 0.0, 1.0);",
+  "}"
+].join("\n");
+
+var BRIGHT_FRAG = [
+  "uniform sampler2D tDiffuse;",
+  "uniform float threshold;",
+  "uniform float knee;",
+  "varying vec2 vUv;",
+  "void main() {",
+  "  vec3 c = texture2D(tDiffuse, vUv).rgb;",
+  "  float l = max(max(c.r, c.g), c.b);",
+  "  float w = smoothstep(threshold, threshold + knee, l);",
+  "  gl_FragColor = vec4(c * w, 1.0);",
+  "}"
+].join("\n");
+
+// 9-tap gaussian, run once horizontally and once vertically
+var BLUR_FRAG = [
+  "uniform sampler2D tDiffuse;",
+  "uniform vec2 dir;",
+  "varying vec2 vUv;",
+  "void main() {",
+  "  vec4 sum = texture2D(tDiffuse, vUv) * 0.227027;",
+  "  sum += (texture2D(tDiffuse, vUv + dir * 1.3846) + texture2D(tDiffuse, vUv - dir * 1.3846)) * 0.316216;",
+  "  sum += (texture2D(tDiffuse, vUv + dir * 3.2308) + texture2D(tDiffuse, vUv - dir * 3.2308)) * 0.070270;",
+  "  gl_FragColor = sum;",
+  "}"
+].join("\n");
+
+function compositeFrag(radial) {
+  var lines = [
+    "uniform sampler2D tDiffuse;",
+    "uniform sampler2D tBloomA;",
+    "uniform sampler2D tBloomB;",
+    "uniform float bloomStrength;",
+    "uniform float aberration;",
+    "uniform float vignette;",
+    "uniform float grain;",
+    "uniform float radialAmt;",
+    "uniform float time;",
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vec2 d = vUv - 0.5;",
+    "  float r2 = dot(d, d);",
+    // colour fringing grows toward the edges and with speed
+    "  vec2 off = d * r2 * aberration;",
+    "  vec3 scene;",
+    "  scene.r = texture2D(tDiffuse, vUv + off).r;",
+    "  scene.g = texture2D(tDiffuse, vUv).g;",
+    "  scene.b = texture2D(tDiffuse, vUv - off).b;"
+  ];
+  if (radial) {
+    lines.push(
+      // smear outward from the centre of the screen when the nitro is lit
+      "  if (radialAmt > 0.001) {",
+      "    vec3 acc = scene;",
+      "    for (int i = 1; i <= 4; i++) {",
+      "      float f = float(i) * 0.25 * radialAmt;",
+      "      acc += texture2D(tDiffuse, vUv - d * f).rgb;",
+      "    }",
+      "    scene = mix(scene, acc * 0.2, min(1.0, radialAmt * 7.0) * smoothstep(0.02, 0.2, r2));",
+      "  }"
+    );
+  }
+  lines.push(
+    "  vec3 bloom = texture2D(tBloomA, vUv).rgb * 0.6 + texture2D(tBloomB, vUv).rgb * 0.75;",
+    "  vec3 col = scene + bloom * bloomStrength;",
+    "  col *= 1.0 - vignette * r2 * 1.5;",
+    "  float n = fract(sin(dot(vUv * (1.0 + time), vec2(12.9898, 78.233))) * 43758.5453);",
+    "  col += (n - 0.5) * grain;",
+    "  gl_FragColor = vec4(col, 1.0);",
+    "}"
+  );
+  return lines.join("\n");
+}
+
+function makeRT(w, h) {
+  return new THREE.WebGLRenderTarget(Math.max(2, Math.floor(w)), Math.max(2, Math.floor(h)), {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    stencilBuffer: false,
+    depthBuffer: true
+  });
+}
+
+function initPostFX() {
+  try {
+    var size = new THREE.Vector2();
+    renderer.getDrawingBufferSize(size);
+    var w = size.x, h = size.y;
+    if (!w || !h) return;
+
+    var half = CFG.quality === "high" ? 2 : 3;      // cheaper blur chain on low
+    var quarter = half * 2;
+
+    postFX.rtScene = makeRT(w, h);
+    // three applies the renderer's output encoding only when drawing to the
+    // screen; for a render target it uses the texture's own encoding. Without
+    // this the scene lands in the texture as linear and the whole image dims.
+    postFX.rtScene.texture.encoding = THREE.sRGBEncoding;
+    postFX.rtA = makeRT(w / half, h / half);
+    postFX.rtB = makeRT(w / half, h / half);
+    postFX.rtC = makeRT(w / quarter, h / quarter);
+    postFX.rtD = makeRT(w / quarter, h / quarter);
+    postFX.half = half;
+    postFX.quarter = quarter;
+
+    postFX.bright = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, threshold: { value: 0.78 }, knee: { value: 0.22 } },
+      vertexShader: VERT, fragmentShader: BRIGHT_FRAG, depthTest: false, depthWrite: false, toneMapped: false
+    });
+    postFX.blur = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, dir: { value: new THREE.Vector2() } },
+      vertexShader: VERT, fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false, toneMapped: false
+    });
+    postFX.copy = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, threshold: { value: 0.0 }, knee: { value: 0.001 } },
+      vertexShader: VERT, fragmentShader: BRIGHT_FRAG, depthTest: false, depthWrite: false, toneMapped: false
+    });
+    postFX.composite = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null }, tBloomA: { value: null }, tBloomB: { value: null },
+        bloomStrength: { value: 0.42 }, aberration: { value: 0.0 },
+        vignette: { value: 0.34 }, grain: { value: 0.014 },
+        radialAmt: { value: 0.0 }, time: { value: 0.0 }
+      },
+      vertexShader: VERT, fragmentShader: compositeFrag(CFG.quality === "high"),
+      depthTest: false, depthWrite: false, toneMapped: false
+    });
+
+    quadScene = new THREE.Scene();
+    quadMesh = new THREE.Mesh(QUAD_GEO, postFX.copy);
+    quadMesh.frustumCulled = false;
+    quadScene.add(quadMesh);
+
+    postFX.ok = true;
+  } catch (e) {
+    postFX.ok = false;
+  }
+}
+
+function resizePostFX() {
+  if (!postFX.ok) return;
+  var size = new THREE.Vector2();
+  renderer.getDrawingBufferSize(size);
+  if (!size.x || !size.y) return;
+  postFX.rtScene.setSize(size.x, size.y);
+  postFX.rtA.setSize(size.x / postFX.half, size.y / postFX.half);
+  postFX.rtB.setSize(size.x / postFX.half, size.y / postFX.half);
+  postFX.rtC.setSize(size.x / postFX.quarter, size.y / postFX.quarter);
+  postFX.rtD.setSize(size.x / postFX.quarter, size.y / postFX.quarter);
+}
+
+function blit(material, target) {
+  quadMesh.material = material;
+  renderer.setRenderTarget(target || null);
+  renderer.render(quadScene, QUAD_CAM);
+}
+
+function blurInto(src, tmp, dst, w, h) {
+  postFX.blur.uniforms.tDiffuse.value = src.texture;
+  postFX.blur.uniforms.dir.value.set(1 / w, 0);
+  blit(postFX.blur, tmp);
+  postFX.blur.uniforms.tDiffuse.value = tmp.texture;
+  postFX.blur.uniforms.dir.value.set(0, 1 / h);
+  blit(postFX.blur, dst);
+}
+
+function renderFrame(now) {
+  if (!postFX.ok || !postFX.enabled) {
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // 1. the scene, into a texture
+  renderer.setRenderTarget(postFX.rtScene);
+  renderer.clear();
+  renderer.render(scene, camera);
+
+  // 2. pull out the bright parts at half resolution
+  postFX.bright.uniforms.tDiffuse.value = postFX.rtScene.texture;
+  blit(postFX.bright, postFX.rtA);
+
+  // 3. blur them, then again at quarter resolution for the wide halo
+  var hw = postFX.rtA.width, hh = postFX.rtA.height;
+  blurInto(postFX.rtA, postFX.rtB, postFX.rtA, hw, hh);
+  postFX.copy.uniforms.tDiffuse.value = postFX.rtA.texture;
+  blit(postFX.copy, postFX.rtC);
+  blurInto(postFX.rtC, postFX.rtD, postFX.rtC, postFX.rtC.width, postFX.rtC.height);
+
+  // 4. recombine
+  var u = postFX.composite.uniforms;
+  u.tDiffuse.value = postFX.rtScene.texture;
+  u.tBloomA.value = postFX.rtA.texture;
+  u.tBloomB.value = postFX.rtC.texture;
+  u.bloomStrength.value = postFX.strength;
+  u.aberration.value = 0.004 + postFX.speed * 0.006 + postFX.boost * 0.008;
+  u.radialAmt.value = postFX.boost * 0.09 + Math.max(0, postFX.speed - 0.72) * 0.06;
+  u.time.value = (now % 1000) * 0.001;
+  blit(postFX.composite, null);
+}
+
+/* =====================================================================
    LOOP
    ===================================================================== */
 var last = performance.now();
@@ -3520,6 +3778,8 @@ function loop(now) {
       ghostPlace(raceTime - player.lapStart);
 
       updateStreaks(dt, player.v / MAXV, player.boosting);
+      postFX.speed = player.v / MAXV;
+      postFX.boost = player.boosting;
 
       if (endTimer > 0) {
         endTimer -= dt;
@@ -3535,6 +3795,8 @@ function loop(now) {
       }
     }
   } else if (state === "menu") {
+    postFX.speed += (0 - postFX.speed) * Math.min(1, dt * 3);
+    postFX.boost += (0 - postFX.boost) * Math.min(1, dt * 3);
     var t = (now * 0.000035) % 1;
     var s = t * TRACK_LEN;
     var smp = sampleTrack(s, scratchA);
@@ -3551,14 +3813,14 @@ function loop(now) {
 
   if (beacons) beacons.material.color.setRGB(1, 0.18 + Math.abs(Math.sin(now * 0.0016)) * 0.22, 0.3);
   if (padMat) {
-    padMat.opacity = 0.72 + Math.sin(now * 0.005) * 0.22;
+    padMat.opacity = 0.46 + Math.sin(now * 0.005) * 0.13;
     if (padMat.map) padMat.map.offset.y = (now * 0.00055) % 1;   // chevrons flow forward
   }
   updateSparks(dt);
   updateSmoke(dt);
   musicUpdate(dt, state === "race" ? (paused ? 0.3 : 1) : (state === "menu" ? 0.85 : 0.7));
 
-  renderer.render(scene, camera);
+  renderFrame(now);
 }
 
 /* =====================================================================
@@ -3703,6 +3965,8 @@ tiltChip.addEventListener("click", function () {
   });
 });
 
+toggleChip("chipBloom", function () { return postFX.enabled; }, function (v) { postFX.enabled = v; });
+
 var qChip = document.getElementById("chipQuality");
 function paintQuality() {
   qChip.textContent = "Effects: " + CFG.quality;
@@ -3714,6 +3978,12 @@ qChip.addEventListener("click", function () {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CFG.quality === "high" ? 2 : 1.25));
   streaks.visible = CFG.quality === "high";
   scene.fog.density = CFG.quality === "high" ? 0.0019 : 0.0026;
+  if (postFX.ok) {
+    // blur-chain scale and the radial-smear branch both depend on quality
+    ["rtScene", "rtA", "rtB", "rtC", "rtD"].forEach(function (k) { postFX[k].dispose(); });
+    postFX.ok = false;
+    initPostFX();
+  }
   paintQuality();
 });
 
@@ -3738,6 +4008,7 @@ function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  resizePostFX();
 }
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", function () { setTimeout(resize, 250); });
@@ -3749,6 +4020,7 @@ window.addEventListener("orientationchange", function () { setTimeout(resize, 25
   });
 });
 
+initPostFX();
 buildTrack(trackDef());
 buildPickers();
 season = loadSeason();
