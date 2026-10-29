@@ -816,7 +816,7 @@ var TRACKS = [
 ];
 
 var CARS = [
-  { id: "axiom", name: "AXIOM", colour: 0x17e8ff, accent: 0xffffff,
+  { id: "axiom", num: 1, name: "AXIOM", colour: 0x17e8ff, accent: 0xffffff,
     top: 1.00, accel: 1.00, grip: 1.00, tank: 1.00,
     blurb: "Balanced all-rounder. Does nothing badly.",
     body: {
@@ -839,7 +839,7 @@ var CARS = [
       splitter: { w: 3.5, z: -4.5, y: 0.42 }, diffuser: 5
     } },
 
-  { id: "vayu", name: "VAYU", colour: 0xff2d95, accent: 0xffd6ec,
+  { id: "vayu", num: 7, name: "VAYU", colour: 0xff2d95, accent: 0xffd6ec,
     top: 1.08, accel: 0.90, grip: 0.86, tank: 0.95,
     blurb: "A dart. Highest top speed, sharpest tail. Rewards clean hands.",
     body: {
@@ -864,7 +864,7 @@ var CARS = [
       splitter: { w: 2.8, z: -5.3, y: 0.40 }, diffuser: 3
     } },
 
-  { id: "tanuki", name: "TANUKI", colour: 0x9dff3c, accent: 0xe9ffcf,
+  { id: "tanuki", num: 23, name: "TANUKI", colour: 0x9dff3c, accent: 0xe9ffcf,
     top: 0.94, accel: 1.14, grip: 1.20, tank: 1.00,
     blurb: "Short, wide and glued down. Quickest off the line and forgiving.",
     body: {
@@ -888,7 +888,7 @@ var CARS = [
       splitter: { w: 4.3, z: -3.9, y: 0.44 }, diffuser: 7
     } },
 
-  { id: "kaiju", name: "KAIJU", colour: 0xffb020, accent: 0xfff0cd,
+  { id: "kaiju", num: 44, name: "KAIJU", colour: 0xffb020, accent: 0xfff0cd,
     top: 0.97, accel: 0.96, grip: 1.02, tank: 1.55,
     blurb: "Heavy rear, huge boost tank that refills fast. Live on the nitro.",
     body: {
@@ -1580,7 +1580,7 @@ function loftHull(sections, radial) {
       var a0 = i * radial + j;
       var a1 = i * radial + (j + 1) % radial;
       var b0 = a0 + radial, b1 = a1 + radial;
-      idx.push(a0, b0, a1, a1, b0, b1);
+      idx.push(a0, a1, b0, a1, b1, b0);
     }
   }
   // flat caps at each end
@@ -1600,34 +1600,122 @@ function loftHull(sections, radial) {
   return g;
 }
 
-var WHEEL_GEO = new THREE.CylinderGeometry(1, 1, 1, 22);
-WHEEL_GEO.rotateZ(Math.PI / 2);                     // axle along x
-var HUB_GEO = new THREE.CircleGeometry(0.66, 18);
-HUB_GEO.rotateY(Math.PI / 2);
-
-// five-spoke rim face, drawn once and reused by every wheel
-var RIM_TEX = (function () {
-  var c = cnv(128, 128), g = c.getContext("2d"), i;
-  g.clearRect(0, 0, 128, 128);
-  g.fillStyle = "#171d33";
-  g.beginPath(); g.arc(64, 64, 62, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = "#232c4c"; g.lineWidth = 5;
-  g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.stroke();
-  g.strokeStyle = "#3b4675"; g.lineWidth = 11; g.lineCap = "round";
-  for (i = 0; i < 5; i++) {
-    var a = i / 5 * Math.PI * 2 + 0.3;
-    g.beginPath();
-    g.moveTo(64 + Math.cos(a) * 14, 64 + Math.sin(a) * 14);
-    g.lineTo(64 + Math.cos(a) * 50, 64 + Math.sin(a) * 50);
-    g.stroke();
+// turn a greyscale height field into a tangent-space normal map
+function heightToNormal(hc, strength) {
+  var N = hc.width;
+  var src = hc.getContext("2d").getImageData(0, 0, N, N).data;
+  var nc = cnv(N, N), ng = nc.getContext("2d");
+  var out = ng.createImageData(N, N);
+  function at(x, y) { return src[(((y + N) % N) * N + ((x + N) % N)) * 4] / 255; }
+  for (var j = 0; j < N; j++) {
+    for (var i = 0; i < N; i++) {
+      var dx = (at(i + 1, j) - at(i - 1, j)) * strength;
+      var dy = (at(i, j + 1) - at(i, j - 1)) * strength;
+      var len = Math.sqrt(dx * dx + dy * dy + 1);
+      var o = (j * N + i) * 4;
+      out.data[o] = ((-dx / len) * 0.5 + 0.5) * 255;
+      out.data[o + 1] = ((-dy / len) * 0.5 + 0.5) * 255;
+      out.data[o + 2] = (1 / len) * 255;
+      out.data[o + 3] = 255;
+    }
   }
-  g.fillStyle = "#56628f";
-  g.beginPath(); g.arc(64, 64, 15, 0, Math.PI * 2); g.fill();
-  // brake disc glimpsed behind the spokes
-  g.strokeStyle = "rgba(255,140,90,.5)"; g.lineWidth = 7;
-  g.beginPath(); g.arc(64, 64, 36, 0.6, 2.2); g.stroke();
-  return colourTex(c);
+  ng.putImageData(out, 0, 0);
+  var t = new THREE.CanvasTexture(nc);      // data map: no sRGB
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/* ---- tyre: a lathed cross-section, so it has real sidewall and shoulders ---- */
+var TYRE_PROFILE = [
+  [0.68, -0.50], [0.80, -0.48], [0.92, -0.42], [0.985, -0.32], [1.00, -0.20],
+  [1.00,  0.20], [0.985, 0.32], [0.92,  0.42], [0.80,  0.48], [0.68,  0.50]
+];
+var TYRE_GEO = new THREE.LatheGeometry(
+  TYRE_PROFILE.map(function (p) { return new THREE.Vector2(p[0], p[1]); }), 26);
+TYRE_GEO.rotateZ(-Math.PI / 2);             // revolve axis from +Y to +X
+
+// blocky tread across the crown, fine ribs up the sidewall
+var TREAD_NRM = (function () {
+  var N = 64, hc = cnv(N, N), g = hc.getContext("2d"), i;
+  g.fillStyle = "#808080"; g.fillRect(0, 0, N, N);
+  // canvas y is flipped against v: v=1 sits at y=0
+  var crownTop = Math.round((1 - 0.66) * N), crownBot = Math.round((1 - 0.34) * N);
+  // two lateral grooves per tile; the texture repeats around the circumference
+  g.fillStyle = "#1e1e1e";
+  g.fillRect(10, crownTop, 7, crownBot - crownTop);
+  g.fillRect(42, crownTop, 7, crownBot - crownTop);
+  // staggered inner blocks
+  g.fillRect(26, crownTop, 5, (crownBot - crownTop) * 0.45);
+  g.fillRect(58, crownTop + (crownBot - crownTop) * 0.55, 5, (crownBot - crownTop) * 0.45);
+  // circumferential channel
+  g.fillStyle = "#2a2a2a";
+  g.fillRect(0, Math.round((crownTop + crownBot) / 2) - 2, N, 4);
+  // sidewall ribs
+  g.fillStyle = "rgba(255,255,255,.35)";
+  for (i = 0; i < 4; i++) { g.fillRect(0, crownBot + 3 + i * 3, N, 1); g.fillRect(0, crownTop - 4 - i * 3, N, 1); }
+  var t = heightToNormal(hc, 2.6);
+  t.repeat.set(16, 1);
+  return t;
 })();
+
+/* ---- alloy: a dished lathe with a raised lip, five spokes in the maps ---- */
+var ALLOY_PROFILE = [
+  [0.02,  0.30], [0.14,  0.33], [0.22,  0.25], [0.36,  0.19], [0.56,  0.14],
+  [0.67,  0.22], [0.71,  0.30], [0.72,  0.10], [0.72, -0.44], [0.42, -0.47], [0.12, -0.45]
+];
+var ALLOY_GEO = new THREE.LatheGeometry(
+  ALLOY_PROFILE.map(function (p) { return new THREE.Vector2(p[0], p[1]); }), 30);
+ALLOY_GEO.rotateZ(-Math.PI / 2);
+
+// one spoke drawn per tile; the map repeats five times around the wheel
+function alloyPaint(height) {
+  var N = 64, c = cnv(N, N), g = c.getContext("2d"), i;
+  // v bands, remembering canvas y runs opposite to v
+  var yHub = (1 - 0.20) * N, ySpoke = (1 - 0.50) * N, yLip = (1 - 0.70) * N;
+  g.fillStyle = height ? "#6a6a6a" : "#10131f"; g.fillRect(0, 0, N, N);   // barrel
+  // rim lip
+  g.fillStyle = height ? "#d2d2d2" : "#9aa6c8"; g.fillRect(0, yLip, N, ySpoke - yLip);
+  // spoke face background: dark, so the gaps read as holes
+  g.fillStyle = height ? "#2e2e2e" : "#070910"; g.fillRect(0, ySpoke, N, yHub - ySpoke);
+  if (!height) {   // brake disc glimpsed through the gaps
+    g.fillStyle = "rgba(255,138,74,.35)";
+    g.fillRect(0, ySpoke + 3, N, (yHub - ySpoke) * 0.55);
+  }
+  // the spoke itself, tapering from hub to rim
+  g.fillStyle = height ? "#e8e8e8" : "#79859f";
+  g.beginPath();
+  g.moveTo(32 - 13, yHub); g.lineTo(32 + 13, yHub);
+  g.lineTo(32 + 7.5, ySpoke); g.lineTo(32 - 7.5, ySpoke);
+  g.closePath(); g.fill();
+  if (!height) {    // a highlight along one edge of each spoke
+    g.fillStyle = "rgba(205,218,255,.5)";
+    g.beginPath();
+    g.moveTo(32 - 13, yHub); g.lineTo(32 - 9, yHub);
+    g.lineTo(32 - 4.5, ySpoke); g.lineTo(32 - 7.5, ySpoke);
+    g.closePath(); g.fill();
+  }
+  // hub cap and bolts
+  g.fillStyle = height ? "#f2f2f2" : "#aab6d8"; g.fillRect(0, yHub, N, N - yHub);
+  g.fillStyle = height ? "#3a3a3a" : "#2b3147";
+  for (i = 0; i < 2; i++) { g.beginPath(); g.arc(20 + i * 24, yHub + 5, 2.2, 0, Math.PI * 2); g.fill(); }
+  return c;
+}
+var ALLOY_TEX = (function () {
+  var t = colourTex(alloyPaint(false));
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(5, 1);
+  return t;
+})();
+var ALLOY_NRM = (function () {
+  var t = heightToNormal(alloyPaint(true), 2.2);
+  t.repeat.set(5, 1);
+  return t;
+})();
+
+// cheap capped cylinder for distant AI cars on low effects
+var WHEEL_GEO = new THREE.CylinderGeometry(1, 1, 1, 16);
+WHEEL_GEO.rotateZ(Math.PI / 2);
+
 var CANOPY_GEO = new THREE.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56);
 var NOZZLE_GEO = new THREE.CylinderGeometry(0.42, 0.52, 0.9, 14, 1, true);
 NOZZLE_GEO.rotateX(Math.PI / 2);
@@ -1755,14 +1843,25 @@ function liveryTexture(colour, accent, num) {
     g.beginPath(); g.moveTo(0, i * 48); g.lineTo(256, i * 48); g.stroke();
   }
 
-  // racing number on both flanks (u ~ 0 and u ~ 0.5)
-  [0, 128, 256].forEach(function (x) {
+  // Racing numbers. u runs around the hull and v along it, so canvas "up"
+  // points down the length of the car — the digits have to be turned a
+  // quarter turn to stand upright, and the two flanks turn opposite ways.
+  var label = String(num);
+  var fs = label.length > 1 ? 30 : 36;
+  [[0, 1], [128, -1], [256, 1]].forEach(function (side) {
+    g.save();
+    g.translate(side[0], 128);
+    g.rotate(side[1] * Math.PI / 2);
     g.fillStyle = "rgba(245,248,255,.93)";
-    g.beginPath(); g.ellipse(x, 128, 21, 27, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(0, 0, 30, 22, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "rgba(18,23,44,.25)";
+    g.lineWidth = 2; g.strokeStyle = "rgba(18,23,44,.35)";
+    g.beginPath(); g.ellipse(0, 0, 30, 22, 0, 0, Math.PI * 2); g.stroke();
     g.fillStyle = "#12172c";
-    g.font = "italic 700 34px 'Chakra Petch', sans-serif";
+    g.font = "italic 700 " + fs + "px 'Chakra Petch', sans-serif";
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillText(String(num), x, 130);
+    g.fillText(label, 0, 1);
+    g.restore();
   });
 
   var t = colourTex(c);
@@ -1799,10 +1898,15 @@ function buildCar(body, id, colour, accent, detail, num) {
   var rubber = new THREE.MeshStandardMaterial({
     color: 0x050609, metalness: 0.0, roughness: 0.97
   });
-  var rimMat = new THREE.MeshStandardMaterial({
-    map: RIM_TEX, metalness: 0.7, roughness: 0.5, envMap: envMapTex, envMapIntensity: 0.4,
-    transparent: true, side: THREE.DoubleSide
+  var rubberTread = new THREE.MeshStandardMaterial({
+    color: 0x050609, metalness: 0.0, roughness: 0.94, normalMap: TREAD_NRM
   });
+  rubberTread.normalScale.set(0.85, 0.85);
+  var alloyMat = new THREE.MeshStandardMaterial({
+    map: ALLOY_TEX, normalMap: ALLOY_NRM, metalness: 0.78, roughness: 0.34,
+    envMap: envMapTex, envMapIntensity: 0.35, side: THREE.DoubleSide
+  });
+  alloyMat.normalScale.set(1.1, 1.1);
   // the accent is white on some cars, which blooms into a solid slab — the
   // car's own colour keeps the light strips readable
   var neon = new THREE.MeshBasicMaterial({ color: colour, toneMapped: false });
@@ -1923,15 +2027,19 @@ function buildCar(body, id, colour, accent, detail, num) {
       spinners.push(spinner);
       if (f < 0) steerHubs.push(hub);
 
-      var wheel = new THREE.Mesh(WHEEL_GEO, rubber);
-      wheel.scale.set(body.wheelW, body.wheelR, body.wheelR);
-      spinner.add(wheel);
-
-      if (!simple) {
-        var face = new THREE.Mesh(HUB_GEO, rimMat);
-        face.position.x = s2 * (body.wheelW / 2 + 0.02);
-        face.scale.setScalar(body.wheelR * 1.065);
-        spinner.add(face);
+      if (simple) {
+        // distant AI on low effects: one capped cylinder, no alloy
+        var plain = new THREE.Mesh(WHEEL_GEO, rubber);
+        plain.scale.set(body.wheelW, body.wheelR, body.wheelR);
+        spinner.add(plain);
+      } else {
+        var tyre = new THREE.Mesh(TYRE_GEO, rubberTread);
+        tyre.scale.set(body.wheelW, body.wheelR, body.wheelR);
+        spinner.add(tyre);
+        // negative x scale on the near side turns the dish to face outward
+        var alloy = new THREE.Mesh(ALLOY_GEO, alloyMat);
+        alloy.scale.set(s2 * body.wheelW, body.wheelR, body.wheelR);
+        spinner.add(alloy);
       }
       if (hero) {
         var caliper = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.4, 0.22), trim);
@@ -2016,12 +2124,20 @@ function buildCar(body, id, colour, accent, detail, num) {
 var PALETTE = [[0x17e8ff, 0xffffff], [0xff2d95, 0xffd6ec], [0x9dff3c, 0xe9ffcf],
                [0xffb020, 0xfff0cd], [0x7b5cff, 0xd9d0ff], [0xff5a3c, 0xffd8cf], [0x2fe0a8, 0xd2fff2]];
 var NAMES = ["NOVA", "K-ZERO", "RAIJIN", "VOLT", "SABLE", "ORYX", "HEX"];
+var RIVAL_NUMBERS = [5, 11, 14, 19, 27, 33, 46, 55, 63, 77, 88, 99];
+function racerNumber(isPlayer, i) {
+  if (isPlayer) return carDef().num;
+  var mine = carDef().num;
+  var n = RIVAL_NUMBERS[(i - 1) % RIVAL_NUMBERS.length];
+  if (n === mine) n = RIVAL_NUMBERS[(i + 5) % RIVAL_NUMBERS.length];
+  return n;
+}
 
 function makeRacer(isPlayer, i) {
   var pal = isPlayer ? [carDef().colour, carDef().accent] : PALETTE[(i + 1) % PALETTE.length];
   var detail = isPlayer ? 2 : (CFG.quality === "low" ? 0 : 1);
   var chassis = isPlayer ? carDef() : CARS[(i + 1) % CARS.length];
-  var mesh = buildCar(chassis.body, chassis.id, pal[0], pal[1], detail, isPlayer ? 1 : (i + 1));
+  var mesh = buildCar(chassis.body, chassis.id, pal[0], pal[1], detail, racerNumber(isPlayer, i));
   scene.add(mesh);
   return {
     player: isPlayer,
@@ -3381,8 +3497,10 @@ function placeCar(r, dt) {
   }
 
   var ud = r.mesh.userData;
+  // forward travel is the car's -z, so the contact patch must sweep toward
+  // +z — that means winding rotation.x down, not up
   ud.spin = (ud.spin + r.v * dt * 0.95) % (Math.PI * 2);
-  for (var wi = 0; wi < ud.spinners.length; wi++) ud.spinners[wi].rotation.x = ud.spin;
+  for (var wi = 0; wi < ud.spinners.length; wi++) ud.spinners[wi].rotation.x = -ud.spin;
   for (var si = 0; si < ud.steerHubs.length; si++) {
     var want = -(r.steerIn || 0) * 0.42;
     ud.steerHubs[si].rotation.y += (want - ud.steerHubs[si].rotation.y) * Math.min(1, dt * 12);
@@ -4000,7 +4118,7 @@ function previewCar() {
     return;
   }
 
-  var car = buildCar(d.body, d.id, d.colour, d.accent, 2, 1);
+  var car = buildCar(d.body, d.id, d.colour, d.accent, 2, d.num);
   var u = car.userData;
   // road-only dressing has no place in a showroom
   u.beam.visible = false;
@@ -4073,7 +4191,7 @@ function renderPreview(dt) {
   if (preview.car) {
     var ud = preview.car.userData;
     ud.spin = (ud.spin + dt * 1.2) % (Math.PI * 2);
-    for (var i = 0; i < ud.spinners.length; i++) ud.spinners[i].rotation.x = ud.spin;
+    for (var i = 0; i < ud.spinners.length; i++) ud.spinners[i].rotation.x = -ud.spin;
   }
   preview.renderer.render(preview.scene, preview.camera);
 }
