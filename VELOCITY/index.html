@@ -181,7 +181,7 @@
     #speed{font-size:clamp(38px,9vw,56px);}
     /* names only — the gap column would run under the pause buttons */
     #standings b{min-width:0;} #standings s{display:none;}
-    #topbar{gap:6px;} #topbar button{font-size:11px;padding:6px 10px;letter-spacing:.14em;}
+    #topbar{gap:6px;} #topbar button{font-size:11px;padding:10px 12px;letter-spacing:.14em;}
   }
   #flash{position:absolute;left:50%;top:33%;transform:translate(-50%,-50%);text-align:center;
     font-size:clamp(32px,9vw,80px);font-weight:700;font-style:italic;opacity:0;
@@ -191,7 +191,7 @@
     18%{opacity:1;transform:translate(-50%,-50%) scale(1.04);}
     70%{opacity:1;}100%{opacity:0;transform:translate(-50%,-50%) scale(1.12);}}
   #topbar{position:absolute;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top));
-    display:flex;gap:8px;pointer-events:auto;}
+    display:flex;gap:8px;pointer-events:auto;z-index:31;}
   #topbar button{background:rgba(8,10,26,.55);border:1px solid rgba(23,232,255,.3);color:var(--ink);
     font:inherit;font-size:12px;letter-spacing:.2em;padding:7px 14px;cursor:pointer;}
   #topbar button:active{background:rgba(23,232,255,.2);}
@@ -214,7 +214,8 @@
   .slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--cyan);cursor:pointer;}
   .slider::-moz-range-thumb{width:14px;height:14px;background:var(--cyan);border:0;cursor:pointer;}
 
-  #touch{position:absolute;inset:0;z-index:30;display:none;}
+  /* the layer itself must not swallow taps meant for the HUD buttons above it */
+  #touch{position:absolute;inset:0;z-index:30;display:none;pointer-events:none;}
   #touch.on{display:block;}
   #stickzone{position:absolute;left:0;bottom:0;width:48%;height:52%;pointer-events:auto;}
   #stickbase,#stickknob{position:absolute;border-radius:50%;transform:translate(-50%,-50%);
@@ -1180,7 +1181,7 @@ function frameIndex(s) {
   return Math.floor(ss / SEG_LEN) % SEGS;
 }
 function newSample() {
-  return { pos: new THREE.Vector3(), tan: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), curv: 0, kUp: 0 };
+  return { pos: new THREE.Vector3(), tan: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), curv: 0, kUp: 0, loop: 0 };
 }
 function sampleTrack(s, out) {
   var ss = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
@@ -1192,6 +1193,7 @@ function sampleTrack(s, out) {
   out.up.copy(A.up).lerp(B.up, t).normalize();
   out.curv = A.curv + (B.curv - A.curv) * t;
   out.kUp = A.kUp + (B.kUp - A.kUp) * t;
+  out.loop = (A.loop || 0) + ((B.loop || 0) - (A.loop || 0)) * t;
   return out;
 }
 var scratchA = newSample(), scratchB = newSample(), scratchC = newSample(), scratchD = newSample(), scratchG = newSample();
@@ -1302,20 +1304,36 @@ function buildTrack(def) {
     i = runEnd;
   }
 
+  // How much of the loop each frame belongs to, feathered at both ends. The
+  // steering code uses it to stop a corkscrew reading as a corner.
+  var loopW = new Array(SEGS + 1);
+  for (i = 0; i <= SEGS; i++) loopW[i] = needsCarry[i] ? 1 : 0;
+  for (var lp = 0; lp < 6; lp++) {
+    var lw = new Array(SEGS + 1);
+    for (i = 0; i <= SEGS; i++) {
+      lw[i] = (loopW[(i - 1 + SEGS) % SEGS] + loopW[i] * 2 + loopW[(i + 1) % SEGS]) / 4;
+    }
+    loopW = lw;
+  }
+
   for (i = 0; i <= SEGS; i++) {
     if (!rights[i]) rights[i] = new THREE.Vector3().crossVectors(tangents[i], worldUp).normalize();
     var upv = new THREE.Vector3().crossVectors(rights[i], tangents[i]).normalize();
-    frames.push({ pos: positions[i], tan: tangents[i], right: rights[i], up: upv, curv: 0, kUp: 0 });
+    frames.push({ pos: positions[i], tan: tangents[i], right: rights[i], up: upv,
+                  curv: 0, kUp: 0, loop: loopW[i] });
   }
 
-  // horizontal curvature only — this drives steering, and a vertical loop
-  // should not read as a corner
+  // Curvature measured in the road's own plane: how far the tangent swings
+  // about the track's up axis. Taking it from the world-XZ projection instead
+  // made a loop read as a hairpin, because in plan view the car doubles back
+  // over the top — which is why the wheel used to fight you through the Helix.
+  var cv = new THREE.Vector3();
   for (i = 0; i <= SEGS; i++) {
     var A = frames[i].tan, B = frames[(i + 1) % SEGS].tan;
-    var cross = A.x * B.z - A.z * B.x;
-    var dot = Math.max(-1, Math.min(1, A.x * B.x + A.z * B.z));
-    var flat = Math.sqrt(A.x * A.x + A.z * A.z) * Math.sqrt(B.x * B.x + B.z * B.z);
-    frames[i].curv = flat < 0.05 ? 0 : -Math.atan2(cross, dot) / SEG_LEN;
+    cv.crossVectors(A, B);
+    var signed = cv.dot(frames[i].up);
+    var dot = Math.max(-1, Math.min(1, A.dot(B)));
+    frames[i].curv = Math.atan2(signed, dot) / SEG_LEN;
   }
   for (var pass = 0; pass < 3; pass++) {
     var tmp = new Array(SEGS + 1);
@@ -1644,16 +1662,11 @@ function buildTrack(def) {
   });
   // Standing rails either side. A deck painted on the road is almost edge-on
   // from the cockpit; these have height, so they are what you actually spot.
-  var railGeo = new THREE.PlaneGeometry(PAD_L, 1.5);
+  var railGeo = new THREE.PlaneGeometry(PAD_L, 0.7);
   padRailMat = new THREE.MeshBasicMaterial({
     color: 0xffd36a, transparent: true, opacity: 0.9, side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
   });
-  // A gate over the entry. The deck alone is near enough invisible from a
-  // hundred metres out, which is exactly where you need to see it to aim.
-  var postGeo = new THREE.BoxGeometry(0.75, 4.6, 0.75);
-  var beamGeo = new THREE.BoxGeometry(PAD_W + 2.6, 0.7, 0.6);
-  var gateMat = new THREE.MeshBasicMaterial({ color: 0xffa519, toneMapped: false });
   for (i = 0; i < padTotal; i++) {
     var seg = Math.floor(rnd() * SEGS);
     var pf = frames[seg];
@@ -1673,16 +1686,10 @@ function buildTrack(def) {
     for (var rs = -1; rs <= 1; rs += 2) {
       var rail = new THREE.Mesh(railGeo, padRailMat);
       rail.rotation.y = Math.PI / 2;            // face across the track
-      rail.position.set(rs * PAD_W * 0.5, 0.72, 0);
+      rail.position.set(rs * PAD_W * 0.5, 0.34, 0);
       rail.renderOrder = 4;
       pg.add(rail);
-      var post = new THREE.Mesh(postGeo, gateMat);
-      post.position.set(rs * (PAD_W * 0.5 + 0.9), 2.3, PAD_L * 0.5);
-      pg.add(post);
     }
-    var beam = new THREE.Mesh(beamGeo, gateMat);
-    beam.position.set(0, 4.3, PAD_L * 0.5);
-    pg.add(beam);
     pads.push({ seg: seg, n: pn, mesh: pg });
   }
 
@@ -3652,9 +3659,12 @@ function drive(r, dt, steer, gas, brake, wantBoost) {
   var grip = (brake > 0.4 ? 1.7 : 3.5) * car.grip;
   // a parked car turns its wheels, it doesn't rotate: no roll without roll
   var rolling = Math.min(1, r.v / 16);
+  // Through a loop the car should follow the track unless the player asks it
+  // not to: no wrestling the wheel just to stay in lane while upside down.
+  var onLoop = Math.max(0, Math.min(1, smp.loop || 0));
   r.yaw += steer * authority * rolling * dt;
-  r.yaw -= curv * r.v * Math.cos(r.yaw) * dt;   // the circuit turns beneath the car
-  r.yaw -= r.yaw * grip * dt;                    // tyres pull it straight again
+  r.yaw -= curv * r.v * Math.cos(r.yaw) * (1 - onLoop * 0.92) * dt;
+  r.yaw -= r.yaw * grip * (1 + onLoop * 1.6) * dt;   // tyres pull it straight again
   if (r.yaw > 0.95) r.yaw = 0.95;
   if (r.yaw < -0.95) r.yaw = -0.95;
 
