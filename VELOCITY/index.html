@@ -812,22 +812,35 @@ var TRACKS = [
     blurb: "A full vertical loop on the back straight. Stay on the power through it or you'll slide back down.",
     build: function () {
       var pts = [], i, th, psi;
-      var SX = 440, RR = 480, LR = 70, DRIFT = 150;
+      var SX = 440, RR = 480;
+      // A loop drawn in a single vertical plane passes straight through its
+      // own entry road. A real one is a shallow helix: it drifts sideways as
+      // it goes round so the descending half comes down beside the ascending
+      // half instead of through it. The (th - sin th) profile makes that
+      // drift start and finish with zero slope, so the loop still joins the
+      // straight dead in line.
+      var LR = 75, DRIFT = 160, LAT = 150;
       function V(x, y, z) { return new THREE.Vector3(x, y, z); }
+
       // front straight, running -x, with a crest in the middle
       pts.push(V(SX, 0, RR), V(140, 20, RR + 40), V(-150, 20, RR - 30), V(-SX, 0, RR));
       // left-hand 180
       for (i = 1; i < 9; i++) { psi = i / 9 * Math.PI; pts.push(V(-SX - RR * Math.sin(psi), 0, RR * Math.cos(psi))); }
       // back straight, running +x — the loop lives here
-      pts.push(V(-SX, 0, -RR), V(-SX + 120, 0, -RR), V(-SX + 230, 0, -RR));
-      var base = -SX + 300;
-      for (i = 0; i <= 18; i++) {
-        th = i / 18 * Math.PI * 2;
-        pts.push(V(base + LR * Math.sin(th) + DRIFT * th / (Math.PI * 2), LR * (1 - Math.cos(th)), -RR));
+      pts.push(V(-SX, 0, -RR), V(-SX + 160, 0, -RR), V(-SX + 340, 0, -RR));
+      var base = -SX + 520;
+      for (i = 0; i <= 22; i++) {
+        th = i / 22 * Math.PI * 2;
+        pts.push(V(base + LR * Math.sin(th) + DRIFT * th / (Math.PI * 2),
+                   LR * (1 - Math.cos(th)),
+                   -RR + LAT * (th - Math.sin(th)) / (Math.PI * 2)));
       }
-      pts.push(V(base + DRIFT + 120, 0, -RR), V(SX - 120, 0, -RR), V(SX, 0, -RR));
-      // right-hand 180 back to the start
-      for (i = 1; i < 9; i++) { psi = i / 9 * Math.PI; pts.push(V(SX + RR * Math.sin(psi), 0, -RR * Math.cos(psi))); }
+      // the loop has shifted the road sideways, so the rest of the lap follows it
+      var zOut = -RR + LAT;
+      pts.push(V(base + DRIFT + 110, 0, zOut), V(SX, 0, zOut));
+      // right-hand 180, sized to absorb the offset and rejoin the front straight
+      var cz = (zOut + RR) / 2, rr2 = (RR - zOut) / 2;
+      for (i = 1; i < 9; i++) { psi = i / 9 * Math.PI; pts.push(V(SX + rr2 * Math.sin(psi), 0, cz - rr2 * Math.cos(psi))); }
       return pts;
     },
     theme: { fog: 0x1b0c22, dens: 0.0017, kerbL: 0x9dff3c, kerbR: 0xff2d95, tower: 0xc0a8ff, gantry: 0x9dff3c,
@@ -1123,53 +1136,89 @@ function buildTrack(def) {
   TRACK_LEN = curve.getLength();
   SEG_LEN = TRACK_LEN / SEGS;
 
-  /* --- frames by parallel transport ---
-     Building each frame as `tangent x worldUp` collapses the moment the road
-     points straight up, which is exactly what a vertical loop does. Instead
-     the frame is carried forward from the previous one by the smallest
-     rotation that lines up the tangents, so it stays well defined whatever
-     the road does — including upside down. */
+  /* --- frames ---
+     Building a frame as `tangent x worldUp` collapses where the road points
+     straight up, so a loop needs parallel transport. But transporting the
+     whole lap is wrong too: a helical loop carries real torsion, and spreading
+     that residual twist around the circuit slowly barrel-rolls every straight.
+     So: use the world-up frame wherever the road is not steep, and parallel
+     transport only across the steep spans, pinned to the level frame at each
+     end. Circuits with no steep sections come out exactly as before. */
   frames = [];
   var worldUp = new THREE.Vector3(0, 1, 0);
-  var positions = [], tangents = [];
+  var positions = [], tangents = [], horiz = [];
   for (i = 0; i <= SEGS; i++) {
     var u = (i / SEGS) % 1;
     positions.push(curve.getPointAt(u));
-    tangents.push(curve.getTangentAt(u).normalize());
+    var tn = curve.getTangentAt(u).normalize();
+    tangents.push(tn);
+    horiz.push(Math.sqrt(tn.x * tn.x + tn.z * tn.z));
   }
-
-  var rights = [];
-  var r0 = new THREE.Vector3().crossVectors(tangents[0], worldUp);
-  if (r0.lengthSq() < 1e-6) r0.set(1, 0, 0);     // start line is never vertical
-  r0.normalize();
-  rights.push(r0);
-  var axis = new THREE.Vector3(), q = new THREE.Quaternion();
-  for (i = 1; i <= SEGS; i++) {
-    axis.crossVectors(tangents[i - 1], tangents[i]);
-    var sin = axis.length();
-    var cos = Math.max(-1, Math.min(1, tangents[i - 1].dot(tangents[i])));
-    var nextR = rights[i - 1].clone();
-    if (sin > 1e-8) {
-      axis.divideScalar(sin);
-      q.setFromAxisAngle(axis, Math.atan2(sin, cos));
-      nextR.applyQuaternion(q);
-    }
-    // re-orthogonalise against drift
-    nextR.addScaledVector(tangents[i], -nextR.dot(tangents[i])).normalize();
-    rights.push(nextR);
-  }
-
-  // After a full circuit the transported frame rarely lines up with where it
-  // started; spread that residual twist evenly so there is no seam.
-  var endR = rights[SEGS], startR = rights[0], t0 = tangents[0];
-  var perp = new THREE.Vector3().crossVectors(t0, startR);
-  var twist = Math.atan2(endR.dot(perp), endR.dot(startR));
+  var FLATNESS = 0.45;                 // below this the world-up frame is unusable
+  var steepFlag = new Array(SEGS + 1), j, d;
+  for (i = 0; i <= SEGS; i++) steepFlag[i] = horiz[i] < FLATNESS;
+  // A loop is horizontal again at its top, so judging each frame on its own
+  // would level the frame upside-down-side-up halfway round. Spread the flag
+  // outward so the climb, the top and the descent are treated as one span.
+  var DILATE = 90;
+  var needsCarry = new Array(SEGS + 1);
   for (i = 0; i <= SEGS; i++) {
-    q.setFromAxisAngle(tangents[i], -twist * (i / SEGS));
-    rights[i].applyQuaternion(q).normalize();
-    var up = new THREE.Vector3().crossVectors(rights[i], tangents[i]).normalize();
-    frames.push({ pos: positions[i], tan: tangents[i], right: rights[i], up: up, curv: 0,
-                  pitch: Math.asin(Math.max(-1, Math.min(1, tangents[i].y))) });
+    needsCarry[i] = false;
+    for (d = -DILATE; d <= DILATE; d++) {
+      j = i + d;
+      if (j >= 0 && j <= SEGS && steepFlag[j]) { needsCarry[i] = true; break; }
+    }
+  }
+  var rights = new Array(SEGS + 1);
+  for (i = 0; i <= SEGS; i++) {
+    if (!needsCarry[i]) rights[i] = new THREE.Vector3().crossVectors(tangents[i], worldUp).normalize();
+  }
+
+  var qq = new THREE.Quaternion(), ax = new THREE.Vector3();
+  function carryFrame(from, to, startRight) {
+    var out = [startRight.clone()], cur = startRight.clone();
+    for (var k = from + 1; k <= to; k++) {
+      ax.crossVectors(tangents[k - 1], tangents[k]);
+      var sn = ax.length();
+      if (sn > 1e-8) {
+        ax.divideScalar(sn);
+        qq.setFromAxisAngle(ax, Math.atan2(sn, Math.max(-1, Math.min(1, tangents[k - 1].dot(tangents[k])))));
+        cur.applyQuaternion(qq);
+      }
+      cur.addScaledVector(tangents[k], -cur.dot(tangents[k])).normalize();
+      out.push(cur.clone());
+    }
+    return out;
+  }
+
+  i = 0;
+  while (i <= SEGS) {
+    if (rights[i]) { i++; continue; }
+    var runEnd = i;
+    while (runEnd <= SEGS && !rights[runEnd]) runEnd++;
+    var pre = Math.max(0, i - 1), post = Math.min(SEGS, runEnd);
+    var startR = rights[pre] ? rights[pre].clone()
+                             : new THREE.Vector3().crossVectors(tangents[pre], worldUp).normalize();
+    var span = carryFrame(pre, post, startR);
+    // close the gap against the level frame waiting at the far end
+    var corr = 0, want = rights[post];
+    if (want) {
+      var got = span[span.length - 1];
+      var perp = new THREE.Vector3().crossVectors(tangents[post], got);
+      corr = Math.atan2(want.dot(perp), want.dot(got));
+    }
+    for (var k2 = 1; k2 < span.length - 1; k2++) {
+      qq.setFromAxisAngle(tangents[pre + k2], corr * (k2 / (span.length - 1)));
+      span[k2].applyQuaternion(qq).normalize();
+      rights[pre + k2] = span[k2];
+    }
+    i = runEnd;
+  }
+
+  for (i = 0; i <= SEGS; i++) {
+    if (!rights[i]) rights[i] = new THREE.Vector3().crossVectors(tangents[i], worldUp).normalize();
+    var upv = new THREE.Vector3().crossVectors(rights[i], tangents[i]).normalize();
+    frames.push({ pos: positions[i], tan: tangents[i], right: rights[i], up: upv, curv: 0, kUp: 0 });
   }
 
   // horizontal curvature only — this drives steering, and a vertical loop
@@ -2238,7 +2287,7 @@ function makeRacer(isPlayer, i) {
     s: 0, n: 0, yaw: 0, v: 0,
     lap: 0, dist: 0, lapStart: 0, best: Infinity,
     finished: false, finishTime: 0,
-    boost: 0, boosting: 0, padTimer: 0, emit: 0, smoke: 0, tow: 0, loaded: 1, lapTimes: [],
+    boost: 0, boosting: 0, padTimer: 0, emit: 0, smoke: 0, tow: 0, loaded: 1, bail: 0, lapTimes: [],
     fwd: new THREE.Vector3(0, 0, -1),
     skill: DIFFICULTY[CFG.difficulty].skill + ((i * 7) % 5) * DIFFICULTY[CFG.difficulty].step,
     lineTarget: 0, lineTimer: 0,
@@ -3411,6 +3460,23 @@ function updateSlipstream() {
   }
 }
 
+// A car that loses grip partway up a loop has, in effect, come off. Rather
+// than leaving it glued to a vertical wall with no traction, put it back on
+// the last level stretch so it can take another run at it.
+function recoverToLevel(r) {
+  var idx = frameIndex(r.s);
+  for (var k = 0; k < SEGS; k++) {
+    var j = (idx - k + SEGS) % SEGS;
+    if (Math.abs(frames[j].tan.y) < 0.15) {
+      var back = (j - 55 + SEGS) % SEGS;
+      if (back <= j) r.s = back * SEG_LEN;      // don't reverse over the start line
+      break;
+    }
+  }
+  r.n = 0; r.yaw = 0; r.v = 62; r.bail = 0;
+  if (r.player) toast("Didn't make the loop — take another run at it");
+}
+
 function drive(r, dt, steer, gas, brake, wantBoost) {
   r.steerIn = steer; r.gasIn = gas; r.brakeIn = brake;
   var smp = sampleTrack(r.s, r.sample);
@@ -3451,6 +3517,14 @@ function drive(r, dt, steer, gas, brake, wantBoost) {
   var floor = steep > 0.35 ? -48 : 0;
   if (r.v < floor) r.v = floor;
   if (floor === 0 && r.v < 0) r.v = 0;
+
+  // stranded on the loop wall with no load and no momentum: reset shortly
+  if (steep > 0.4 && load < 0.35 && r.v < 30) {
+    r.bail = (r.bail || 0) + dt;
+    if (r.bail > 1.1) { recoverToLevel(r); return false; }
+  } else {
+    r.bail = 0;
+  }
 
   // heading, relative to the track direction
   var authority = 2.15 * (0.42 + 0.58 * Math.min(1, 120 / (r.v + 60)));
