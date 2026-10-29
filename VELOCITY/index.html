@@ -78,6 +78,67 @@
   #carStats i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--mag));
     transition:width .25s ease;}
   @media (max-height:620px){ #carStage{height:120px;} }
+  /* a phone has to show the whole card without a scroll marathon */
+  .btn.more{display:block;width:100%;margin-top:14px;text-align:center;
+    background:rgba(23,232,255,.06);border-color:rgba(23,232,255,.26);color:#a9b6d9;
+    font-size:13px;letter-spacing:.18em;padding:10px 14px;}
+  .btn.more:hover{background:rgba(23,232,255,.14);color:#fff;}
+  #moreBox[hidden]{display:none;}
+  #moreBox{margin-top:2px;}
+  @media (max-width:560px){
+    .overlay{padding:12px 10px calc(12px + env(safe-area-inset-bottom));align-items:flex-start;}
+    .card{padding:18px 16px 16px;}
+    h1{font-size:clamp(30px,10vw,44px);}
+    .lede{font-size:13px;margin:10px 0 14px;}
+    #carStage{height:132px;}
+    .settingrow{gap:6px;margin:10px 0 2px;}
+    .chip{padding:6px 10px;font-size:12px;}
+    .pickrow button{min-width:74px;padding:7px 7px;font-size:12px;}
+    .pickrow button small{font-size:10px;}
+    .pickdesc{font-size:12px;margin:6px 0 0;}
+    .keys{display:none;}                 /* keyboard hints are no use here */
+    .btn{padding:11px 16px;font-size:14px;}
+    #carStats{gap:6px;margin-top:8px;}
+    .lbbox{font-size:12px;}
+  }
+  @media (max-width:560px) and (max-height:760px){
+    #carStage{height:106px;}
+    .lede{display:none;}                 /* the circuit blurb already says it */
+  }
+  /* phone held sideways: a single column cannot fit, so split it in two */
+  @media (max-height:520px) and (min-width:620px){
+    .overlay{align-items:flex-start;padding:10px 12px;}
+    .card{padding:14px 16px 14px;}
+    #menu .card{width:min(880px,100%);
+      display:grid;grid-template-columns:1fr 1fr;column-gap:18px;align-content:start;}
+    #menu .card > *{grid-column:1;}
+    .kicker,.lede{display:none;}
+    h1{font-size:30px;margin-bottom:2px;}
+    #menu .card h1{grid-column:1/-1;}
+    #trackBlock{grid-column:1;grid-row:2;margin-top:8px;}
+    #carBlock{grid-column:2;grid-row:2/span 3;margin-top:8px;}
+    .rowbtns{grid-column:1;grid-row:3;margin-top:12px!important;}
+    #champNote{grid-column:1;grid-row:4;}
+    #moreBtn{grid-column:1/-1;grid-row:5;margin-top:10px;padding:8px 12px;}
+    #moreBox{grid-column:1/-1;grid-row:6;}
+    #carStage{height:90px;}
+    #carStats{margin-top:6px;}
+    .pickdesc{font-size:12px;line-height:1.4;margin-top:5px;min-height:0;}
+    .btn{padding:9px 14px;font-size:13px;}
+    .keys{display:none;}
+  }
+  @media (max-width:560px) and (max-height:700px){
+    .overlay{padding:8px 8px calc(8px + env(safe-area-inset-bottom));}
+    .kicker{display:none;}
+    h1{font-size:28px;}
+    .pickblock{margin-top:8px;}
+    #carStage{height:88px;}
+    #carStats{margin-top:6px;}
+    .pickdesc{font-size:11px;line-height:1.4;margin-top:4px;min-height:16px;}
+    .rowbtns{margin-top:12px!important;}
+    .btn{padding:9px 13px;font-size:13px;}
+    .btn.more{margin-top:10px;padding:8px 12px;}
+  }
   .chip{border:1px solid rgba(23,232,255,.32);padding:7px 12px;cursor:pointer;
     color:#a9b6d9;background:transparent;font:inherit;font-size:13px;}
   .chip[aria-pressed="true"]{background:rgba(23,232,255,.16);color:#fff;border-color:var(--cyan);}
@@ -109,6 +170,19 @@
   #best{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;}
   #minimap{position:absolute;right:calc(16px + env(safe-area-inset-right));
     bottom:calc(16px + env(safe-area-inset-bottom));width:112px;height:112px;opacity:.92;}
+  /* the GO pad lives in the bottom-right corner on touch, so the map moves
+     over to the left where there is room above the speed readout */
+  #hud.touch #minimap{right:auto;left:calc(14px + env(safe-area-inset-left));
+    bottom:calc(152px + env(safe-area-inset-bottom));width:92px;height:92px;}
+  #hud.touch #standings{font-size:11px;}
+  @media (max-width:430px){
+    #hud.touch #minimap{width:78px;height:78px;bottom:calc(146px + env(safe-area-inset-bottom));}
+    #racestats .big{font-size:24px;} #timer{font-size:17px;}
+    #speed{font-size:clamp(38px,9vw,56px);}
+    /* names only — the gap column would run under the pause buttons */
+    #standings b{min-width:0;} #standings s{display:none;}
+    #topbar{gap:6px;} #topbar button{font-size:11px;padding:6px 10px;letter-spacing:.14em;}
+  }
   #flash{position:absolute;left:50%;top:33%;transform:translate(-50%,-50%);text-align:center;
     font-size:clamp(32px,9vw,80px);font-weight:700;font-style:italic;opacity:0;
     text-shadow:0 0 30px rgba(255,45,149,.8);white-space:nowrap;}
@@ -253,47 +327,15 @@
       <p class="lede">Hover-class racing through the neon arcologies of Sector 9. Brake late, let the tail
         slide, and bank the drift charge — then dump the lot into the straights.</p>
 
-      <div class="pickblock">
+      <div class="pickblock" id="trackBlock">
         <div class="pickrow" id="trackPick"></div>
         <p class="pickdesc" id="trackDesc"></p>
       </div>
-      <div class="pickblock">
+      <div class="pickblock" id="carBlock">
         <div class="pickrow" id="carPick"></div>
         <div id="carStage"><canvas id="carView"></canvas><span id="carBadge"></span></div>
         <div id="carStats"></div>
         <p class="pickdesc" id="carDesc"></p>
-      </div>
-
-      <div class="settingrow">
-        <span>Class</span>
-        <button class="chip" data-diff="0">Rookie</button>
-        <button class="chip" data-diff="1" aria-pressed="true">Pro</button>
-        <button class="chip" data-diff="2">Legend</button>
-      </div>
-      <div class="settingrow">
-        <span>Laps</span>
-        <button class="chip" data-laps="0" aria-pressed="true">Auto</button>
-        <button class="chip" data-laps="2">2</button>
-        <button class="chip" data-laps="3">3</button>
-        <button class="chip" data-laps="5">5</button>
-        <span style="margin-left:8px">Rivals</span>
-        <button class="chip" data-ai="3">3</button>
-        <button class="chip" data-ai="5" aria-pressed="true">5</button>
-        <button class="chip" data-ai="7">7</button>
-      </div>
-      <div class="settingrow">
-        <button class="chip" id="chipAuto">Auto-accelerate</button>
-        <button class="chip" id="chipTilt">Tilt steering</button>
-        <button class="chip" id="chipSound" aria-pressed="true">Sound</button>
-        <button class="chip" id="chipQuality">Effects: high</button>
-        <button class="chip" id="chipBloom" aria-pressed="true">Glow</button>
-      </div>
-      <div class="settingrow">
-        <button class="chip" id="chipMusic" aria-pressed="true">Music</button>
-        <input id="musicVol" class="slider" type="range" min="0" max="100" value="55" aria-label="Music volume">
-        <span>SFX</span>
-        <input id="sfxVol" class="slider" type="range" min="0" max="100" value="90" aria-label="Effects volume">
-        <button class="chip" id="chipGhost" aria-pressed="true">Ghost lap</button>
       </div>
 
       <div class="rowbtns" style="margin-top:16px">
@@ -302,17 +344,53 @@
         <button class="btn" id="ttBtn">Time trial</button>
       </div>
       <p class="pickdesc" id="champNote"></p>
-      <div class="lbbox" id="lbBox"></div>
 
-      <div class="keys">
-        <div><b>Steer</b> A / D or ← →</div>
-        <div><b>Throttle</b> W or ↑</div>
-        <div><b>Brake &amp; drift</b> S, ↓ or Space</div>
-        <div><b>Boost</b> Shift</div>
-        <div><b>Pause</b> P or Esc</div>
-        <div><b>Camera</b> C</div>
-        <div><b>Restart</b> R</div>
-        <div><b>Controller</b> stick, RT, LT, A</div>
+      <button class="btn more" id="moreBtn" type="button" aria-expanded="true" aria-controls="moreBox">Race settings ▴</button>
+      <div id="moreBox">
+        <div class="settingrow">
+          <span>Class</span>
+          <button class="chip" data-diff="0">Rookie</button>
+          <button class="chip" data-diff="1" aria-pressed="true">Pro</button>
+          <button class="chip" data-diff="2">Legend</button>
+        </div>
+        <div class="settingrow">
+          <span>Laps</span>
+          <button class="chip" data-laps="0" aria-pressed="true">Auto</button>
+          <button class="chip" data-laps="2">2</button>
+          <button class="chip" data-laps="3">3</button>
+          <button class="chip" data-laps="5">5</button>
+          <span style="margin-left:8px">Rivals</span>
+          <button class="chip" data-ai="3">3</button>
+          <button class="chip" data-ai="5" aria-pressed="true">5</button>
+          <button class="chip" data-ai="7">7</button>
+        </div>
+        <div class="settingrow">
+          <button class="chip" id="chipAuto">Auto-accelerate</button>
+          <button class="chip" id="chipTilt">Tilt steering</button>
+          <button class="chip" id="chipSound" aria-pressed="true">Sound</button>
+          <button class="chip" id="chipQuality">Effects: high</button>
+          <button class="chip" id="chipBloom" aria-pressed="true">Glow</button>
+        </div>
+        <div class="settingrow">
+          <button class="chip" id="chipMusic" aria-pressed="true">Music</button>
+          <input id="musicVol" class="slider" type="range" min="0" max="100" value="55" aria-label="Music volume">
+          <span>SFX</span>
+          <input id="sfxVol" class="slider" type="range" min="0" max="100" value="90" aria-label="Effects volume">
+          <button class="chip" id="chipGhost" aria-pressed="true">Ghost lap</button>
+        </div>
+
+        <div class="lbbox" id="lbBox"></div>
+
+        <div class="keys">
+          <div><b>Steer</b> A / D or ← →</div>
+          <div><b>Throttle</b> W or ↑</div>
+          <div><b>Brake &amp; drift</b> S, ↓ or Space</div>
+          <div><b>Boost</b> Shift</div>
+          <div><b>Pause</b> P or Esc</div>
+          <div><b>Camera</b> C</div>
+          <div><b>Restart</b> R</div>
+          <div><b>Controller</b> stick, RT, LT, A</div>
+        </div>
       </div>
     </div>
   </div>
@@ -538,12 +616,20 @@ function edgeMaskTexture() {
 function padTexture() {
   var c = cnv(128, 256), g = c.getContext("2d"), i;
   g.clearRect(0, 0, 128, 256);
+  // A bed of light under the chevrons. Thin strokes on their own average away
+  // to nothing once the texture mips down, which is why a pad fifty metres
+  // ahead used to vanish into the tarmac.
+  var bed = g.createLinearGradient(0, 0, 128, 0);
+  bed.addColorStop(0.00, "rgba(255,255,255,.26)");
+  bed.addColorStop(0.50, "rgba(255,255,255,.48)");
+  bed.addColorStop(1.00, "rgba(255,255,255,.26)");
+  g.fillStyle = bed; g.fillRect(0, 0, 128, 256);
   g.lineCap = "round";
   for (i = 0; i < 4; i++) {
     var y = 34 + i * 64;
     for (var pass = 0; pass < 2; pass++) {
-      g.strokeStyle = pass ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.3)";
-      g.lineWidth = pass ? 9 : 22;
+      g.strokeStyle = pass ? "rgba(255,255,255,1)" : "rgba(255,255,255,.45)";
+      g.lineWidth = pass ? 11 : 26;
       g.beginPath();
       g.moveTo(16, y + 30); g.lineTo(64, y - 16); g.lineTo(112, y + 30);
       g.stroke();
@@ -1063,6 +1149,7 @@ function seeded(seed) { var s = seed; return function () { s = (s * 1664525 + 10
 
 var envMapTex = null;                 // sky reflection, rebuilt per circuit
 var padMat = null;                    // shared so all boost pads pulse as one draw state
+var padRailMat = null;                // the standing edge rails, pulsing with it
 var TRACK_W = 27, TRACK_LEN = 1, SEG_LEN = 1, EDGE = 24;
 var GRAV = 34;                       // tuned so a loop needs commitment, not luck
 var frames = [], pads = [], worldObjs = [], builtTrack = null;
@@ -1085,7 +1172,7 @@ function disposeWorld() {
       }
     });
   }
-  worldObjs = []; pads = []; padMat = null; beacons = null;
+  worldObjs = []; pads = []; padMat = null; padRailMat = null; beacons = null;
 }
 
 function frameIndex(s) {
@@ -1544,26 +1631,59 @@ function buildTrack(def) {
   }
 
   /* --- boost pads --- */
-  var padGeo = new THREE.PlaneGeometry(14, 34);
+  var PAD_W = 17, PAD_L = 42;
+  var padGeo = new THREE.PlaneGeometry(PAD_W, PAD_L);
   var padTotal = Math.round(TRACK_LEN / 250);
   var ptex = padTexture();
   ptex.repeat.set(1, 2);
+  ptex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
   padMat = new THREE.MeshBasicMaterial({
-    map: ptex, alphaMap: edgeMaskTexture(), color: 0xc8842e,
-    transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
+    map: ptex, alphaMap: edgeMaskTexture(), color: 0xffc23f,
+    transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending,
     depthWrite: false, toneMapped: false
   });
+  // Standing rails either side. A deck painted on the road is almost edge-on
+  // from the cockpit; these have height, so they are what you actually spot.
+  var railGeo = new THREE.PlaneGeometry(PAD_L, 1.5);
+  padRailMat = new THREE.MeshBasicMaterial({
+    color: 0xffd36a, transparent: true, opacity: 0.9, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+  });
+  // A gate over the entry. The deck alone is near enough invisible from a
+  // hundred metres out, which is exactly where you need to see it to aim.
+  var postGeo = new THREE.BoxGeometry(0.75, 4.6, 0.75);
+  var beamGeo = new THREE.BoxGeometry(PAD_W + 2.6, 0.7, 0.6);
+  var gateMat = new THREE.MeshBasicMaterial({ color: 0xffa519, toneMapped: false });
   for (i = 0; i < padTotal; i++) {
     var seg = Math.floor(rnd() * SEGS);
     var pf = frames[seg];
     if (Math.abs(pf.tan.y) > 0.3) continue;      // boost pads stay on level road
-    var pn = (rnd() - 0.5) * (TRACK_W * 1.35);
-    var pm = track(new THREE.Mesh(padGeo, padMat));
-    pm.position.copy(pf.pos).addScaledVector(pf.right, pn).addScaledVector(pf.up, 0.3);
-    pm.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(pf.right, pf.up, pf.tan.clone().negate()));
+    // keep the gate posts clear of the barriers
+    var pnLim = Math.max(0, EDGE - (PAD_W * 0.5 + 1.8));
+    var pn = Math.max(-pnLim, Math.min(pnLim, (rnd() - 0.5) * (TRACK_W * 1.35)));
+    var pg = track(new THREE.Group());
+    pg.position.copy(pf.pos).addScaledVector(pf.right, pn).addScaledVector(pf.up, 0.3);
+    pg.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(pf.right, pf.up, pf.tan.clone().negate()));
+
+    var pm = new THREE.Mesh(padGeo, padMat);
     pm.rotateX(-Math.PI / 2);
     pm.renderOrder = 3;
-    pads.push({ seg: seg, n: pn, mesh: pm });
+    pg.add(pm);
+
+    for (var rs = -1; rs <= 1; rs += 2) {
+      var rail = new THREE.Mesh(railGeo, padRailMat);
+      rail.rotation.y = Math.PI / 2;            // face across the track
+      rail.position.set(rs * PAD_W * 0.5, 0.72, 0);
+      rail.renderOrder = 4;
+      pg.add(rail);
+      var post = new THREE.Mesh(postGeo, gateMat);
+      post.position.set(rs * (PAD_W * 0.5 + 0.9), 2.3, PAD_L * 0.5);
+      pg.add(post);
+    }
+    var beam = new THREE.Mesh(beamGeo, gateMat);
+    beam.position.set(0, 4.3, PAD_L * 0.5);
+    pg.add(beam);
+    pads.push({ seg: seg, n: pn, mesh: pg });
   }
 
   /* --- start line --- */
@@ -3309,6 +3429,7 @@ function startRace(timeTrial) {
   el.menu.hidden = true; el.pause.hidden = true; el.results.hidden = true;
   el.hud.hidden = flyby > 0;
   touchEl.classList.toggle("on", isTouch);
+  el.hud.classList.toggle("touch", isTouch);
   var stored = parseFloat(storeGet(recKey("BestLap")));
   el.best.textContent = isFinite(stored) ? "BEST " + fmt(stored) : "BEST —";
   el.delta.textContent = "";
@@ -4261,7 +4382,9 @@ function loop(now) {
 
   if (beacons) beacons.material.color.setRGB(1, 0.18 + Math.abs(Math.sin(now * 0.0016)) * 0.22, 0.3);
   if (padMat) {
-    padMat.opacity = 0.46 + Math.sin(now * 0.005) * 0.13;
+    var padPulse = Math.sin(now * 0.005);
+    padMat.opacity = 0.84 + padPulse * 0.16;
+    if (padRailMat) padRailMat.opacity = 0.8 + padPulse * 0.2;
     if (padMat.map) padMat.map.offset.y = (now * 0.00055) % 1;   // chevrons flow forward
   }
   updateSparks(dt);
@@ -4581,6 +4704,31 @@ qChip.addEventListener("click", function () {
   }
   paintQuality();
 });
+
+// On a phone the full settings list pushes Start off the bottom of the
+// screen, so it starts folded away and the race controls sit up top.
+(function () {
+  var moreBtn = document.getElementById("moreBtn");
+  var moreBox = document.getElementById("moreBox");
+  if (!moreBtn || !moreBox) return;
+  function tight() { return window.innerWidth < 560 || window.innerHeight < 780; }
+  var folded = tight();
+  var touched = false;               // once the player decides, respect it
+
+  function paintMore() {
+    moreBox.hidden = folded;
+    moreBtn.setAttribute("aria-expanded", folded ? "false" : "true");
+    moreBtn.textContent = folded ? "Race settings \u25be" : "Race settings \u25b4";
+  }
+  moreBtn.addEventListener("click", function () {
+    folded = !folded; touched = true; paintMore();
+  });
+  window.addEventListener("resize", function () {
+    if (!touched) { folded = tight(); }
+    paintMore();
+  });
+  paintMore();
+})();
 
 document.getElementById("startBtn").addEventListener("click", function () { startRace(false); });
 document.getElementById("ttBtn").addEventListener("click", function () { startRace(true); });
