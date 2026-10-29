@@ -66,6 +66,18 @@
   .pickrow button small{display:block;font-size:11px;font-weight:500;color:var(--dim);letter-spacing:.02em;}
   .pickrow button[aria-pressed="true"] small{color:#ffc0dd;}
   .pickdesc{margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--dim);min-height:19px;}
+  #carStage{position:relative;margin:10px 0 0;height:168px;overflow:hidden;
+    border:1px solid rgba(23,232,255,.22);
+    background:radial-gradient(ellipse at 50% 78%,rgba(23,232,255,.16),rgba(6,8,20,.75) 70%);}
+  #carStage canvas{display:block;width:100%;height:100%;}
+  #carStage.off{display:none;}
+  #carBadge{position:absolute;left:10px;top:8px;font-size:11px;letter-spacing:.26em;color:var(--dim);}
+  #carStats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:10px;}
+  #carStats div{font-size:10px;letter-spacing:.15em;color:var(--dim);}
+  #carStats b{display:block;height:4px;margin-top:5px;background:rgba(255,255,255,.12);}
+  #carStats i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--mag));
+    transition:width .25s ease;}
+  @media (max-height:620px){ #carStage{height:120px;} }
   .chip{border:1px solid rgba(23,232,255,.32);padding:7px 12px;cursor:pointer;
     color:#a9b6d9;background:transparent;font:inherit;font-size:13px;}
   .chip[aria-pressed="true"]{background:rgba(23,232,255,.16);color:#fff;border-color:var(--cyan);}
@@ -247,6 +259,8 @@
       </div>
       <div class="pickblock">
         <div class="pickrow" id="carPick"></div>
+        <div id="carStage"><canvas id="carView"></canvas><span id="carBadge"></span></div>
+        <div id="carStats"></div>
         <p class="pickdesc" id="carDesc"></p>
       </div>
 
@@ -802,15 +816,111 @@ var TRACKS = [
 ];
 
 var CARS = [
-  { id: "axiom", name: "AXIOM", colour: 0x17e8ff, accent: 0xffffff, top: 1.00, accel: 1.00, grip: 1.00, tank: 1.00,
-    blurb: "Balanced all-rounder. Does nothing badly." },
-  { id: "vayu", name: "VAYU", colour: 0xff2d95, accent: 0xffd6ec, top: 1.08, accel: 0.90, grip: 0.86, tank: 0.95,
-    blurb: "Highest top speed, sharpest tail. Rewards clean hands." },
-  { id: "tanuki", name: "TANUKI", colour: 0x9dff3c, accent: 0xe9ffcf, top: 0.94, accel: 1.14, grip: 1.20, tank: 1.00,
-    blurb: "Glued down and quick off the line. Forgiving." },
-  { id: "kaiju", name: "KAIJU", colour: 0xffb020, accent: 0xfff0cd, top: 0.97, accel: 0.96, grip: 1.02, tank: 1.55,
-    blurb: "Huge boost tank that refills fast. Live on the nitro." }
+  { id: "axiom", name: "AXIOM", colour: 0x17e8ff, accent: 0xffffff,
+    top: 1.00, accel: 1.00, grip: 1.00, tank: 1.00,
+    blurb: "Balanced all-rounder. Does nothing badly.",
+    body: {
+      hull: [
+        { z: -5.9, w: 0.22, h: 0.16, y: 0.75 }, { z: -5.0, w: 0.80, h: 0.32, y: 0.70 },
+        { z: -3.6, w: 1.28, h: 0.46, y: 0.72 }, { z: -2.0, w: 1.58, h: 0.60, y: 0.80 },
+        { z: -0.2, w: 1.72, h: 0.68, y: 0.86 }, { z:  1.6, w: 1.66, h: 0.68, y: 0.88 },
+        { z:  3.2, w: 1.44, h: 0.60, y: 0.86 }, { z:  4.6, w: 1.08, h: 0.48, y: 0.82 }
+      ],
+      pod: [ { z: -2.9, w: 0.30, h: 0.30 }, { z: -1.8, w: 0.62, h: 0.60 },
+             { z:  0.6, w: 0.70, h: 0.66 }, { z:  2.4, w: 0.60, h: 0.58 },
+             { z:  3.1, w: 0.40, h: 0.40 } ],
+      podX: 2.25, podY: 0.78, podZ: 0.3,
+      wheelR: 0.62, wheelW: 0.84, wheelX: 2.32, frontZ: -3.05, rearZ: 3.05,
+      canopy: [0.98, 0.72, 1.9], canopyZ: -0.5, canopyY: 1.26,
+      noseZ: -4.95, noseY: 0.86, tailZ: 4.78, tailY: 1.42,
+      wing: { w: 4.9, y: 2.08, z: 4.1, tilt: -0.14, stay: 1.5 },
+      fins: null,
+      nozX: 1.0, nozY: 0.92, nozZ: 4.9, nozScale: 1.0,
+      splitter: { w: 3.5, z: -4.5, y: 0.42 }, diffuser: 5
+    } },
+
+  { id: "vayu", name: "VAYU", colour: 0xff2d95, accent: 0xffd6ec,
+    top: 1.08, accel: 0.90, grip: 0.86, tank: 0.95,
+    blurb: "A dart. Highest top speed, sharpest tail. Rewards clean hands.",
+    body: {
+      hull: [
+        { z: -7.0, w: 0.14, h: 0.11, y: 0.70 }, { z: -5.6, w: 0.56, h: 0.24, y: 0.66 },
+        { z: -4.0, w: 1.00, h: 0.36, y: 0.68 }, { z: -2.2, w: 1.30, h: 0.48, y: 0.74 },
+        { z: -0.4, w: 1.44, h: 0.56, y: 0.78 }, { z:  1.4, w: 1.40, h: 0.58, y: 0.80 },
+        { z:  3.0, w: 1.20, h: 0.52, y: 0.78 }, { z:  4.9, w: 0.80, h: 0.38, y: 0.74 }
+      ],
+      pod: [ { z: -3.4, w: 0.22, h: 0.24 }, { z: -2.0, w: 0.48, h: 0.50 },
+             { z:  0.4, w: 0.54, h: 0.56 }, { z:  2.6, w: 0.46, h: 0.48 },
+             { z:  3.5, w: 0.28, h: 0.30 } ],
+      podX: 2.12, podY: 0.76, podZ: 0.2,
+      wheelR: 0.60, wheelW: 0.74, wheelX: 2.18, frontZ: -3.45, rearZ: 3.30,
+      canopy: [0.84, 0.60, 2.2], canopyZ: -0.8, canopyY: 1.18,
+      noseZ: -6.0, noseY: 0.80, tailZ: 5.0, tailY: 1.30,
+      // low-drag swan-neck wing, deliberately small
+      wing: { w: 3.4, y: 2.0, z: 4.5, tilt: -0.08, stay: 1.0 },
+      // its signature: twin swept tail fins
+      fins: { x: 1.25, w: 0.12, h: 1.9, len: 3.2, y: 1.5, z: 3.0, lean: 0.26 },
+      nozX: 0.72, nozY: 0.90, nozZ: 5.1, nozScale: 0.85,
+      splitter: { w: 2.8, z: -5.3, y: 0.40 }, diffuser: 3
+    } },
+
+  { id: "tanuki", name: "TANUKI", colour: 0x9dff3c, accent: 0xe9ffcf,
+    top: 0.94, accel: 1.14, grip: 1.20, tank: 1.00,
+    blurb: "Short, wide and glued down. Quickest off the line and forgiving.",
+    body: {
+      hull: [
+        { z: -4.9, w: 0.30, h: 0.22, y: 0.76 }, { z: -3.9, w: 1.00, h: 0.40, y: 0.74 },
+        { z: -2.4, w: 1.60, h: 0.56, y: 0.78 }, { z: -0.8, w: 1.92, h: 0.70, y: 0.86 },
+        { z:  0.9, w: 2.00, h: 0.74, y: 0.90 }, { z:  2.4, w: 1.80, h: 0.66, y: 0.88 },
+        { z:  3.9, w: 1.38, h: 0.54, y: 0.84 }
+      ],
+      pod: [ { z: -2.4, w: 0.36, h: 0.34 }, { z: -1.4, w: 0.72, h: 0.66 },
+             { z:  0.5, w: 0.78, h: 0.72 }, { z:  2.0, w: 0.68, h: 0.62 },
+             { z:  2.7, w: 0.44, h: 0.42 } ],
+      podX: 2.40, podY: 0.80, podZ: 0.3,
+      wheelR: 0.70, wheelW: 0.98, wheelX: 2.46, frontZ: -2.70, rearZ: 2.75,
+      canopy: [1.08, 0.78, 1.7], canopyZ: -0.3, canopyY: 1.34,
+      noseZ: -4.3, noseY: 0.88, tailZ: 4.1, tailY: 1.48,
+      // big low wing slung across the full width
+      wing: { w: 5.6, y: 1.74, z: 3.9, tilt: -0.2, stay: 1.9 },
+      fins: null,
+      nozX: 1.25, nozY: 0.94, nozZ: 4.2, nozScale: 1.05,
+      splitter: { w: 4.3, z: -3.9, y: 0.44 }, diffuser: 7
+    } },
+
+  { id: "kaiju", name: "KAIJU", colour: 0xffb020, accent: 0xfff0cd,
+    top: 0.97, accel: 0.96, grip: 1.02, tank: 1.55,
+    blurb: "Heavy rear, huge boost tank that refills fast. Live on the nitro.",
+    body: {
+      hull: [
+        { z: -5.4, w: 0.26, h: 0.20, y: 0.78 }, { z: -4.2, w: 0.92, h: 0.40, y: 0.74 },
+        { z: -2.6, w: 1.40, h: 0.56, y: 0.78 }, { z: -0.8, w: 1.70, h: 0.68, y: 0.86 },
+        { z:  1.0, w: 1.86, h: 0.78, y: 0.94 }, { z:  2.8, w: 1.94, h: 0.84, y: 0.98 },
+        { z:  4.4, w: 1.72, h: 0.74, y: 0.94 }, { z:  5.5, w: 1.18, h: 0.56, y: 0.88 }
+      ],
+      pod: [ { z: -2.6, w: 0.34, h: 0.32 }, { z: -1.4, w: 0.70, h: 0.64 },
+             { z:  0.8, w: 0.80, h: 0.72 }, { z:  2.8, w: 0.74, h: 0.68 },
+             { z:  3.8, w: 0.50, h: 0.48 } ],
+      podX: 2.34, podY: 0.96, podZ: 0.5,
+      wheelR: 0.66, wheelW: 0.92, wheelX: 2.40, frontZ: -3.00, rearZ: 3.20,
+      canopy: [0.96, 0.70, 1.8], canopyZ: -1.0, canopyY: 1.32,
+      noseZ: -4.7, noseY: 0.86, tailZ: 5.5, tailY: 1.58,
+      wing: { w: 5.2, y: 2.34, z: 4.9, tilt: -0.16, stay: 1.7 },
+      fins: null,
+      // twin oversized boosters are the giveaway
+      nozX: 1.15, nozY: 1.00, nozZ: 5.5, nozScale: 1.45,
+      splitter: { w: 3.4, z: -4.3, y: 0.44 }, diffuser: 5
+    } }
 ];
+
+// lofting is not free, so each body shape is built once and shared
+var CAR_GEO = {};
+function carGeo(body, id) {
+  if (!CAR_GEO[id]) {
+    CAR_GEO[id] = { hull: loftHull(body.hull, 18), pod: loftHull(body.pod, 14) };
+  }
+  return CAR_GEO[id];
+}
 
 function trackDef() { return TRACKS[CFG.track]; }
 function carDef() { return CARS[CFG.car]; }
@@ -1490,25 +1600,6 @@ function loftHull(sections, radial) {
   return g;
 }
 
-var CAR_HULL = loftHull([
-  { z: -5.9, w: 0.22, h: 0.16, y: 0.75 },
-  { z: -5.0, w: 0.80, h: 0.32, y: 0.70 },
-  { z: -3.6, w: 1.28, h: 0.46, y: 0.72 },
-  { z: -2.0, w: 1.58, h: 0.60, y: 0.80 },
-  { z: -0.2, w: 1.72, h: 0.68, y: 0.86 },
-  { z:  1.6, w: 1.66, h: 0.68, y: 0.88 },
-  { z:  3.2, w: 1.44, h: 0.60, y: 0.86 },
-  { z:  4.6, w: 1.08, h: 0.48, y: 0.82 }
-], 18);
-
-var CAR_POD = loftHull([
-  { z: -2.9, w: 0.30, h: 0.30 },
-  { z: -1.8, w: 0.62, h: 0.60 },
-  { z:  0.6, w: 0.70, h: 0.66 },
-  { z:  2.4, w: 0.60, h: 0.58 },
-  { z:  3.1, w: 0.40, h: 0.40 }
-], 14);
-
 var WHEEL_GEO = new THREE.CylinderGeometry(1, 1, 1, 22);
 WHEEL_GEO.rotateZ(Math.PI / 2);                     // axle along x
 var HUB_GEO = new THREE.CircleGeometry(0.66, 18);
@@ -1680,9 +1771,12 @@ function liveryTexture(colour, accent, num) {
 }
 
 // detail: 2 = the player's car, 1 = rivals, 0 = rivals on low effects
-function buildCar(colour, accent, detail, num) {
+// body = one of the CARS[].body specs; every silhouette-defining dimension
+// comes from it, so each machine reads differently on track.
+function buildCar(body, id, colour, accent, detail, num) {
   var simple = detail === 0;
   var hero = detail === 2;
+  var geo = carGeo(body, id);
   var root = new THREE.Group();
   var tilt = new THREE.Group();
   tilt.position.y = -0.26;        // drop the body onto the wheels
@@ -1696,15 +1790,14 @@ function buildCar(colour, accent, detail, num) {
   });
   paint.normalScale.set(0.55, 0.55);
   var trim = new THREE.MeshStandardMaterial({
-    color: 0x141834, metalness: 0.6, roughness: 0.55, envMap: envMapTex, envMapIntensity: 0.4
+    color: 0x08090f, metalness: 0.25, roughness: 0.7
   });
   var glass = new THREE.MeshStandardMaterial({
     color: 0x0a1026, metalness: 1.0, roughness: 0.08, envMap: envMapTex, envMapIntensity: 2.0,
     transparent: true, opacity: 0.86
   });
   var rubber = new THREE.MeshStandardMaterial({
-    color: 0x090b14, metalness: 0.0, roughness: 0.97,
-    envMap: envMapTex, envMapIntensity: 0.06
+    color: 0x050609, metalness: 0.0, roughness: 0.97
   });
   var rimMat = new THREE.MeshStandardMaterial({
     map: RIM_TEX, metalness: 0.7, roughness: 0.5, envMap: envMapTex, envMapIntensity: 0.4,
@@ -1714,33 +1807,33 @@ function buildCar(colour, accent, detail, num) {
   // car's own colour keeps the light strips readable
   var neon = new THREE.MeshBasicMaterial({ color: colour, toneMapped: false });
 
-  var hull = new THREE.Mesh(CAR_HULL, paint); tilt.add(hull);
+  var hull = new THREE.Mesh(geo.hull, paint); tilt.add(hull);
   var spinners = [], steerHubs = [], plumes = [], cores = [];
 
   // cockpit bubble
   var canopy = new THREE.Mesh(CANOPY_GEO, glass);
-  canopy.scale.set(0.98, 0.72, 1.9);
-  canopy.position.set(0, 1.26, -0.5);
+  canopy.scale.set(body.canopy[0], body.canopy[1], body.canopy[2]);
+  canopy.position.set(0, body.canopyY, body.canopyZ);
   tilt.add(canopy);
 
   // headlight bar and brake light bar
   var headMat = new THREE.MeshBasicMaterial({ color: 0xdfeaff, toneMapped: false });
   var head = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 0.3), headMat);
-  head.position.set(0, 0.86, -4.95); tilt.add(head);
+  head.position.set(0, body.noseY, body.noseZ); tilt.add(head);
 
   var brakeMat = new THREE.MeshBasicMaterial({ color: 0x3a0a14, toneMapped: false });
   var brakeBar = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.18, 0.22), brakeMat);
-  brakeBar.position.set(0, 1.42, 4.78); tilt.add(brakeBar);
+  brakeBar.position.set(0, body.tailY, body.tailZ); tilt.add(brakeBar);
 
   // a driver under the glass sells the scale
   if (hero) {
     var helmet = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshStandardMaterial({
       color: accent, roughness: 0.25, metalness: 0.3, envMap: envMapTex, envMapIntensity: 0.9
     }));
-    helmet.position.set(0, 1.3, -0.35); tilt.add(helmet);
+    helmet.position.set(0, body.canopyY + 0.04, body.canopyZ + 0.15); tilt.add(helmet);
     var visor = new THREE.Mesh(new THREE.SphereGeometry(0.43, 14, 10, 0, Math.PI, 1.0, 1.1),
       new THREE.MeshStandardMaterial({ color: 0x0d1428, roughness: 0.1, metalness: 1 }));
-    visor.position.set(0, 1.3, -0.35);
+    visor.position.copy(helmet.position);
     visor.rotation.y = Math.PI;
     tilt.add(visor);
   }
@@ -1748,63 +1841,81 @@ function buildCar(colour, accent, detail, num) {
   // roll hoop and intake scoop behind the cockpit
   if (hero) {
     var hoop = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.11, 8, 16, Math.PI), trim);
-    hoop.position.set(0, 1.42, 1.0);
+    hoop.position.set(0, body.canopyY + 0.16, body.canopyZ + 1.5);
     hoop.rotation.y = Math.PI / 2;
     tilt.add(hoop);
     var scoop = new THREE.Mesh(new THREE.ConeGeometry(0.42, 2.2, 10), trim);
     scoop.rotation.x = -Math.PI / 2;
-    scoop.position.set(0, 1.46, 2.3);
+    scoop.position.set(0, body.canopyY + 0.20, body.canopyZ + 2.8);
     tilt.add(scoop);
-    // dive planes either side of the nose
     for (var dp = -1; dp <= 1; dp += 2) {
       var plane = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.07, 0.5), trim);
-      plane.position.set(dp * 1.35, 0.72, -3.9);
+      plane.position.set(dp * 1.35, 0.72, body.splitter.z + 0.6);
       plane.rotation.z = dp * 0.2;
       tilt.add(plane);
     }
   }
 
-  // nose blade and rear wing
+  // nose blade
   if (!simple) {
-    var splitter = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.12, 1.1), trim);
-    splitter.position.set(0, 0.42, -4.5); tilt.add(splitter);
+    var splitter = new THREE.Mesh(new THREE.BoxGeometry(body.splitter.w, 0.12, 1.1), trim);
+    splitter.position.set(0, body.splitter.y, body.splitter.z); tilt.add(splitter);
   }
 
-  var wing = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.14, 1.15), trim);
-  wing.position.set(0, 2.08, 4.1);
-  wing.rotation.x = -0.14;
+  // rear wing
+  var W = body.wing;
+  var wing = new THREE.Mesh(new THREE.BoxGeometry(W.w, 0.14, 1.15), trim);
+  wing.position.set(0, W.y, W.z);
+  wing.rotation.x = W.tilt;
   tilt.add(wing);
-  var wingLip = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.08, 0.13), neon);
-  wingLip.position.set(0, 2.14, 4.62); tilt.add(wingLip);
+  var wingLip = new THREE.Mesh(new THREE.BoxGeometry(W.w - 0.3, 0.08, 0.13), neon);
+  wingLip.position.set(0, W.y + 0.06, W.z + 0.52); tilt.add(wingLip);
   if (hero) {
     for (var ep = -1; ep <= 1; ep += 2) {
       var plate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.78, 1.5), trim);
-      plate.position.set(ep * 2.5, 1.9, 4.1);
+      plate.position.set(ep * (W.w / 2 - 0.05), W.y - 0.18, W.z);
       tilt.add(plate);
     }
   }
   if (!simple) {
-    for (var w = -1; w <= 1; w += 2) {
+    for (var w2 = -1; w2 <= 1; w2 += 2) {
       var stay = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.5), trim);
-      stay.position.set(w * 1.5, 1.55, 4.1); tilt.add(stay);
+      stay.position.set(w2 * W.stay, W.y - 0.53, W.z); tilt.add(stay);
     }
   }
 
-  for (var s = -1; s <= 1; s += 2) {
-    var pod = new THREE.Mesh(CAR_POD, paint);
-    pod.position.set(s * 2.25, 0.78, 0.3);
+  // swept tail fins, VAYU's signature
+  if (body.fins) {
+    var F = body.fins;
+    for (var fn = -1; fn <= 1; fn += 2) {
+      var fin = new THREE.Mesh(new THREE.BoxGeometry(F.w, F.h, F.len), paint);
+      fin.position.set(fn * F.x, F.y, F.z);
+      fin.rotation.z = fn * F.lean;
+      tilt.add(fin);
+      var finLip = new THREE.Mesh(new THREE.BoxGeometry(F.w + 0.04, 0.09, F.len * 0.75), neon);
+      finLip.position.set(fn * (F.x + Math.sin(F.lean) * F.h * 0.5), F.y + F.h / 2, F.z);
+      finLip.rotation.z = fn * F.lean;
+      tilt.add(finLip);
+    }
+  }
+
+  var hubY = body.wheelR - 0.68;         // puts the contact patch 0.02 above the road
+
+  for (var s2 = -1; s2 <= 1; s2 += 2) {
+    var pod = new THREE.Mesh(geo.pod, paint);
+    pod.position.set(s2 * body.podX, body.podY, body.podZ);
     tilt.add(pod);
 
     // flank light strip
     if (!simple) {
       var strip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 4.4), neon);
-      strip.position.set(s * 2.9, 0.92, 0.3); tilt.add(strip);
+      strip.position.set(s2 * (body.podX + 0.65), body.podY + 0.14, body.podZ); tilt.add(strip);
     }
 
-    // wheels: wide slicks on a steering hub up front
+    // wheels: slicks on a steering hub up front
     for (var f = -1; f <= 1; f += 2) {
       var hub = new THREE.Group();
-      hub.position.set(s * 2.32, -0.06, f * 3.05);  // radius 0.62 - 0.66 => tyre meets the tarmac
+      hub.position.set(s2 * body.wheelX, hubY, f < 0 ? body.frontZ : body.rearZ);
       root.add(hub);            // unsprung: the body leans, the tyres stay planted
 
       var spinner = new THREE.Group();
@@ -1813,49 +1924,52 @@ function buildCar(colour, accent, detail, num) {
       if (f < 0) steerHubs.push(hub);
 
       var wheel = new THREE.Mesh(WHEEL_GEO, rubber);
-      wheel.scale.set(0.84, 0.62, 0.62);            // wide slick, sensibly sized
+      wheel.scale.set(body.wheelW, body.wheelR, body.wheelR);
       spinner.add(wheel);
 
       if (!simple) {
         var face = new THREE.Mesh(HUB_GEO, rimMat);
-        face.position.x = s * 0.44;
-        face.scale.setScalar(0.66);
+        face.position.x = s2 * (body.wheelW / 2 + 0.02);
+        face.scale.setScalar(body.wheelR * 1.065);
         spinner.add(face);
       }
       if (hero) {
-        // brake caliper rides on the upright, so it doesn't spin with the wheel
         var caliper = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.4, 0.22), trim);
-        caliper.position.set(s * 0.26, 0.3, -0.08);
+        caliper.position.set(s2 * body.wheelW * 0.31, body.wheelR * 0.48, -0.08);
         hub.add(caliper);
       }
     }
 
     // thruster nozzle, flame plume and a soft bloom at the mouth
+    var ns = body.nozScale;
     var noz = new THREE.Mesh(NOZZLE_GEO, trim);
-    noz.position.set(s * 1.0, 0.92, 4.9); tilt.add(noz);
+    noz.scale.setScalar(ns);
+    noz.position.set(s2 * body.nozX, body.nozY, body.nozZ); tilt.add(noz);
 
     var plume = new THREE.Mesh(PLUME_GEO, new THREE.MeshBasicMaterial({
       map: PLUME_TEX, color: colour, transparent: true, opacity: 0.85,
       blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false
     }));
-    plume.position.set(s * 1.0, 0.92, 5.1);
+    plume.position.set(s2 * body.nozX, body.nozY, body.nozZ + 0.2 * ns);
+    plume.scale.setScalar(ns);
     tilt.add(plume);
     plumes.push(plume);
 
-    var core = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.7), new THREE.MeshBasicMaterial({
+    var core = new THREE.Mesh(new THREE.PlaneGeometry(1.7 * ns, 1.7 * ns), new THREE.MeshBasicMaterial({
       map: GLOW_TEX, color: accent, transparent: true, opacity: 0.9,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     }));
-    core.position.set(s * 1.0, 0.92, 5.32);
+    core.position.set(s2 * body.nozX, body.nozY, body.nozZ + 0.42 * ns);
     tilt.add(core);
     cores.push(core);
   }
 
   // rear diffuser fins under the tail
   if (!simple) {
-    for (var dfin = -2; dfin <= 2; dfin++) {
+    var dn = (body.diffuser - 1) / 2;
+    for (var dfin = -dn; dfin <= dn; dfin++) {
       var fin2 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 1.6), trim);
-      fin2.position.set(dfin * 0.62, 0.38, 4.3);
+      fin2.position.set(dfin * 0.62, 0.38, body.nozZ - 0.6);
       tilt.add(fin2);
     }
   }
@@ -1865,8 +1979,8 @@ function buildCar(colour, accent, detail, num) {
     map: GLOW_TEX, color: accent, transparent: true, opacity: 0.55,
     blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
   });
-  var glow = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.6), glowMat);
-  glow.position.set(0, 1.0, 5.4); tilt.add(glow);
+  var glow = new THREE.Mesh(new THREE.PlaneGeometry(6.4 * ns, 3.6 * ns), glowMat);
+  glow.position.set(0, body.nozY + 0.08, body.nozZ + 0.5); tilt.add(glow);
 
   var under = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 12.5), new THREE.MeshBasicMaterial({
     map: GLOW_TEX, color: colour, transparent: true, opacity: 0.5,
@@ -1894,7 +2008,8 @@ function buildCar(colour, accent, detail, num) {
 
   root.userData = { tilt: tilt, glow: glow, glowMat: glowMat, spin: 0,
                     spinners: spinners, steerHubs: steerHubs, brakeMat: brakeMat,
-                    wing: wing, plumes: plumes, cores: cores, flick: 0, pitch: 0 };
+                    wing: wing, plumes: plumes, cores: cores, flick: 0, pitch: 0,
+                    beam: beam, shadow: shadow, under: under };
   return root;
 }
 
@@ -1905,7 +2020,8 @@ var NAMES = ["NOVA", "K-ZERO", "RAIJIN", "VOLT", "SABLE", "ORYX", "HEX"];
 function makeRacer(isPlayer, i) {
   var pal = isPlayer ? [carDef().colour, carDef().accent] : PALETTE[(i + 1) % PALETTE.length];
   var detail = isPlayer ? 2 : (CFG.quality === "low" ? 0 : 1);
-  var mesh = buildCar(pal[0], pal[1], detail, isPlayer ? 1 : (i + 1));
+  var chassis = isPlayer ? carDef() : CARS[(i + 1) % CARS.length];
+  var mesh = buildCar(chassis.body, chassis.id, pal[0], pal[1], detail, isPlayer ? 1 : (i + 1));
   scene.add(mesh);
   return {
     player: isPlayer,
@@ -2558,7 +2674,7 @@ function loadGhost() {
 }
 function ghostMesh() {
   if (!ghost.mesh) {
-    ghost.mesh = buildCar(0xdad4ff, 0xb0a8ff);
+    ghost.mesh = buildCar(carDef().body, carDef().id, 0xdad4ff, 0xb0a8ff, 1, 1);
     ghost.mesh.traverse(function (o) {
       if (o.material) {
         o.material = o.material.clone();
@@ -3825,9 +3941,152 @@ function loop(now) {
   }
   updateSparks(dt);
   updateSmoke(dt);
+  renderPreview(dt);
   musicUpdate(dt, state === "race" ? (paused ? 0.3 : 1) : (state === "menu" ? 0.85 : 0.7));
 
   renderFrame(now);
+}
+
+/* =====================================================================
+   SHOWROOM — the rotating car in the menu
+   Its own small renderer on its own canvas, so the main scene is left
+   alone. If the context can't be created the panel simply hides.
+   ===================================================================== */
+var preview = { ok: false, t: 0, w: 0, h: 0, cars: {}, fits: {} };
+
+function initPreview() {
+  var cv = document.getElementById("carView");
+  var stage = document.getElementById("carStage");
+  try {
+    var r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    r.outputEncoding = THREE.sRGBEncoding;
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMappingExposure = 1.2;
+
+    var sc = new THREE.Scene();
+    sc.add(new THREE.AmbientLight(0x3a4480, 0.5));
+    sc.add(new THREE.HemisphereLight(0xff7ac0, 0x0c1430, 0.38));
+    var k = new THREE.DirectionalLight(0xffd9f0, 0.95); k.position.set(-9, 11, 7); sc.add(k);
+    var rimL = new THREE.DirectionalLight(0x4ceaff, 0.85); rimL.position.set(10, 5, -9); sc.add(rimL);
+    var fill = new THREE.DirectionalLight(0xbfd4ff, 0.3); fill.position.set(2, -4, 8); sc.add(fill);
+
+    var pivot = new THREE.Group();
+    pivot.rotation.y = -0.6;
+    sc.add(pivot);
+
+    preview.ok = true;
+    preview.renderer = r; preview.scene = sc; preview.pivot = pivot;
+    preview.camera = new THREE.PerspectiveCamera(30, 2, 0.5, 400);
+    preview.canvas = cv;
+  } catch (e) {
+    preview.ok = false;
+    if (stage) stage.classList.add("off");
+  }
+}
+
+// each machine is built once and kept, so flicking through the list is instant
+function previewCar() {
+  if (!preview.ok) return;
+  var d = carDef();
+  if (preview.car) preview.car.visible = false;
+
+  if (preview.cars[d.id]) {
+    preview.car = preview.cars[d.id];
+    preview.car.visible = true;
+    preview.fitR = preview.fits[d.id].r;
+    preview.fitY = preview.fits[d.id].y;
+    document.getElementById("carBadge").textContent = d.name;
+    return;
+  }
+
+  var car = buildCar(d.body, d.id, d.colour, d.accent, 2, 1);
+  var u = car.userData;
+  // road-only dressing has no place in a showroom
+  u.beam.visible = false;
+  u.under.visible = false;
+  u.shadow.position.y = -0.69;
+  // idle the thrusters rather than leaving them at full chat
+  u.plumes.forEach(function (pl) { pl.scale.set(0.45, 0.45, 0.35); pl.material.opacity = 0.32; });
+  u.cores.forEach(function (c) { c.scale.setScalar(0.55); c.material.opacity = 0.45; });
+  u.glowMat.opacity = 0.22;
+  // measure the solid bodywork (ignoring glows) so the framing always fits
+  car.updateMatrixWorld(true);
+  var box = new THREE.Box3(), tmp = new THREE.Box3();
+  car.traverse(function (o) {
+    if (!o.isMesh || !o.geometry) return;
+    if (o.material && o.material.blending === THREE.AdditiveBlending) return;
+    if (o.material && o.material.map === SHADOW_TEX) return;
+    o.geometry.computeBoundingBox();
+    tmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+    box.union(tmp);
+  });
+  var ex = Math.max(Math.abs(box.min.x), Math.abs(box.max.x));
+  var ez = Math.max(Math.abs(box.min.z), Math.abs(box.max.z));
+  preview.fits[d.id] = { r: Math.sqrt(ex * ex + ez * ez), y: (box.min.y + box.max.y) / 2 };
+  preview.fitR = preview.fits[d.id].r;             // worst case as it turns
+  preview.fitY = preview.fits[d.id].y;
+
+  preview.cars[d.id] = car;
+  preview.car = car;
+  preview.pivot.add(car);
+  document.getElementById("carBadge").textContent = d.name;
+}
+
+// the showroom cars hold the circuit's reflection map, so drop them all when
+// the circuit changes rather than leaving them pointing at a disposed texture
+function previewReset() {
+  if (!preview.ok) return;
+  for (var k in preview.cars) {
+    if (!preview.cars.hasOwnProperty(k)) continue;
+    var c = preview.cars[k];
+    preview.pivot.remove(c);
+    c.traverse(function (o) {
+      if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    });
+  }
+  preview.cars = {}; preview.fits = {}; preview.car = null;
+  previewCar();
+}
+
+function renderPreview(dt) {
+  if (!preview.ok || state !== "menu" || el.menu.hidden) return;
+  var cv = preview.canvas;
+  var w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  if (w !== preview.w || h !== preview.h) {
+    preview.w = w; preview.h = h;
+    preview.renderer.setSize(w, h, false);
+    preview.camera.aspect = w / h;
+  }
+  // frame the car whatever the panel's shape ends up being
+  var vFov = preview.camera.fov * Math.PI / 180;
+  var hFov = 2 * Math.atan(Math.tan(vFov / 2) * preview.camera.aspect);
+  var R = preview.fitR || 7.4;
+  var dist = Math.max(11, Math.min(40, R / Math.tan(hFov / 2) * 1.18));
+  preview.camera.position.set(0, dist * 0.30, dist * 0.95);
+  preview.camera.lookAt(0, preview.fitY || 0.5, 0);
+  preview.camera.updateProjectionMatrix();
+
+  preview.t += dt;
+  preview.pivot.rotation.y += dt * 0.5;
+  if (preview.car) {
+    var ud = preview.car.userData;
+    ud.spin = (ud.spin + dt * 1.2) % (Math.PI * 2);
+    for (var i = 0; i < ud.spinners.length; i++) ud.spinners[i].rotation.x = ud.spin;
+  }
+  preview.renderer.render(preview.scene, preview.camera);
+}
+
+function paintCarStats(car) {
+  var box = document.getElementById("carStats");
+  if (!box) return;
+  var rows = [["TOP", car.top, 0.90, 1.12], ["ACCEL", car.accel, 0.85, 1.20],
+              ["GRIP", car.grip, 0.80, 1.25], ["BOOST", car.tank, 0.90, 1.60]];
+  box.innerHTML = rows.map(function (r) {
+    var pct = Math.max(6, Math.min(100, Math.round(100 * (r[1] - r[2]) / (r[3] - r[2]))));
+    return "<div>" + r[0] + '<b><i style="width:' + pct + '%"></i></b></div>';
+  }).join("");
 }
 
 /* =====================================================================
@@ -3860,6 +4119,8 @@ function buildPickers() {
     var car = carDef();
     cd.textContent = car.blurb;
     for (var i = 0; i < cp.children.length; i++) cp.children[i].setAttribute("aria-pressed", i === CFG.car ? "true" : "false");
+    paintCarStats(car);
+    previewCar();
   }
 
   TRACKS.forEach(function (def, i) {
@@ -3870,6 +4131,7 @@ function buildPickers() {
       buildTrack(def);
       camReady = false;
       paintTrack();
+      previewReset();        // their materials reference the circuit's reflection map
       if (cloud.ready) lbLoad(); else lbPaint();
     });
     tp.appendChild(b);
@@ -3883,6 +4145,7 @@ function buildPickers() {
   });
   paintTrack(); paintCar();
   buildPickers.paintTrack = paintTrack;
+  buildPickers.paintCar = paintCar;
 }
 
 chipGroup("laps", function (v) { CFG.laps = v; });
@@ -4029,6 +4292,7 @@ window.addEventListener("orientationchange", function () { setTimeout(resize, 25
 
 initPostFX();
 buildTrack(trackDef());
+initPreview();
 buildPickers();
 season = loadSeason();
 if (season) CFG.difficulty = season.cls;
