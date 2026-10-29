@@ -808,6 +808,32 @@ var TRACKS = [
       grid: [0x7b5cff, 0x3a1f6e], sun: true, towers: 0.7, close: 1.4,
       sky: [[0, "#05030f"], [0.38, "#241048"], [0.62, "#6b2170"], [0.8, "#d4593f"], [0.93, "#ffb36a"], [1, "#241048"]] } },
 
+  { id: "helix", name: "Helix", seed: 4242, width: 25, laps: 3,
+    blurb: "A full vertical loop on the back straight. Stay on the power through it or you'll slide back down.",
+    build: function () {
+      var pts = [], i, th, psi;
+      var SX = 440, RR = 480, LR = 70, DRIFT = 150;
+      function V(x, y, z) { return new THREE.Vector3(x, y, z); }
+      // front straight, running -x, with a crest in the middle
+      pts.push(V(SX, 0, RR), V(140, 20, RR + 40), V(-150, 20, RR - 30), V(-SX, 0, RR));
+      // left-hand 180
+      for (i = 1; i < 9; i++) { psi = i / 9 * Math.PI; pts.push(V(-SX - RR * Math.sin(psi), 0, RR * Math.cos(psi))); }
+      // back straight, running +x — the loop lives here
+      pts.push(V(-SX, 0, -RR), V(-SX + 120, 0, -RR), V(-SX + 230, 0, -RR));
+      var base = -SX + 300;
+      for (i = 0; i <= 18; i++) {
+        th = i / 18 * Math.PI * 2;
+        pts.push(V(base + LR * Math.sin(th) + DRIFT * th / (Math.PI * 2), LR * (1 - Math.cos(th)), -RR));
+      }
+      pts.push(V(base + DRIFT + 120, 0, -RR), V(SX - 120, 0, -RR), V(SX, 0, -RR));
+      // right-hand 180 back to the start
+      for (i = 1; i < 9; i++) { psi = i / 9 * Math.PI; pts.push(V(SX + RR * Math.sin(psi), 0, -RR * Math.cos(psi))); }
+      return pts;
+    },
+    theme: { fog: 0x1b0c22, dens: 0.0017, kerbL: 0x9dff3c, kerbR: 0xff2d95, tower: 0xc0a8ff, gantry: 0x9dff3c,
+      grid: [0x9dff3c, 0x3a1f6e], sun: true, towers: 0.85, close: 1.1,
+      sky: [[0, "#05030f"], [0.40, "#1d0b3c"], [0.62, "#5e1a63"], [0.80, "#c8456a"], [0.92, "#ffac5e"], [1, "#2a1038"]] } },
+
   { id: "vector", name: "Vector Rim", seed: 80808, N: 22, base: 980, f3: 3, f2: 2, a3: 250, a2: 185,
     jit: 18, y1: 26, y2: 13, width: 28, laps: 2, blurb: "Seven kilometres of open rim. Top speed matters most here.",
     theme: { fog: 0x1a0a18, dens: 0.0014, kerbL: 0xffb020, kerbR: 0xff2d95, tower: 0xffc6a6, gantry: 0xffb020,
@@ -1025,6 +1051,7 @@ function seeded(seed) { var s = seed; return function () { s = (s * 1664525 + 10
 var envMapTex = null;                 // sky reflection, rebuilt per circuit
 var padMat = null;                    // shared so all boost pads pulse as one draw state
 var TRACK_W = 27, TRACK_LEN = 1, SEG_LEN = 1, EDGE = 24;
+var GRAV = 34;                       // tuned so a loop needs commitment, not luck
 var frames = [], pads = [], worldObjs = [], builtTrack = null;
 var beacons = null;                   // roof beacons, pulsed from the main loop
 var mmPts = [], mmBounds = { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
@@ -1053,7 +1080,7 @@ function frameIndex(s) {
   return Math.floor(ss / SEG_LEN) % SEGS;
 }
 function newSample() {
-  return { pos: new THREE.Vector3(), tan: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), curv: 0 };
+  return { pos: new THREE.Vector3(), tan: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), curv: 0, kUp: 0 };
 }
 function sampleTrack(s, out) {
   var ss = ((s % TRACK_LEN) + TRACK_LEN) % TRACK_LEN;
@@ -1064,6 +1091,7 @@ function sampleTrack(s, out) {
   out.right.copy(A.right).lerp(B.right, t).normalize();
   out.up.copy(A.up).lerp(B.up, t).normalize();
   out.curv = A.curv + (B.curv - A.curv) * t;
+  out.kUp = A.kUp + (B.kUp - A.kUp) * t;
   return out;
 }
 var scratchA = newSample(), scratchB = newSample(), scratchC = newSample(), scratchD = newSample(), scratchG = newSample();
@@ -1081,31 +1109,77 @@ function buildTrack(def) {
 
   /* --- centre line --- */
   var ctrlPts = [], i;
-  for (i = 0; i < def.N; i++) {
-    var a = i / def.N * Math.PI * 2;
-    var r = def.base + Math.sin(a * def.f3 + 0.4) * def.a3 + Math.cos(a * def.f2 - 0.9) * def.a2 + (rnd() - 0.5) * def.jit;
-    var y = Math.sin(a * 2) * def.y1 + Math.sin(a * 5 + 0.7) * def.y2;
-    ctrlPts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+  if (def.build) {
+    ctrlPts = def.build();                 // hand-authored circuits (loops, etc.)
+  } else {
+    for (i = 0; i < def.N; i++) {
+      var a = i / def.N * Math.PI * 2;
+      var r = def.base + Math.sin(a * def.f3 + 0.4) * def.a3 + Math.cos(a * def.f2 - 0.9) * def.a2 + (rnd() - 0.5) * def.jit;
+      var y = Math.sin(a * 2) * def.y1 + Math.sin(a * 5 + 0.7) * def.y2;
+      ctrlPts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+    }
   }
   var curve = new THREE.CatmullRomCurve3(ctrlPts, true, "catmullrom", 0.5);
   TRACK_LEN = curve.getLength();
   SEG_LEN = TRACK_LEN / SEGS;
 
+  /* --- frames by parallel transport ---
+     Building each frame as `tangent x worldUp` collapses the moment the road
+     points straight up, which is exactly what a vertical loop does. Instead
+     the frame is carried forward from the previous one by the smallest
+     rotation that lines up the tangents, so it stays well defined whatever
+     the road does — including upside down. */
   frames = [];
   var worldUp = new THREE.Vector3(0, 1, 0);
+  var positions = [], tangents = [];
   for (i = 0; i <= SEGS; i++) {
     var u = (i / SEGS) % 1;
-    var pos = curve.getPointAt(u);
-    var tan = curve.getTangentAt(u).normalize();
-    var right = new THREE.Vector3().crossVectors(tan, worldUp).normalize();
-    var up = new THREE.Vector3().crossVectors(right, tan).normalize();
-    frames.push({ pos: pos, tan: tan, right: right, up: up, curv: 0 });
+    positions.push(curve.getPointAt(u));
+    tangents.push(curve.getTangentAt(u).normalize());
   }
+
+  var rights = [];
+  var r0 = new THREE.Vector3().crossVectors(tangents[0], worldUp);
+  if (r0.lengthSq() < 1e-6) r0.set(1, 0, 0);     // start line is never vertical
+  r0.normalize();
+  rights.push(r0);
+  var axis = new THREE.Vector3(), q = new THREE.Quaternion();
+  for (i = 1; i <= SEGS; i++) {
+    axis.crossVectors(tangents[i - 1], tangents[i]);
+    var sin = axis.length();
+    var cos = Math.max(-1, Math.min(1, tangents[i - 1].dot(tangents[i])));
+    var nextR = rights[i - 1].clone();
+    if (sin > 1e-8) {
+      axis.divideScalar(sin);
+      q.setFromAxisAngle(axis, Math.atan2(sin, cos));
+      nextR.applyQuaternion(q);
+    }
+    // re-orthogonalise against drift
+    nextR.addScaledVector(tangents[i], -nextR.dot(tangents[i])).normalize();
+    rights.push(nextR);
+  }
+
+  // After a full circuit the transported frame rarely lines up with where it
+  // started; spread that residual twist evenly so there is no seam.
+  var endR = rights[SEGS], startR = rights[0], t0 = tangents[0];
+  var perp = new THREE.Vector3().crossVectors(t0, startR);
+  var twist = Math.atan2(endR.dot(perp), endR.dot(startR));
+  for (i = 0; i <= SEGS; i++) {
+    q.setFromAxisAngle(tangents[i], -twist * (i / SEGS));
+    rights[i].applyQuaternion(q).normalize();
+    var up = new THREE.Vector3().crossVectors(rights[i], tangents[i]).normalize();
+    frames.push({ pos: positions[i], tan: tangents[i], right: rights[i], up: up, curv: 0,
+                  pitch: Math.asin(Math.max(-1, Math.min(1, tangents[i].y))) });
+  }
+
+  // horizontal curvature only — this drives steering, and a vertical loop
+  // should not read as a corner
   for (i = 0; i <= SEGS; i++) {
     var A = frames[i].tan, B = frames[(i + 1) % SEGS].tan;
     var cross = A.x * B.z - A.z * B.x;
     var dot = Math.max(-1, Math.min(1, A.x * B.x + A.z * B.z));
-    frames[i].curv = -Math.atan2(cross, dot) / SEG_LEN;
+    var flat = Math.sqrt(A.x * A.x + A.z * A.z) * Math.sqrt(B.x * B.x + B.z * B.z);
+    frames[i].curv = flat < 0.05 ? 0 : -Math.atan2(cross, dot) / SEG_LEN;
   }
   for (var pass = 0; pass < 3; pass++) {
     var tmp = new Array(SEGS + 1);
@@ -1116,7 +1190,20 @@ function buildTrack(def) {
     var bank = Math.max(-0.34, Math.min(0.34, frames[i].curv * 46));
     frames[i].right.applyAxisAngle(frames[i].tan, bank).normalize();
     frames[i].up.crossVectors(frames[i].right, frames[i].tan).normalize();
-    if (frames[i].up.y < 0) frames[i].up.negate();
+  }
+
+  // Curvature along the track's own up axis. On the inside of a loop this is
+  // what holds the car on, so it decides how hard the surface pushes back and
+  // therefore how much drive the tyres can put down.
+  var dT = new THREE.Vector3();
+  for (i = 0; i <= SEGS; i++) {
+    dT.subVectors(frames[(i + 1) % SEGS].tan, frames[(i - 1 + SEGS) % SEGS].tan).divideScalar(2 * SEG_LEN);
+    frames[i].kUp = dT.dot(frames[i].up);
+  }
+  for (var kp = 0; kp < 2; kp++) {
+    var kt = new Array(SEGS + 1);
+    for (i = 0; i <= SEGS; i++) kt[i] = (frames[(i - 1 + SEGS) % SEGS].kUp + frames[i].kUp * 2 + frames[(i + 1) % SEGS].kUp) / 4;
+    for (i = 0; i <= SEGS; i++) frames[i].kUp = kt[i];
   }
 
   /* --- atmosphere --- */
@@ -1374,6 +1461,7 @@ function buildTrack(def) {
   var gm = new THREE.Matrix4(), gq = new THREE.Quaternion(), gs = new THREE.Vector3(), gp = new THREE.Vector3();
   for (i = 0; i < gantryCount; i++) {
     var gf = frames[Math.floor(i / gantryCount * SEGS)];
+    if (Math.abs(gf.tan.y) > 0.3) continue;      // no gantries inside the loop
     gq.setFromRotationMatrix(new THREE.Matrix4().makeBasis(gf.right, gf.up, gf.tan.clone().negate()));
     gp.copy(gf.pos).addScaledVector(gf.up, 23);
     gs.set(TRACK_W * 2 + 14, 1.5, 2.6);
@@ -1395,6 +1483,7 @@ function buildTrack(def) {
   for (i = 0; i < 20; i++) {
     var wd = words[i % words.length];
     var sf = frames[Math.floor(rnd() * SEGS)];
+    if (Math.abs(sf.tan.y) > 0.3) continue;      // keep signs off the loop
     var sside = rnd() < 0.5 ? -1 : 1;
     var sm = new THREE.Mesh(signGeo, new THREE.MeshBasicMaterial({
       map: signTexture(wd[0], wd[1]), transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
@@ -1418,6 +1507,7 @@ function buildTrack(def) {
   for (i = 0; i < padTotal; i++) {
     var seg = Math.floor(rnd() * SEGS);
     var pf = frames[seg];
+    if (Math.abs(pf.tan.y) > 0.3) continue;      // boost pads stay on level road
     var pn = (rnd() - 0.5) * (TRACK_W * 1.35);
     var pm = track(new THREE.Mesh(padGeo, padMat));
     pm.position.copy(pf.pos).addScaledVector(pf.right, pn).addScaledVector(pf.up, 0.3);
@@ -2148,7 +2238,7 @@ function makeRacer(isPlayer, i) {
     s: 0, n: 0, yaw: 0, v: 0,
     lap: 0, dist: 0, lapStart: 0, best: Infinity,
     finished: false, finishTime: 0,
-    boost: 0, boosting: 0, padTimer: 0, emit: 0, smoke: 0, tow: 0, lapTimes: [],
+    boost: 0, boosting: 0, padTimer: 0, emit: 0, smoke: 0, tow: 0, loaded: 1, lapTimes: [],
     fwd: new THREE.Vector3(0, 0, -1),
     skill: DIFFICULTY[CFG.difficulty].skill + ((i * 7) % 5) * DIFFICULTY[CFG.difficulty].step,
     lineTarget: 0, lineTimer: 0,
@@ -3007,7 +3097,7 @@ function paintUpload() {
 /* =====================================================================
    CHAMPIONSHIP
    ===================================================================== */
-var SEASON_ROUNDS = ["neonmile", "sector9", "undercity", "kaida"];
+var SEASON_ROUNDS = ["neonmile", "sector9", "undercity", "helix", "kaida"];
 var POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
 var season = null;
 
@@ -3073,7 +3163,7 @@ function seasonFinish() {
    ===================================================================== */
 var state = "menu", paused = false;
 var raceTime = 0, countdown = 0, shake = 0, endTimer = -1, graceTimer = 75;
-var flyby = 0, FLYBY_LEN = 4.6;
+var flyby = 0, FLYBY_LEN = 4.6, loopCue = 0;
 var camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), camUp = new THREE.Vector3(0, 1, 0), camReady = false;
 
 var el = {
@@ -3165,7 +3255,7 @@ function startRace(timeTrial) {
   player = racers[0];
   el.lapTotal.textContent = raceLaps;
   el.field.textContent = "/" + total;
-  raceTime = 0; countdown = 3.0; flyby = FLYBY_LEN; paused = false; camReady = false; endTimer = -1; shake = 0; graceTimer = 75;
+  raceTime = 0; countdown = 3.0; flyby = FLYBY_LEN; paused = false; loopCue = 0; camReady = false; endTimer = -1; shake = 0; graceTimer = 75;
   state = "race";
   el.menu.hidden = true; el.pause.hidden = true; el.results.hidden = true;
   el.hud.hidden = flyby > 0;
@@ -3339,13 +3429,28 @@ function drive(r, dt, steer, gas, brake, wantBoost) {
     r.boosting = Math.max(0, r.boosting - dt * 3);
   }
 
+  // How hard the surface is pushing back. Flat road sits at 1; on the inside
+  // of a loop it falls toward zero near the top unless you carry speed. Tyres
+  // can only put power down in proportion to that load, which is what stops
+  // anyone crawling round a loop on the throttle.
+  var load = (r.v * r.v * smp.kUp + GRAV * smp.up.y) / GRAV;
+  var gripLoad = Math.max(0, Math.min(1, load));
+  var steep = Math.abs(smp.tan.y);
+  r.loaded = load;
+
   var accel = 96 * car.accel * (1 - Math.min(0.78, r.v / (top + 1)));
-  r.v += gas * accel * dt;
-  r.v -= brake * 120 * dt;
-  // drag: lower for cars with a higher rated top speed, lower again in someone's wake
-  r.v -= (r.v * 0.22 + 7) * (1 - r.tow * 0.22) / (car.top * car.top) * dt;
+  r.v += gas * accel * (steep > 0.15 ? gripLoad : 1) * dt;
+  r.v -= brake * 120 * Math.max(0.15, gripLoad) * dt;
+  // drag and rolling resistance always oppose motion, even sliding backwards
+  var moving = r.v >= 0 ? 1 : -1;
+  r.v -= moving * (Math.abs(r.v) * 0.22 + 7) * (1 - r.tow * 0.22) / (car.top * car.top) * dt;
+  // gravity along the road: climbs cost speed, descents hand it back
+  r.v -= GRAV * smp.tan.y * dt;
   if (r.v > top) r.v += (top - r.v) * Math.min(1, dt * 2.4);
-  if (r.v < 0) r.v = 0;
+  // only a genuinely steep section lets a car slide back down
+  var floor = steep > 0.35 ? -48 : 0;
+  if (r.v < floor) r.v = floor;
+  if (floor === 0 && r.v < 0) r.v = 0;
 
   // heading, relative to the track direction
   var authority = 2.15 * (0.42 + 0.58 * Math.min(1, 120 / (r.v + 60)));
@@ -3360,6 +3465,7 @@ function drive(r, dt, steer, gas, brake, wantBoost) {
 
   r.s += r.v * Math.cos(r.yaw) * dt;
   r.n += r.v * Math.sin(r.yaw) * dt;
+  if (r.s < 0) { r.s = 0; if (r.v < 0) r.v = 0; }     // never reverse over the line
 
   // barriers
   var scraped = false;
@@ -3444,6 +3550,7 @@ function aiControls(r, dt) {
     if (gap > 2 && gap < 28 && Math.abs(o.n - r.n) < 7.5) target = o.n + (o.n > 0 ? -13 : 13);
   }
   var steer = Math.max(-1, Math.min(1, (target - r.n) * 0.055 - r.yaw * 1.6));
+  var climbing = Math.abs(sampleTrack(r.s + 90, scratchD).tan.y) > 0.2 || Math.abs(r.sample.tan.y) > 0.2;
   var nextCurv = Math.abs(sampleTrack(r.s + 100 + r.v * 0.55, scratchD).curv);
   var band = 1;
   if (player && !player.finished) {
@@ -3453,8 +3560,8 @@ function aiControls(r, dt) {
   var safe = MAXV * r.skill * band * (1 + r.tow * 0.06) * (1 - Math.min(0.5, nextCurv * 140));
   return {
     steer: steer,
-    gas: r.v < safe ? 1 : 0,
-    brake: r.v > safe * 1.12 ? 0.85 : 0,
+    gas: climbing ? 1 : (r.v < safe ? 1 : 0),      // never lift inside a loop
+    brake: climbing ? 0 : (r.v > safe * 1.12 ? 0.85 : 0),
     boost: r.boost > 0.3 && nextCurv < 0.0018
   };
 }
@@ -3576,7 +3683,7 @@ function updateCamera(dt) {
     camPos.lerp(head, 1 - Math.exp(-22 * dt));
     camera.position.copy(camPos);
     camLook.lerp(head.clone().addScaledVector(player.fwd, 45), 1 - Math.exp(-12 * dt));
-    camUp.lerp(scratchA.up.clone().lerp(new THREE.Vector3(0, 1, 0), 0.35).normalize(), 1 - Math.exp(-6 * dt));
+    camUp.lerp(trackUpBlend(scratchA.up, 0.35), 1 - Math.exp(-6 * dt));
     camera.up.copy(camUp);
     camera.lookAt(camLook);
     if (shake > 0.001) {
@@ -3592,21 +3699,32 @@ function updateCamera(dt) {
   }
   player.mesh.visible = true;
   var wide = CFG.camMode === 1;
-  var back = sampleTrack(player.s - (wide ? 26 : 15), scratchA);
+  // Inside a loop the road bends ~25 degrees in the distance the camera
+  // normally looks ahead, which throws the aim off the car entirely. Pull
+  // the rig in and raise it as vertical curvature tightens.
+  var tight = Math.min(1, Math.abs(sampleTrack(player.s, scratchC).kUp) * 70);
+  var back = sampleTrack(player.s - (wide ? 26 : 15) + tight * 4, scratchA);
   var target = back.pos.clone()
     .addScaledVector(back.right, player.n * (wide ? 0.55 : 0.7))
-    .addScaledVector(back.up, wide ? 12.5 : 7.4);
+    .addScaledVector(back.up, (wide ? 12.5 : 7.4) + tight * 4.5);
   if (!camReady) { camPos.copy(target); camLook.copy(player.mesh.position); camUp.copy(back.up); camReady = true; }
   camPos.lerp(target, 1 - Math.exp(-7.5 * dt));
   camera.position.copy(camPos);
 
-  var ahead = sampleTrack(player.s + 30, scratchB);
-  camLook.lerp(
-    ahead.pos.clone().addScaledVector(ahead.right, player.n * 0.35).addScaledVector(ahead.up, 3.4),
-    1 - Math.exp(-9 * dt)
-  );
-  // half-blend the banking so corners lean without disorienting
-  camUp.lerp(back.up.clone().lerp(new THREE.Vector3(0, 1, 0), 0.5).normalize(), 1 - Math.exp(-6 * dt));
+  var ahead = sampleTrack(player.s + 30 - tight * 14, scratchB);
+  var lookAt = ahead.pos.clone()
+    .addScaledVector(ahead.right, player.n * 0.35)
+    .addScaledVector(ahead.up, 3.4 + tight * 1.5);
+  // inside a loop the road bends away so fast that aiming down it loses the
+  // car; pull the aim back onto it
+  if (tight > 0.04) lookAt.lerp(player.mesh.position, tight * 0.55);
+  camLook.lerp(lookAt, 1 - Math.exp(-9 * dt));
+  // the loop encloses the car, so lift the fill light to keep it readable
+  ambient.intensity = 0.5 + tight * 0.75;
+  hemi.intensity = 0.55 + tight * 0.5;
+  // Normally the camera keeps some world-up so corners read clearly, but that
+  // has to fade out as the road tips over, or the view flips at the top of a loop.
+  camUp.lerp(trackUpBlend(back.up, 0.5), 1 - Math.exp(-6 * dt));
   camera.up.copy(camUp);
   camera.lookAt(camLook);
 
@@ -3620,6 +3738,14 @@ function updateCamera(dt) {
   camera.updateProjectionMatrix();
   followSky();
 }
+var _upTmp = new THREE.Vector3(), _worldUp = new THREE.Vector3(0, 1, 0);
+function trackUpBlend(trackUp, amount) {
+  var align = Math.max(0, trackUp.y);          // 1 on the flat, 0 vertical or inverted
+  _upTmp.copy(trackUp).lerp(_worldUp, amount * align * align);
+  if (_upTmp.lengthSq() < 1e-4) _upTmp.copy(trackUp);
+  return _upTmp.normalize();
+}
+
 function followSky() {
   sky.position.copy(camera.position);
   skyline.position.x = camera.position.x; skyline.position.z = camera.position.z;
@@ -4021,6 +4147,13 @@ function loop(now) {
       updateStreaks(dt, player.v / MAXV, player.boosting);
       postFX.speed = player.v / MAXV;
       postFX.boost = player.boosting;
+
+      // tell the player the rule the first time the road rears up, and again
+      // if they lift and start sliding back
+      var climb = player.sample.tan.y;
+      if (loopCue === 0 && climb > 0.45) { loopCue = 1; toast("Loop ahead — stay on the power"); }
+      if (loopCue >= 1 && player.v < -4 && climb > 0.3) { loopCue = 2; toast("Lost it — take another run at the loop"); }
+      if (loopCue === 2 && climb < 0.1) loopCue = 1;
 
       if (endTimer > 0) {
         endTimer -= dt;
