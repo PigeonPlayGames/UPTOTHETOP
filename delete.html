@@ -1,151 +1,359 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Open World Explorer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Eon Expanse</title>
 
 <style>
-* { box-sizing: border-box; }
+:root {
+    --ink: #e9f2ef;
+    --dim: #9db0ac;
+    --gold: #f0c674;
+    --panel: rgba(10, 18, 20, 0.62);
+    --edge: rgba(255, 255, 255, 0.14);
+}
 
-body {
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
     margin: 0;
+    height: 100%;
     overflow: hidden;
-    background: #9fc4d1;
-    font-family: Arial, sans-serif;
-    color: white;
+    background: #0c1416;
+    color: var(--ink);
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    user-select: none;
 }
 
 canvas { display: block; }
 
+.cap {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* ---------- HUD ---------- */
+
 #hud {
     position: fixed;
     inset: 0;
-    pointer-events: none;
     z-index: 5;
+    pointer-events: none;
+    transition: opacity 0.35s;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
+#hud.hidden { opacity: 0; }
 
-#title {
-    position: absolute;
-    top: 24px;
-    left: 28px;
+.corner { position: absolute; }
+#tl { top: 18px; left: 20px; }
+#tr { top: 18px; right: 20px; text-align: right; }
+#bl { bottom: 20px; left: 20px; }
+
+.brand {
     font-size: 13px;
-    letter-spacing: 5px;
-    font-weight: bold;
-    text-shadow: 0 2px 8px #0008;
+    letter-spacing: 0.42em;
+    font-weight: 700;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
 }
-
-#status {
-    position: absolute;
-    top: 52px;
-    left: 28px;
-    font-size: 11px;
-    letter-spacing: 2px;
-    color: #e3eee7;
-    text-shadow: 0 2px 5px #0008;
-}
-
-#sound-status {
-    position: absolute;
-    top: 24px;
-    right: 25px;
+.sub {
+    margin-top: 5px;
     font-size: 10px;
-    letter-spacing: 2px;
-    text-shadow: 0 2px 5px #0008;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 
-#instructions {
+#clock { font-size: 17px; letter-spacing: 0.12em; font-variant-numeric: tabular-nums; text-shadow: 0 2px 12px rgba(0,0,0,.8); }
+
+#compass-wrap {
     position: absolute;
-    bottom: 25px;
+    top: 16px;
     left: 50%;
     transform: translateX(-50%);
+    opacity: 0.92;
+}
+
+#relic-line { font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; text-shadow: 0 2px 8px rgba(0,0,0,.85); }
+#relic-line b { color: var(--gold); font-size: 15px; letter-spacing: 0.06em; }
+
+#stamina {
+    margin-top: 9px;
+    width: 168px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 3px;
+    overflow: hidden;
+}
+#stamina i {
+    display: block;
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #7fd4c1, #cfeadf);
+    border-radius: 3px;
+    transition: background 0.3s;
+}
+#stamina.low i { background: linear-gradient(90deg, #d98b6a, #e8b48c); }
+
+#minimap {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+    width: 172px;
+    height: 172px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1px solid var(--edge);
+    box-shadow: 0 8px 34px rgba(0, 0, 0, 0.5);
+    background: #16211f;
+}
+#minimap canvas { width: 100%; height: 100%; }
+#minimap .n {
+    position: absolute;
+    top: 3px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px; letter-spacing: 0.2em; font-weight: 700;
+    color: rgba(255,255,255,.85);
+    text-shadow: 0 1px 4px #000;
+}
+
+#toast {
+    position: absolute;
+    top: 96px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    backdrop-filter: blur(8px);
+    padding: 9px 20px;
+    border-radius: 999px;
     font-size: 11px;
-    letter-spacing: 2px;
-    text-shadow: 0 2px 5px #000;
-    text-align: center;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.4s, transform 0.4s;
     white-space: nowrap;
 }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-#loading {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    background: #263b38;
-    z-index: 20;
-    transition: opacity 0.8s;
+#hint {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.72);
+    text-shadow: 0 2px 8px #000;
+    transition: opacity 0.5s;
     text-align: center;
 }
+#hint.gone { opacity: 0; }
 
-#loading h1 {
-    font-size: 22px;
-    letter-spacing: 7px;
-    font-weight: 400;
-}
-
-#loading p {
-    font-size: 10px;
-    letter-spacing: 3px;
-    color: #b8c9bd;
-}
-
-#mobile-controls {
-    display: none;
+#underwater {
     position: fixed;
     inset: 0;
-    z-index: 10;
+    z-index: 4;
     pointer-events: none;
+    background: radial-gradient(circle at 50% 45%, rgba(26, 92, 110, 0.32), rgba(8, 44, 58, 0.78));
+    opacity: 0;
+    transition: opacity 0.35s;
 }
+#underwater.on { opacity: 1; }
 
-#joystick {
-    position: absolute;
-    left: 25px;
-    bottom: 35px;
-    width: 125px;
-    height: 125px;
-    border-radius: 50%;
-    background: #ffffff20;
-    border: 2px solid #ffffff55;
+/* ---------- Loader ---------- */
+
+#loader {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: radial-gradient(circle at 50% 30%, #1d3338, #0b1315 70%);
+    transition: opacity 0.8s;
+}
+#loader h1 { margin: 0; font-size: 26px; letter-spacing: 0.5em; font-weight: 300; text-indent: 0.5em; }
+#loader .tag { font-size: 10px; letter-spacing: 0.34em; color: var(--dim); text-transform: uppercase; margin: 0; }
+#bar { width: min(320px, 62vw); height: 2px; background: rgba(255,255,255,.14); overflow: hidden; }
+#bar i { display: block; height: 100%; width: 0%; background: var(--gold); transition: width 0.3s; }
+#loader .keys { font-size: 9px; letter-spacing: 0.24em; color: #6f8481; text-transform: uppercase; text-align: center; line-height: 2; max-width: 80vw; }
+
+button.primary {
     pointer-events: auto;
-    touch-action: none;
-}
-
-#stick {
-    position: absolute;
-    width: 49px;
-    height: 49px;
-    left: 36px;
-    top: 36px;
-    border-radius: 50%;
-    background: #ffffffbb;
-}
-
-.action-button {
-    position: absolute;
-    right: 28px;
-    bottom: 42px;
-    width: 65px;
-    height: 65px;
-    border-radius: 50%;
-    border: 2px solid #ffffff99;
-    background: #ffffff30;
-    color: white;
-    font-weight: bold;
+    background: rgba(240, 198, 116, 0.1);
+    border: 1px solid rgba(240, 198, 116, 0.55);
+    color: var(--gold);
+    padding: 13px 36px;
+    border-radius: 2px;
     font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.25s, color 0.25s;
+}
+button.primary:hover { background: rgba(240, 198, 116, 0.9); color: #10191a; }
+#start { display: none; }
+#loader.ready #bar, #loader.ready .tag { display: none; }
+#loader.ready #start { display: block; }
+#loader.failed h1 { font-size: 18px; letter-spacing: 0.3em; }
+
+/* ---------- Pause / settings ---------- */
+
+#menu {
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 12, 13, 0.72);
+    backdrop-filter: blur(10px);
+}
+#menu.open { display: flex; }
+.panel {
+    width: min(460px, 90vw);
+    max-height: 86vh;
+    overflow-y: auto;
+    background: rgba(13, 22, 24, 0.9);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    padding: 26px 28px 22px;
+}
+.panel h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.34em; font-weight: 600; text-transform: uppercase; }
+.panel .note { margin: 0 0 20px; font-size: 10px; letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase; }
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 9px 0;
+    border-top: 1px solid rgba(255,255,255,.07);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.row label { color: var(--dim); }
+.row input[type=range] { width: 150px; accent-color: #7fd4c1; }
+.row .val { min-width: 42px; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.seg { display: flex; gap: 4px; }
+.seg button {
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.12);
+    color: var(--dim);
+    padding: 6px 11px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+}
+.seg button.on { background: rgba(127, 212, 193, 0.18); border-color: rgba(127,212,193,.6); color: #cdeee5; }
+
+.toggle {
+    width: 42px; height: 22px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.14);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #cfd8d6;
+    transition: transform 0.2s;
+}
+.toggle.on { background: rgba(127, 212, 193, 0.55); }
+.toggle.on::after { transform: translateX(20px); }
+
+.menu-actions { display: flex; gap: 10px; margin-top: 22px; }
+.menu-actions button { flex: 1; }
+button.ghost {
+    background: none;
+    border: 1px solid rgba(255,255,255,.18);
+    color: var(--dim);
+    padding: 12px;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+}
+button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
+
+/* ---------- Touch controls ---------- */
+
+#touch { display: none; position: fixed; inset: 0; z-index: 8; pointer-events: none; }
+#stick-base {
+    position: absolute;
+    left: calc(22px + env(safe-area-inset-left));
+    bottom: calc(28px + env(safe-area-inset-bottom));
+    width: 128px; height: 128px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.28);
     pointer-events: auto;
     touch-action: none;
 }
-
-#jump { bottom: 120px; right: 35px; }
-#run { bottom: 45px; right: 115px; width: 58px; height: 58px; }
-
-@media (pointer: coarse) {
-    #mobile-controls { display: block; }
-    #instructions { bottom: 12px; font-size: 9px; }
+#stick-knob {
+    position: absolute;
+    left: 39px; top: 39px;
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.62);
+    box-shadow: 0 2px 12px rgba(0,0,0,.4);
 }
+.tbtn {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.4);
+    background: rgba(255,255,255,.1);
+    color: #fff;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    pointer-events: auto;
+    touch-action: none;
+}
+#btn-jump {
+    right: calc(26px + env(safe-area-inset-right));
+    bottom: calc(104px + env(safe-area-inset-bottom));
+    width: 72px; height: 72px;
+}
+#btn-run {
+    right: calc(108px + env(safe-area-inset-right));
+    bottom: calc(36px + env(safe-area-inset-bottom));
+    width: 62px; height: 62px;
+}
+.tbtn.on { background: rgba(127, 212, 193, 0.4); border-color: #9fe3d3; }
+#btn-menu {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top));
+    right: calc(14px + env(safe-area-inset-right));
+    width: 36px; height: 36px;
+    border-radius: 3px;
+    font-size: 14px;
+}
+
+body.touch #touch { display: block; }
+body.touch #minimap { width: 118px; height: 118px; bottom: calc(176px + env(safe-area-inset-bottom)); right: 16px; }
+body.touch #hint { display: none; }
+body.touch #tr { top: 58px; }
+body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
 </style>
 
 <script type="importmap">
@@ -160,921 +368,2849 @@ canvas { display: block; }
 
 <body>
 
-<div id="loading">
-    <h1>EXPLORATION</h1>
-    <p>PREPARING THE WORLD...</p>
+<div id="loader">
+    <h1>EON EXPANSE</h1>
+    <p class="tag" id="loader-text">Waking the world</p>
+    <div id="bar"><i></i></div>
+    <button class="primary" id="start">Enter the world</button>
+    <p class="keys" id="loader-keys">
+        WASD move &nbsp;·&nbsp; Shift sprint &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Scroll zoom<br>
+        V first person &nbsp;·&nbsp; F hide HUD &nbsp;·&nbsp; B flip model &nbsp;·&nbsp; Esc settings
+    </p>
 </div>
+
+<div id="underwater"></div>
 
 <div id="hud">
-    <div id="title">OPEN WORLD</div>
-    <div id="status">EXPLORATION MODE</div>
-    <div id="sound-status">SOUND: WAITING</div>
-    <div id="instructions">
-        WASD / ARROWS TO MOVE · SHIFT TO RUN · SPACE TO JUMP
+    <div class="corner" id="tl">
+        <div class="brand">EON EXPANSE</div>
+        <div class="sub" id="state-line">Exploring</div>
     </div>
+
+    <div id="compass-wrap"><canvas id="compass" width="520" height="56"></canvas></div>
+
+    <div class="corner" id="tr">
+        <div id="clock">06:00</div>
+        <div class="sub" id="perf">—</div>
+    </div>
+
+    <div class="corner" id="bl">
+        <div id="relic-line"><b id="relic-count">0</b> / <span id="relic-total">12</span> relics</div>
+        <div id="stamina"><i></i></div>
+        <div class="sub" id="coords">x 0 · z 0</div>
+    </div>
+
+    <div id="minimap"><canvas id="minimap-canvas" width="344" height="344"></canvas><div class="n">N</div></div>
+
+    <div id="toast"></div>
+    <div id="hint">Click to look around</div>
 </div>
 
-<div id="mobile-controls">
-    <div id="joystick"><div id="stick"></div></div>
-    <button class="action-button" id="jump">JUMP</button>
-    <button class="action-button" id="run">RUN</button>
+<div id="touch">
+    <div id="stick-base"><div id="stick-knob"></div></div>
+    <button class="tbtn" id="btn-jump">JUMP</button>
+    <button class="tbtn" id="btn-run">RUN</button>
+    <button class="tbtn" id="btn-menu">≡</button>
+</div>
+
+<div id="menu">
+    <div class="panel">
+        <h2>Expedition</h2>
+        <p class="note" id="menu-note">Paused</p>
+
+        <div class="row">
+            <label>Quality</label>
+            <div class="seg" id="seg-quality">
+                <button data-v="low">Low</button>
+                <button data-v="medium">Medium</button>
+                <button data-v="high">High</button>
+            </div>
+        </div>
+        <div class="row"><label>Shadows</label><div class="toggle" id="tg-shadows"></div></div>
+        <div class="row"><label>Field of view</label><input type="range" id="rg-fov" min="55" max="95" step="1"><span class="val" id="v-fov">70</span></div>
+        <div class="row"><label>Look sensitivity</label><input type="range" id="rg-sens" min="0.3" max="2.5" step="0.1"><span class="val" id="v-sens">1.0</span></div>
+        <div class="row"><label>Invert look</label><div class="toggle" id="tg-invert"></div></div>
+        <div class="row"><label>Volume</label><input type="range" id="rg-vol" min="0" max="1" step="0.05"><span class="val" id="v-vol">70</span></div>
+        <div class="row"><label>Day length (min)</label><input type="range" id="rg-day" min="2" max="30" step="1"><span class="val" id="v-day">8</span></div>
+        <div class="row"><label>Freeze time</label><div class="toggle" id="tg-freeze"></div></div>
+        <div class="row"><label>Model faces backwards</label><div class="toggle" id="tg-flip"></div></div>
+
+        <div class="menu-actions">
+            <button class="primary" id="btn-resume">Resume</button>
+        </div>
+        <div class="menu-actions">
+            <button class="ghost" id="btn-respawn">Return to camp</button>
+            <button class="ghost" id="btn-reset">Reset relics</button>
+        </div>
+    </div>
 </div>
 
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// --------------------------------------------------
-// SETTINGS
-// --------------------------------------------------
+/* ============================================================
+   CONFIG
+   ============================================================ */
 
-const MODEL_PATH = './playerdelete.glb';
+const params = new URLSearchParams(location.search);
+const MODEL_PATH = params.get('model') || './playerdelete.glb';
+const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 
-const WALK_SPEED = 4.2;
-const RUN_SPEED = 7.8;
-const GRAVITY = 19;
-const JUMP_FORCE = 7.5;
+const PLAYER_HEIGHT = 1.85;
+const WATER_LEVEL = 0;
+const WORLD_RADIUS = 430;          // land fades to ocean past this
+const TERRAIN_SIZE = 1000;
+const RELIC_TOTAL = 12;
+const STRIP_ROOT_MOTION = true;    // stops imported clips sliding the character
 
-// --------------------------------------------------
-// GAME VARIABLES
-// --------------------------------------------------
+const WALK_SPEED = 3.3;
+const RUN_SPEED = 7.4;
+const SWIM_SPEED = 2.6;
+const GRAVITY = 22;
+const JUMP_VELOCITY = 8.2;
+const GROUND_ACCEL = 30;
+const AIR_ACCEL = 8;
+const PLAYER_RADIUS = 0.45;
 
-let scene;
-let camera;
-let renderer;
-let clock;
+const QUALITY = {
+    low:    { seg: 150, trees: 520,  rocks: 220, grassCells: 8,  grassPer: 10, shadowSize: 1024, pixel: 1.0,  waterSeg: 110, deer: 3 },
+    medium: { seg: 230, trees: 1150, rocks: 420, grassCells: 11, grassPer: 20, shadowSize: 1536, pixel: 1.35, waterSeg: 150, deer: 6 },
+    high:   { seg: 320, trees: 1900, rocks: 650, grassCells: 15, grassPer: 24, shadowSize: 2048, pixel: 1.8,  waterSeg: 190, deer: 8 }
+};
 
-let player;
-let modelRoot;
-let mixer;
+const isTouch = window.matchMedia('(pointer: coarse)').matches;
+if (isTouch) document.body.classList.add('touch');
 
-let animations = {};
-let activeAnimation = null;
+/* ============================================================
+   SETTINGS + SAVE
+   ============================================================ */
 
-let velocityY = 0;
-let grounded = true;
-let jumping = false;
-let moveSpeed = 0;
-let stepTimer = 0;
+const SAVE_KEY = 'eon-expanse-v1';
 
-let cameraYaw = 0;
-let cameraPitch = 0.2;
+const settings = {
+    quality: isTouch ? 'low' : 'high',
+    shadows: !isTouch,
+    fov: 70,
+    sens: 1.0,
+    invert: false,
+    volume: 0.7,
+    dayMinutes: 8,
+    freeze: false,
+    flip: false
+};
 
-let cameraDrag = false;
-let lastPointerX = 0;
-let lastPointerY = 0;
+let save = { relics: [], time: 0.3, pos: null };
 
-let mobileRunning = false;
-let jumpRequested = false;
+function loadSave() {
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data.settings) Object.assign(settings, data.settings);
+        if (Array.isArray(data.relics)) save.relics = data.relics;
+        if (typeof data.time === 'number') save.time = data.time;
+        if (Array.isArray(data.pos)) save.pos = data.pos;
+    } catch (e) { /* corrupt save, start fresh */ }
+}
 
-const keys = {};
-const joystick = { x: 0, y: 0 };
+function writeSave() {
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify({
+            settings,
+            relics: relics.filter(r => r.taken).map(r => r.id),
+            time: timeOfDay,
+            pos: player ? [player.position.x, player.position.y, player.position.z] : null
+        }));
+    } catch (e) { /* storage blocked — fine */ }
+}
 
-const loadingScreen = document.getElementById('loading');
-const statusText = document.getElementById('status');
-const soundStatus = document.getElementById('sound-status');
+loadSave();
+const Q = QUALITY[settings.quality] || QUALITY.high;
 
-const desiredCamera = new THREE.Vector3();
-const cameraLook = new THREE.Vector3();
+/* ============================================================
+   MATH + NOISE
+   ============================================================ */
 
-// --------------------------------------------------
-// AUDIO
-// --------------------------------------------------
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const lerp = (a, b, t) => a + (b - a) * t;
 
-let audioContext = null;
-let audioReady = false;
-let masterVolume = null;
+function smoothstep(edge0, edge1, x) {
+    const t = clamp01((x - edge0) / (edge1 - edge0));
+    return t * t * (3 - 2 * t);
+}
 
-function initialiseAudio() {
-    if (audioReady) {
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
+function mulberry32(a) {
+    return function () {
+        a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+
+function hash2i(ix, iy) {
+    let h = Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263) + SEED | 0;
+    h = Math.imul(h ^ h >>> 13, 1274126177);
+    return ((h ^ h >>> 16) >>> 0) / 4294967296;
+}
+
+function hash3i(ix, iy, iz) {
+    let h = Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263) + Math.imul(iz | 0, 2147483647) + SEED | 0;
+    h = Math.imul(h ^ h >>> 13, 1274126177);
+    return ((h ^ h >>> 16) >>> 0) / 4294967296;
+}
+
+function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+
+function valueNoise(x, y) {
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const fx = fade(x - x0), fy = fade(y - y0);
+    const a = hash2i(x0, y0);
+    const b = hash2i(x0 + 1, y0);
+    const c = hash2i(x0, y0 + 1);
+    const d = hash2i(x0 + 1, y0 + 1);
+    const top = a + (b - a) * fx;
+    const bot = c + (d - c) * fx;
+    return top + (bot - top) * fy;
+}
+
+function fbm(x, y, octaves) {
+    let amp = 0.5, freq = 1, sum = 0, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+        sum += amp * (valueNoise(x * freq, y * freq) * 2 - 1);
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2.03;
+    }
+    return sum / norm;
+}
+
+function ridged(x, y, octaves) {
+    let amp = 0.5, freq = 1, sum = 0, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+        const n = 1 - Math.abs(valueNoise(x * freq, y * freq) * 2 - 1);
+        sum += amp * n * n;
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2.07;
+    }
+    return sum / norm;
+}
+
+/* ============================================================
+   TERRAIN FIELD
+   ============================================================ */
+
+function terrainHeight(x, z) {
+    // Broad land/sea shape
+    const continent = fbm(x * 0.0023, z * 0.0023, 4);
+    let h = continent * 34 - 11;
+
+    // Mountain ranges, masked so they occur in belts rather than everywhere
+    const mountainMask = clamp01(((fbm(x * 0.0012 + 41, z * 0.0012 - 73, 3) * 0.5 + 0.5) - 0.50) / 0.22);
+    h += ridged(x * 0.0060, z * 0.0060, 4) * 82 * mountainMask * mountainMask;
+
+    // Craggy detail that only bites on high ground, so peaks expose rock
+    const high = smoothstep(16, 42, h);
+    h += ridged(x * 0.021 + 7, z * 0.021 - 3, 3) * 9 * high;
+
+    // Inland basins become lakes
+    const lake = smoothstep(0.62, 0.80, fbm(x * 0.0033 - 210, z * 0.0033 + 160, 3) * 0.5 + 0.5);
+    h -= lake * 16 * (1 - smoothstep(28, 60, h));
+
+    h += fbm(x * 0.017, z * 0.017, 3) * 2.1;
+    h += fbm(x * 0.062, z * 0.062, 2) * 0.45;
+
+    // Flat, friendly meadow around the camp
+    const d = Math.sqrt(x * x + z * z);
+    const camp = 1 - smoothstep(26, 105, d);
+    h = h * (1 - camp) + (3.4 + fbm(x * 0.04 + 17, z * 0.04 - 5, 2) * 0.9) * camp;
+
+    // Fall away into open ocean at the world edge
+    const edge = smoothstep(WORLD_RADIUS - 40, WORLD_RADIUS + 60, d);
+    h = h * (1 - edge) - 22 * edge;
+
+    return h;
+}
+
+const _n = new THREE.Vector3();
+function terrainNormal(x, z, out) {
+    const e = 0.7;
+    const hl = terrainHeight(x - e, z);
+    const hr = terrainHeight(x + e, z);
+    const hd = terrainHeight(x, z - e);
+    const hu = terrainHeight(x, z + e);
+    return (out || _n).set(hl - hr, 2 * e, hd - hu).normalize();
+}
+
+function slopeAt(x, z) {
+    return 1 - terrainNormal(x, z, _n).y;
+}
+
+// The terrain is drawn as a fixed grid of triangles, so the analytic height
+// sits above the visible surface on ridges — by over half a metre at low
+// quality. Anything that stands on, walks on, or looks at the ground uses
+// this instead: the exact height of the triangle actually being rendered.
+const TERRAIN_STEP = TERRAIN_SIZE / Q.seg;
+const TERRAIN_ORIGIN = -TERRAIN_SIZE / 2;
+
+function groundHeight(x, z) {
+    const gx = Math.floor((x - TERRAIN_ORIGIN) / TERRAIN_STEP);
+    const gz = Math.floor((z - TERRAIN_ORIGIN) / TERRAIN_STEP);
+    const x0 = TERRAIN_ORIGIN + gx * TERRAIN_STEP;
+    const z0 = TERRAIN_ORIGIN + gz * TERRAIN_STEP;
+    const u = (x - x0) / TERRAIN_STEP;
+    const v = (z - z0) / TERRAIN_STEP;
+
+    const h00 = terrainHeight(x0, z0);
+    const h10 = terrainHeight(x0 + TERRAIN_STEP, z0);
+    const h01 = terrainHeight(x0, z0 + TERRAIN_STEP);
+
+    // Each quad splits along u + v = 1
+    if (u + v <= 1) {
+        return h00 + (h10 - h00) * u + (h01 - h00) * v;
+    }
+    const h11 = terrainHeight(x0 + TERRAIN_STEP, z0 + TERRAIN_STEP);
+    return h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - v);
+}
+
+// 0 water · 1 sand · 2 grass · 3 rock · 4 snow
+function surfaceAt(x, z, h) {
+    const height = h === undefined ? groundHeight(x, z) : h;
+    if (height < WATER_LEVEL + 0.25) return 0;
+    if (height < WATER_LEVEL + 2.2) return 1;
+    if (height > 56) return 4;
+    if (slopeAt(x, z) > 0.42) return 3;
+    return 2;
+}
+
+const COL_SAND = new THREE.Color(0xcfbd91);
+const COL_GRASS = new THREE.Color(0x5f8a46);
+const COL_GRASS_DRY = new THREE.Color(0x87924f);
+const COL_MOSS = new THREE.Color(0x3f6b3c);
+const COL_ROCK = new THREE.Color(0x6d6f6b);
+const COL_ROCK_DARK = new THREE.Color(0x4e5450);
+const COL_SNOW = new THREE.Color(0xccd5d8);
+const _c1 = new THREE.Color();
+const _c2 = new THREE.Color();
+
+function biomeColor(x, z, h, slope, out) {
+    const dry = fbm(x * 0.004 + 11, z * 0.004 - 7, 2) * 0.5 + 0.5;
+    _c1.copy(COL_GRASS).lerp(COL_GRASS_DRY, dry * 0.8);
+    _c1.lerp(COL_MOSS, clamp01((fbm(x * 0.009 - 30, z * 0.009 + 18, 2) * 0.5 + 0.5) - 0.35) * 0.6);
+    // Fine mottling so open ground doesn't read as one flat sheet of green
+    _c1.multiplyScalar(1 + fbm(x * 0.055 + 3, z * 0.055 - 9, 2) * 0.11);
+
+    // beach
+    _c1.lerp(COL_SAND, 1 - smoothstep(WATER_LEVEL + 0.1, WATER_LEVEL + 2.9, h));
+    // underwater sand gets darker
+    if (h < WATER_LEVEL) _c1.lerp(COL_ROCK_DARK, smoothstep(WATER_LEVEL, WATER_LEVEL - 7, h) * 0.7);
+
+    // rock on slopes
+    _c2.copy(COL_ROCK).lerp(COL_ROCK_DARK, fbm(x * 0.03, z * 0.03, 2) * 0.5 + 0.5);
+    _c1.lerp(_c2, smoothstep(0.3, 0.55, slope));
+
+    // snow caps — high and gradual, so peaks are capped rather than drowned
+    const snowLine = 52 + fbm(x * 0.006, z * 0.006, 2) * 8;
+    _c1.lerp(COL_SNOW, smoothstep(snowLine, snowLine + 16, h) * (1 - smoothstep(0.4, 0.66, slope)));
+
+    return out.copy(_c1);
+}
+
+/* ============================================================
+   RENDERER / SCENE / SKY
+   ============================================================ */
+
+let scene, camera, renderer, clock;
+let sky, sun, moon, hemi, sunTarget;
+let water, waterUniforms;
+let stars, starMaterial;
+let windUniform = { value: 0 };
+
+const skyUniforms = {
+    uZenith: { value: new THREE.Color(0x3f7fc4) },
+    uHorizon: { value: new THREE.Color(0xbcd4e0) },
+    uGround: { value: new THREE.Color(0x4a5c58) },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunColor: { value: new THREE.Color(0xfff2d8) },
+    uNight: { value: 0 }
+};
+
+const ACES_GLSL = `
+vec3 aces(vec3 x){
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+vec3 present(vec3 c){
+    return pow(aces(c), vec3(1.0 / 2.2));
+}
+`;
+
+// Untextured points render as hard squares, so build a soft round dot once.
+let dotTexture = null;
+function makeDotTexture() {
+    if (dotTexture) return dotTexture;
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.3, 'rgba(255,255,255,0.85)');
+    grd.addColorStop(0.65, 'rgba(255,255,255,0.22)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 64, 64);
+    dotTexture = new THREE.CanvasTexture(c);
+    dotTexture.colorSpace = THREE.SRGBColorSpace;
+    return dotTexture;
+}
+
+function initRenderer() {
+    scene = new THREE.Scene();
+    clock = new THREE.Clock();
+
+    camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.1, 2200);
+    camera.position.set(0, 8, 12);
+
+    renderer = new THREE.WebGLRenderer({ antialias: !isTouch, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, Q.pixel));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = settings.shadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    scene.fog = new THREE.Fog(0xbcd4e0, 70, 780);
+
+    // Sky dome
+    sky = new THREE.Mesh(
+        new THREE.SphereGeometry(1400, 32, 20),
+        new THREE.ShaderMaterial({
+            uniforms: skyUniforms,
+            side: THREE.BackSide,
+            depthWrite: false,
+            fog: false,
+            vertexShader: `
+                varying vec3 vDir;
+                void main() {
+                    vDir = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uGround;
+                uniform vec3 uSunDir; uniform vec3 uSunColor; uniform float uNight;
+                varying vec3 vDir;
+                ${ACES_GLSL}
+                void main() {
+                    vec3 d = normalize(vDir);
+                    float up = clamp(d.y, -1.0, 1.0);
+                    vec3 col = mix(uHorizon, uZenith, pow(clamp(up, 0.0, 1.0), 0.55));
+                    col = mix(col, uGround, clamp(-up * 3.0, 0.0, 1.0));
+                    float sd = max(dot(d, uSunDir), 0.0);
+                    col += uSunColor * pow(sd, 420.0) * 7.0;
+                    col += uSunColor * pow(sd, 6.0) * 0.30 * (1.0 - uNight);
+                    col += uSunColor * pow(sd, 1.8) * 0.08 * (1.0 - uNight);
+
+                    // Moon sits opposite the sun, so it rises as the sun sets
+                    float md = max(dot(d, -uSunDir), 0.0);
+                    col += vec3(0.85, 0.89, 1.0) * pow(md, 1600.0) * 6.0 * uNight;
+                    col += vec3(0.55, 0.62, 0.85) * pow(md, 9.0) * 0.14 * uNight;
+                    gl_FragColor = vec4(present(col), 1.0);
+                }
+            `
+        })
+    );
+    sky.renderOrder = -1000;
+    sky.frustumCulled = false;
+    scene.add(sky);
+
+    // Stars
+    const starCount = 1400;
+    const starPos = new Float32Array(starCount * 3);
+    const rnd = mulberry32(SEED ^ 0x5151);
+    for (let i = 0; i < starCount; i++) {
+        const u = rnd() * 2 - 1;
+        const theta = rnd() * Math.PI * 2;
+        const r = Math.sqrt(1 - u * u);
+        starPos[i * 3] = Math.cos(theta) * r * 1200;
+        starPos[i * 3 + 1] = Math.abs(u) * 1200;
+        starPos[i * 3 + 2] = Math.sin(theta) * r * 1200;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    starMaterial = new THREE.PointsMaterial({
+        color: 0xffffff, size: 7.5, sizeAttenuation: false,
+        map: makeDotTexture(), alphaTest: 0.01,
+        transparent: true, opacity: 0, depthWrite: false, fog: false
+    });
+    stars = new THREE.Points(starGeo, starMaterial);
+    stars.renderOrder = -999;
+    stars.frustumCulled = false;
+    scene.add(stars);
+
+    // Lights
+    hemi = new THREE.HemisphereLight(0xcfe5f5, 0x4a5536, 1.0);
+    scene.add(hemi);
+
+    sun = new THREE.DirectionalLight(0xfff0d4, 3);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(Q.shadowSize, Q.shadowSize);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 420;
+    sun.shadow.camera.left = -75;
+    sun.shadow.camera.right = 75;
+    sun.shadow.camera.top = 75;
+    sun.shadow.camera.bottom = -75;
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.04;
+    scene.add(sun);
+
+    sunTarget = new THREE.Object3D();
+    scene.add(sunTarget);
+    sun.target = sunTarget;
+
+    moon = new THREE.DirectionalLight(0x9fb8e8, 0);
+    scene.add(moon);
+}
+
+/* ============================================================
+   WIND SHADER INJECTION
+   ============================================================ */
+
+function applyWind(material, strength, heightBias) {
+    const bias = heightBias === undefined ? 0 : heightBias;
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.uWindTime = windUniform;
+        shader.uniforms.uWindAmount = { value: strength };
+        shader.vertexShader = 'uniform float uWindTime;\nuniform float uWindAmount;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>
+            #ifdef USE_INSTANCING
+                float wPhase = instanceMatrix[3].x * 0.33 + instanceMatrix[3].z * 0.27;
+            #else
+                float wPhase = 0.0;
+            #endif
+            float wH = max(transformed.y - ${bias.toFixed(2)}, 0.0);
+            float wSway = sin(uWindTime * 1.6 + wPhase) * 0.5 + sin(uWindTime * 2.7 + wPhase * 1.7) * 0.5;
+            transformed.x += wSway * uWindAmount * wH;
+            transformed.z += wSway * uWindAmount * wH * 0.45;`
+        );
+    };
+    material.customProgramCacheKey = () => 'wind' + strength + '_' + bias;
+}
+
+/* ============================================================
+   TERRAIN MESH
+   ============================================================ */
+
+let terrainMesh;
+
+function buildTerrain() {
+    const seg = Q.seg;
+    const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, seg, seg);
+    const pos = geo.attributes.position;
+    const count = pos.count;
+    const colors = new Float32Array(count * 3);
+    const col = new THREE.Color();
+
+    for (let i = 0; i < count; i++) {
+        const x = pos.getX(i);
+        const z = -pos.getY(i);
+        const h = terrainHeight(x, z);
+        pos.setZ(i, h);
+    }
+
+    geo.computeVertexNormals();
+    geo.rotateX(-Math.PI / 2);
+
+    const normals = geo.attributes.normal;
+    for (let i = 0; i < count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        const slope = 1 - normals.getY(i);
+        biomeColor(x, z, y, slope, col);
+        colors[i * 3] = col.r;
+        colors[i * 3 + 1] = col.g;
+        colors[i * 3 + 2] = col.b;
+    }
+
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.96,
+        metalness: 0
+    });
+
+    terrainMesh = new THREE.Mesh(geo, mat);
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+}
+
+/* ============================================================
+   WATER
+   ============================================================ */
+
+function buildWater() {
+    const size = 1900;
+    const seg = Q.waterSeg;
+    const geo = new THREE.PlaneGeometry(size, size, seg, seg);
+    geo.rotateX(-Math.PI / 2);
+
+    const pos = geo.attributes.position;
+    const depth = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        const h = Math.abs(x) > TERRAIN_SIZE / 2 || Math.abs(z) > TERRAIN_SIZE / 2
+            ? -30
+            : terrainHeight(x, z);
+        depth[i] = Math.max(0, WATER_LEVEL - h);
+    }
+    geo.setAttribute('aDepth', new THREE.BufferAttribute(depth, 1));
+
+    waterUniforms = {
+        uTime: { value: 0 },
+        uShallow: { value: new THREE.Color(0x4fa3a8) },
+        uDeep: { value: new THREE.Color(0x12303f) },
+        uSkyColor: { value: new THREE.Color(0xbcd4e0) },
+        uSunDir: { value: skyUniforms.uSunDir.value },
+        uSunColor: { value: skyUniforms.uSunColor.value },
+        uNight: { value: 0 },
+        uFogColor: { value: new THREE.Color(0xbcd4e0) },
+        uFogNear: { value: 70 },
+        uFogFar: { value: 780 }
+    };
+
+    const mat = new THREE.ShaderMaterial({
+        uniforms: waterUniforms,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        vertexShader: `
+            uniform float uTime;
+            attribute float aDepth;
+            varying float vDepth;
+            varying vec3 vWorld;
+            varying vec3 vWaveNormal;
+            void main() {
+                vec3 p = position;
+                float amp = clamp(aDepth * 0.7, 0.12, 1.0);
+                float w1 = sin(p.x * 0.085 + uTime * 1.25);
+                float w2 = sin(p.z * 0.071 - uTime * 0.95);
+                float w3 = sin((p.x + p.z) * 0.21 + uTime * 2.1);
+                p.y += (w1 * 0.16 + w2 * 0.14 + w3 * 0.05) * amp;
+
+                float dx = cos(p.x * 0.085 + uTime * 1.25) * 0.0136 + cos((p.x + p.z) * 0.21 + uTime * 2.1) * 0.0105;
+                float dz = cos(p.z * 0.071 - uTime * 0.95) * 0.0099 + cos((p.x + p.z) * 0.21 + uTime * 2.1) * 0.0105;
+                vWaveNormal = normalize(vec3(-dx * amp, 1.0, -dz * amp));
+
+                vDepth = aDepth;
+                vec4 wp = modelMatrix * vec4(p, 1.0);
+                vWorld = wp.xyz;
+                gl_Position = projectionMatrix * viewMatrix * wp;
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uShallow; uniform vec3 uDeep; uniform vec3 uSkyColor;
+            uniform vec3 uSunDir; uniform vec3 uSunColor; uniform float uNight;
+            uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar;
+            varying float vDepth;
+            varying vec3 vWorld;
+            varying vec3 vWaveNormal;
+            ${ACES_GLSL}
+            void main() {
+                vec3 n = normalize(vWaveNormal);
+                vec3 v = normalize(cameraPosition - vWorld);
+                if (dot(n, v) < 0.0) n = -n;
+
+                float fres = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0);
+                float dNorm = clamp(vDepth / 7.0, 0.0, 1.0);
+
+                vec3 col = mix(uShallow, uDeep, dNorm);
+                col = mix(col, uSkyColor, fres * 0.72);
+
+                vec3 hv = normalize(uSunDir + v);
+                col += uSunColor * pow(max(dot(n, hv), 0.0), 240.0) * 3.2;
+                col += uSunColor * pow(max(dot(n, hv), 0.0), 20.0) * 0.10 * (1.0 - uNight);
+
+                float band = sin(vWorld.x * 0.9 + vWorld.z * 0.9 + uTime * 2.2) * 0.5 + 0.5;
+                float foam = smoothstep(1.5, 0.0, vDepth) * (0.35 + 0.65 * band);
+                col = mix(col, vec3(0.86, 0.93, 0.95), clamp(foam, 0.0, 1.0) * 0.55);
+
+                col *= mix(1.0, 0.22, uNight);
+
+                float alpha = mix(0.58, 0.94, dNorm);
+                alpha = max(alpha, clamp(foam, 0.0, 1.0) * 0.75);
+
+                vec3 outCol = present(col);
+                float dist = length(cameraPosition - vWorld);
+                float fogF = smoothstep(uFogNear, uFogFar, dist);
+                outCol = mix(outCol, pow(uFogColor, vec3(1.0 / 2.2)), fogF);
+
+                gl_FragColor = vec4(outCol, alpha);
+            }
+        `
+    });
+
+    water = new THREE.Mesh(geo, mat);
+    water.position.y = WATER_LEVEL;
+    water.renderOrder = 2;
+    scene.add(water);
+}
+
+/* ============================================================
+   COLLISION GRID
+   ============================================================ */
+
+const COLLIDER_CELL = 10;
+const colliderGrid = new Map();
+
+function colliderKey(cx, cz) { return cx * 10007 + cz; }
+
+function addCollider(x, z, r) {
+    const cx = Math.floor(x / COLLIDER_CELL);
+    const cz = Math.floor(z / COLLIDER_CELL);
+    const key = colliderKey(cx, cz);
+    let arr = colliderGrid.get(key);
+    if (!arr) { arr = []; colliderGrid.set(key, arr); }
+    arr.push({ x, z, r });
+}
+
+function resolveCollisions(position, radius) {
+    const cx = Math.floor(position.x / COLLIDER_CELL);
+    const cz = Math.floor(position.z / COLLIDER_CELL);
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            const arr = colliderGrid.get(colliderKey(cx + i, cz + j));
+            if (!arr) continue;
+            for (let k = 0; k < arr.length; k++) {
+                const c = arr[k];
+                const dx = position.x - c.x;
+                const dz = position.z - c.z;
+                const rr = c.r + radius;
+                const d2 = dx * dx + dz * dz;
+                if (d2 < rr * rr && d2 > 1e-8) {
+                    const d = Math.sqrt(d2);
+                    const push = (rr - d) / d;
+                    position.x += dx * push;
+                    position.z += dz * push;
+                }
+            }
+        }
+    }
+}
+
+/* ============================================================
+   VEGETATION + ROCKS
+   ============================================================ */
+
+const _dummy = new THREE.Object3D();
+let grassMesh = null;
+let grassPerCell = 0;
+let grassHalf = 0;
+const GRASS_CELL = 7;
+let lastGrassCell = { x: 1e9, z: 1e9 };
+
+function pineCanopyGeometry() {
+    const parts = [];
+    for (let i = 0; i < 3; i++) {
+        const g = new THREE.ConeGeometry(1.5 - i * 0.32, 2.5 - i * 0.2, 7);
+        g.translate(0, 3.0 + i * 1.15, 0);
+        parts.push(g);
+    }
+    return mergeGeometries(parts, false);
+}
+
+function broadCanopyGeometry() {
+    const parts = [];
+    const offsets = [[0, 4.1, 0, 1.7], [0.9, 3.5, 0.5, 1.15], [-0.85, 3.6, -0.4, 1.05], [0.2, 4.9, -0.7, 1.0]];
+    for (const [x, y, z, s] of offsets) {
+        const g = new THREE.IcosahedronGeometry(s, 0);
+        g.scale(1, 0.85, 1);
+        g.translate(x, y, z);
+        parts.push(g);
+    }
+    return mergeGeometries(parts, false);
+}
+
+function tuftGeometry() {
+    // five tapered blades radiating from a point
+    const blades = 5;
+    const positions = [];
+    const colors = [];
+    const dark = new THREE.Color(0x2f5a2c);
+    const light = new THREE.Color(0x8fb559);
+    for (let b = 0; b < blades; b++) {
+        const a = (b / blades) * Math.PI * 2 + b * 0.7;
+        const lean = 0.10 + (b % 3) * 0.045;
+        const hgt = 0.26 + (b % 2) * 0.1;
+        const w = 0.028;
+        const dx = Math.cos(a), dz = Math.sin(a);
+        const px = -dz * w, pz = dx * w;
+        positions.push(-px, 0, -pz, px, 0, pz, dx * lean, hgt, dz * lean);
+        colors.push(dark.r, dark.g, dark.b, dark.r, dark.g, dark.b, light.r, light.g, light.b);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildVegetation() {
+    const rnd = mulberry32(SEED ^ 0x7777);
+    const pines = [];
+    const broads = [];
+    const rocks = [];
+
+    const step = 7.5;
+    const limit = WORLD_RADIUS - 6;
+
+    for (let x = -limit; x <= limit; x += step) {
+        for (let z = -limit; z <= limit; z += step) {
+            const jx = x + (rnd() - 0.5) * step * 1.6;
+            const jz = z + (rnd() - 0.5) * step * 1.6;
+            const d = Math.sqrt(jx * jx + jz * jz);
+            if (d > limit || d < 16) continue;
+
+            const h = groundHeight(jx, jz);
+            if (h < WATER_LEVEL + 1.6 || h > 44) continue;
+            if (slopeAt(jx, jz) > 0.38) continue;
+
+            const forest = fbm(jx * 0.0042 + 90, jz * 0.0042 - 120, 3) * 0.5 + 0.5;
+            const chance = (forest - 0.38) * 2.6;
+            if (rnd() < chance) {
+                const alpine = h > 26 || forest > 0.72;
+                (alpine ? pines : broads).push({ x: jx, z: jz, h, s: 0.68 + rnd() * 0.75, r: rnd() });
+            } else if (rnd() < 0.14) {
+                rocks.push({ x: jx, z: jz, h, s: 0.3 + rnd() * 1.5, r: rnd() });
+            }
+        }
+    }
+
+    // extra rocks on high ground and shorelines
+    for (let i = 0; i < Q.rocks; i++) {
+        const a = rnd() * Math.PI * 2;
+        const d = 18 + rnd() * (WORLD_RADIUS - 25);
+        const x = Math.cos(a) * d;
+        const z = Math.sin(a) * d;
+        const h = groundHeight(x, z);
+        if (h < WATER_LEVEL - 1.5) continue;
+        rocks.push({ x, z, h, s: 0.25 + rnd() * 1.7, r: rnd() });
+    }
+
+    trimTo(pines, Math.round(Q.trees * 0.55), rnd);
+    trimTo(broads, Math.round(Q.trees * 0.45), rnd);
+    trimTo(rocks, Q.rocks, rnd);
+
+    const trunkGeo = new THREE.CylinderGeometry(0.17, 0.3, 3.4, 6);
+    trunkGeo.translate(0, 1.7, 0);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4330, roughness: 1 });
+
+    const allTrees = pines.concat(broads);
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, Math.max(allTrees.length, 1));
+    trunks.castShadow = settings.shadows;
+    trunks.receiveShadow = true;
+
+    const pineMat = new THREE.MeshStandardMaterial({ color: 0x3f6b41, roughness: 1, flatShading: true });
+    const broadMat = new THREE.MeshStandardMaterial({ color: 0x5c8a42, roughness: 1, flatShading: true });
+    applyWind(pineMat, 0.012, 2.5);
+    applyWind(broadMat, 0.016, 2.5);
+
+    const pineMesh = new THREE.InstancedMesh(pineCanopyGeometry(), pineMat, Math.max(pines.length, 1));
+    const broadMesh = new THREE.InstancedMesh(broadCanopyGeometry(), broadMat, Math.max(broads.length, 1));
+    pineMesh.castShadow = settings.shadows;
+    broadMesh.castShadow = settings.shadows;
+
+    const tint = new THREE.Color();
+
+    allTrees.forEach((t, i) => {
+        _dummy.position.set(t.x, t.h - 0.15, t.z);
+        _dummy.rotation.set(0, t.r * 6.283, 0);
+        _dummy.scale.setScalar(t.s);
+        _dummy.updateMatrix();
+        trunks.setMatrixAt(i, _dummy.matrix);
+        addCollider(t.x, t.z, 0.42 * t.s + 0.2);
+    });
+
+    pines.forEach((t, i) => {
+        _dummy.position.set(t.x, t.h - 0.15, t.z);
+        _dummy.rotation.set(0, t.r * 6.283, 0);
+        _dummy.scale.set(t.s, t.s * (0.9 + t.r * 0.35), t.s);
+        _dummy.updateMatrix();
+        pineMesh.setMatrixAt(i, _dummy.matrix);
+        tint.setHSL(0.29 + t.r * 0.05, 0.3 + t.r * 0.14, 0.22 + t.r * 0.1);
+        pineMesh.setColorAt(i, tint);
+    });
+
+    broads.forEach((t, i) => {
+        _dummy.position.set(t.x, t.h - 0.15, t.z);
+        _dummy.rotation.set(0, t.r * 6.283, 0);
+        _dummy.scale.set(t.s, t.s * (0.85 + t.r * 0.3), t.s);
+        _dummy.updateMatrix();
+        broadMesh.setMatrixAt(i, _dummy.matrix);
+        tint.setHSL(0.24 + t.r * 0.07, 0.34 + t.r * 0.16, 0.28 + t.r * 0.12);
+        broadMesh.setColorAt(i, tint);
+    });
+
+    if (pineMesh.instanceColor) pineMesh.instanceColor.needsUpdate = true;
+    if (broadMesh.instanceColor) broadMesh.instanceColor.needsUpdate = true;
+
+    trunks.count = allTrees.length;
+    pineMesh.count = pines.length;
+    broadMesh.count = broads.length;
+    trunks.instanceMatrix.needsUpdate = true;
+    pineMesh.instanceMatrix.needsUpdate = true;
+    broadMesh.instanceMatrix.needsUpdate = true;
+
+    scene.add(trunks, pineMesh, broadMesh);
+
+    // Rocks
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x7c7f79, roughness: 1, flatShading: true });
+    const rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, Math.max(rocks.length, 1));
+    rockMesh.castShadow = settings.shadows;
+    rockMesh.receiveShadow = true;
+
+    rocks.forEach((r, i) => {
+        _dummy.position.set(r.x, r.h + r.s * 0.3, r.z);
+        _dummy.rotation.set(r.r * 3, r.r * 6.283, r.r * 2);
+        _dummy.scale.set(r.s * 1.25, r.s * 0.75, r.s);
+        _dummy.updateMatrix();
+        rockMesh.setMatrixAt(i, _dummy.matrix);
+        tint.setHSL(0.25, 0.04, 0.34 + r.r * 0.22);
+        rockMesh.setColorAt(i, tint);
+        if (r.s > 0.7) addCollider(r.x, r.z, r.s * 0.95);
+    });
+    if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
+    rockMesh.count = rocks.length;
+    rockMesh.instanceMatrix.needsUpdate = true;
+    scene.add(rockMesh);
+
+    // Grass
+    if (Q.grassCells > 0) {
+        grassHalf = Q.grassCells;
+        grassPerCell = Q.grassPer;
+        const total = (grassHalf * 2) * (grassHalf * 2) * grassPerCell;
+        const gMat = new THREE.MeshStandardMaterial({
+            vertexColors: true, side: THREE.DoubleSide, roughness: 1, metalness: 0
+        });
+        applyWind(gMat, 0.22, 0);
+        grassMesh = new THREE.InstancedMesh(tuftGeometry(), gMat, total);
+        grassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        grassMesh.frustumCulled = false;
+        grassMesh.receiveShadow = false;
+        scene.add(grassMesh);
+    }
+}
+
+function trimTo(arr, max, rnd) {
+    while (arr.length > max) {
+        const i = Math.floor(rnd() * arr.length);
+        arr[i] = arr[arr.length - 1];
+        arr.pop();
+    }
+}
+
+// Rebuilding every tuft in one frame costs ~15ms, which drops a frame each time
+// the player crosses a cell boundary. The work is spread over several frames
+// instead; slots not yet rewritten still hold the previous (valid) tufts.
+let grassJob = null;
+
+function updateGrass(force) {
+    if (!grassMesh || !player) return;
+
+    const cx = Math.round(player.position.x / GRASS_CELL);
+    const cz = Math.round(player.position.z / GRASS_CELL);
+
+    if (force || cx !== lastGrassCell.x || cz !== lastGrassCell.z) {
+        lastGrassCell.x = cx;
+        lastGrassCell.z = cz;
+        grassJob = { cx, cz, row: -grassHalf, rowsPerFrame: force ? grassHalf * 2 : 2 };
+    }
+    if (!grassJob) return;
+
+    const span = grassHalf * 2;
+    const radius = grassHalf * GRASS_CELL * 0.92;
+    const centreX = grassJob.cx * GRASS_CELL;
+    const centreZ = grassJob.cz * GRASS_CELL;
+    let rowsDone = 0;
+
+    while (grassJob.row < grassHalf && rowsDone < grassJob.rowsPerFrame) {
+        const i = grassJob.row;
+        let idx = (i + grassHalf) * span * grassPerCell;
+
+        for (let j = -grassHalf; j < grassHalf; j++) {
+            const gx = grassJob.cx + i;
+            const gz = grassJob.cz + j;
+
+            for (let k = 0; k < grassPerCell; k++) {
+                const rx = hash3i(gx, gz, k * 3 + 1);
+                const rz = hash3i(gx, gz, k * 3 + 2);
+                const rs = hash3i(gx, gz, k * 3 + 3);
+                const x = (gx + rx - 0.5) * GRASS_CELL;
+                const z = (gz + rz - 0.5) * GRASS_CELL;
+
+                const dx = x - centreX;
+                const dz = z - centreZ;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                let scale = 0;
+                if (dist < radius) {
+                    const h = groundHeight(x, z);
+                    if (h > WATER_LEVEL + 1.2 && h < 42) {
+                        const hx = terrainHeight(x + 1, z);
+                        const hz = terrainHeight(x, z + 1);
+                        const steep = Math.abs(hx - h) + Math.abs(hz - h);
+                        if (steep < 1.1) {
+                            const fade = 1 - smoothstep(radius * 0.72, radius, dist);
+                            scale = (0.6 + rs * 0.45) * fade;
+                            _dummy.position.set(x, h - 0.05, z);
+                        }
+                    }
+                }
+                if (scale <= 0.001) {
+                    _dummy.position.set(0, -500, 0);
+                    scale = 0.0001;
+                }
+                _dummy.rotation.set(0, rs * 6.283, 0);
+                _dummy.scale.setScalar(scale);
+                _dummy.updateMatrix();
+                grassMesh.setMatrixAt(idx++, _dummy.matrix);
+            }
+        }
+
+        grassJob.row++;
+        rowsDone++;
+    }
+
+    grassMesh.count = span * span * grassPerCell;
+    grassMesh.instanceMatrix.needsUpdate = true;
+    if (grassJob.row >= grassHalf) grassJob = null;
+}
+
+/* ============================================================
+   LANDMARKS, CAMP, RELICS
+   ============================================================ */
+
+const relics = [];
+let relicLight;
+let campFire, campLight, campEmber;
+
+function buildCamp() {
+    const group = new THREE.Group();
+    const y = groundHeight(0, 0);
+    group.position.set(0, y, 0);
+
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6b6b66, roughness: 1, flatShading: true });
+    for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2;
+        const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), stoneMat);
+        s.position.set(Math.cos(a) * 1.05, 0.1, Math.sin(a) * 1.05);
+        s.rotation.set(i, i * 2, i * 3);
+        s.castShadow = settings.shadows;
+        group.add(s);
+    }
+
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 1 });
+    for (let i = 0; i < 4; i++) {
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.25, 5), logMat);
+        log.position.set(0, 0.28, 0);
+        log.rotation.set(Math.PI / 2.6, (i / 4) * Math.PI * 2, 0);
+        log.castShadow = settings.shadows;
+        group.add(log);
+    }
+
+    campFire = new THREE.Mesh(
+        new THREE.ConeGeometry(0.34, 1.0, 7),
+        new THREE.MeshBasicMaterial({ color: 0xffa23c, transparent: true, opacity: 0.92, fog: false })
+    );
+    campFire.position.y = 0.62;
+    group.add(campFire);
+
+    campEmber = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18, 0.5, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.95, fog: false })
+    );
+    campEmber.position.y = 0.42;
+    group.add(campEmber);
+
+    campLight = new THREE.PointLight(0xff9a3c, 6, 26, 2);
+    campLight.position.set(0, 1.1, 0);
+    group.add(campLight);
+
+    // A banner pole so camp is findable from a distance
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0x53402c, roughness: 1 }));
+    pole.position.set(2.6, 3, -1.4);
+    pole.castShadow = settings.shadows;
+    group.add(pole);
+
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.9, side: THREE.DoubleSide }));
+    flag.position.set(3.4, 5.2, -1.4);
+    group.add(flag);
+
+    scene.add(group);
+    addCollider(2.6, -1.4, 0.4);
+}
+
+function buildLandmarks() {
+    const rnd = mulberry32(SEED ^ 0x3131);
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.95, flatShading: true });
+
+    for (let s = 0; s < 5; s++) {
+        let x = 0, z = 0, h = -99, tries = 0;
+        while (tries++ < 120) {
+            const a = rnd() * Math.PI * 2;
+            const d = 110 + rnd() * (WORLD_RADIUS - 150);
+            x = Math.cos(a) * d;
+            z = Math.sin(a) * d;
+            h = groundHeight(x, z);
+            if (h > WATER_LEVEL + 3 && h < 38 && slopeAt(x, z) < 0.22) break;
+        }
+        if (h < WATER_LEVEL + 3) continue;
+
+        const g = new THREE.Group();
+        g.position.set(x, h, z);
+        const pillars = 6 + Math.floor(rnd() * 4);
+        const radius = 4 + rnd() * 3;
+
+        for (let i = 0; i < pillars; i++) {
+            const a = (i / pillars) * Math.PI * 2;
+            const ph = 3 + rnd() * 3.5;
+            const p = new THREE.Mesh(new THREE.BoxGeometry(0.75, ph, 0.75), stoneMat);
+            p.position.set(Math.cos(a) * radius, ph / 2 - 0.3, Math.sin(a) * radius);
+            p.rotation.y = a + (rnd() - 0.5) * 0.3;
+            p.rotation.z = (rnd() - 0.5) * 0.09;
+            p.castShadow = settings.shadows;
+            p.receiveShadow = true;
+            g.add(p);
+            addCollider(x + Math.cos(a) * radius, z + Math.sin(a) * radius, 0.6);
+        }
+
+        const altar = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 0.6, 9), stoneMat);
+        altar.position.y = 0.1;
+        altar.receiveShadow = true;
+        altar.castShadow = settings.shadows;
+        g.add(altar);
+        scene.add(g);
+    }
+}
+
+function buildRelics() {
+    const rnd = mulberry32(SEED ^ 0x9a9a);
+    const taken = new Set(save.relics);
+
+    const geo = new THREE.OctahedronGeometry(0.42, 0);
+    const haloGeo = new THREE.OctahedronGeometry(0.78, 0);
+
+    for (let i = 0; i < RELIC_TOTAL; i++) {
+        let x = 0, z = 0, h = -99, tries = 0;
+        while (tries++ < 200) {
+            const a = rnd() * Math.PI * 2;
+            const d = 55 + rnd() * (WORLD_RADIUS - 85);
+            x = Math.cos(a) * d;
+            z = Math.sin(a) * d;
+            h = groundHeight(x, z);
+            if (h > WATER_LEVEL + 1.2 && slopeAt(x, z) < 0.3) break;
+        }
+
+        const group = new THREE.Group();
+        group.position.set(x, h + 1.25, z);
+
+        const core = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+            color: 0xffd98a, emissive: 0xffb545, emissiveIntensity: 2.2, roughness: 0.25, metalness: 0.3
+        }));
+        group.add(core);
+
+        const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({
+            color: 0xffcf7a, transparent: true, opacity: 0.17, depthWrite: false, fog: false
+        }));
+        group.add(halo);
+
+        const relic = { id: i, group, core, halo, taken: taken.has(i), base: h + 1.25, x, z };
+        if (relic.taken) group.visible = false;
+        scene.add(group);
+        relics.push(relic);
+    }
+
+    relicLight = new THREE.PointLight(0xffc266, 0, 22, 2);
+    scene.add(relicLight);
+}
+
+/* ============================================================
+   WILDLIFE
+   ============================================================ */
+
+const birds = [];
+const deerList = [];
+let fireflies, fireflyPositions, fireflyData;
+
+function buildBirds() {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2d3338, roughness: 1, side: THREE.DoubleSide });
+    const rnd = mulberry32(SEED ^ 0xbbbb);
+
+    for (let f = 0; f < 2; f++) {
+        const centerA = rnd() * Math.PI * 2;
+        const cx = Math.cos(centerA) * (80 + rnd() * 160);
+        const cz = Math.sin(centerA) * (80 + rnd() * 160);
+        const flockY = 38 + rnd() * 26;
+
+        for (let i = 0; i < 7; i++) {
+            const g = new THREE.Group();
+            const wingL = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.4), mat);
+            const wingR = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.4), mat);
+            wingL.position.x = -0.75;
+            wingR.position.x = 0.75;
+            g.add(wingL, wingR);
+            scene.add(g);
+            birds.push({
+                g, wingL, wingR,
+                cx, cz, y: flockY + rnd() * 8,
+                radius: 26 + rnd() * 30,
+                phase: rnd() * 6.283,
+                speed: 0.1 + rnd() * 0.07,
+                flap: rnd() * 6.283
+            });
+        }
+    }
+}
+
+function makeDeer() {
+    const body = new THREE.Group();
+    const coat = new THREE.MeshStandardMaterial({ color: 0x9a6b43, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x5e4129, roughness: 1 });
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 1.35), coat);
+    torso.position.y = 1.0;
+    torso.castShadow = settings.shadows;
+    body.add(torso);
+
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.62, 0.3), coat);
+    neck.position.set(0, 1.35, 0.66);
+    neck.rotation.x = -0.4;
+    body.add(neck);
+
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.52), coat);
+    head.position.set(0, 1.63, 0.88);
+    body.add(head);
+
+    const legs = [];
+    const legPos = [[-0.21, 0.52], [0.21, 0.52], [-0.21, -0.5], [0.21, -0.5]];
+    for (const [lx, lz] of legPos) {
+        const pivot = new THREE.Group();
+        pivot.position.set(lx, 0.72, lz);
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.75, 0.13), dark);
+        leg.position.y = -0.37;
+        pivot.add(leg);
+        body.add(pivot);
+        legs.push(pivot);
+    }
+
+    return { root: body, legs };
+}
+
+function buildDeer() {
+    const rnd = mulberry32(SEED ^ 0xdddd);
+    for (let i = 0; i < Q.deer; i++) {
+        let x = 0, z = 0, h = -99, tries = 0;
+        while (tries++ < 80) {
+            const a = rnd() * Math.PI * 2;
+            const d = 40 + rnd() * 220;
+            x = Math.cos(a) * d;
+            z = Math.sin(a) * d;
+            h = groundHeight(x, z);
+            if (h > WATER_LEVEL + 2 && h < 34) break;
+        }
+        const d = makeDeer();
+        d.root.position.set(x, h, z);
+        d.root.scale.setScalar(0.9 + rnd() * 0.25);
+        scene.add(d.root);
+        deerList.push({
+            obj: d, x, z, yaw: rnd() * 6.283,
+            targetX: x, targetZ: z,
+            speed: 0, phase: rnd() * 6.283, think: rnd() * 3, fleeing: 0
+        });
+    }
+}
+
+function buildFireflies() {
+    const count = isTouch ? 70 : 170;
+    fireflyPositions = new Float32Array(count * 3);
+    fireflyData = [];
+    const rnd = mulberry32(SEED ^ 0xfefe);
+    for (let i = 0; i < count; i++) {
+        fireflyData.push({
+            a: rnd() * 6.283, r: 7 + rnd() * 24, y: 0.4 + rnd() * 2.4,
+            sp: 0.1 + rnd() * 0.35, bob: rnd() * 6.283
+        });
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(fireflyPositions, 3));
+    fireflies = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0xffe9a0, size: 0.34, map: makeDotTexture(),
+        transparent: true, opacity: 0, depthWrite: false,
+        blending: THREE.AdditiveBlending, fog: false
+    }));
+    fireflies.frustumCulled = false;
+    scene.add(fireflies);
+}
+
+/* ============================================================
+   AUDIO (fully procedural — no files needed)
+   ============================================================ */
+
+const Audio = {
+    ctx: null, master: null, ready: false,
+    windGain: null, windFilter: null,
+    waterGain: null,
+    nextChirp: 4, nextCricket: 3
+};
+
+function initAudio() {
+    if (Audio.ready) {
+        if (Audio.ctx.state === 'suspended') Audio.ctx.resume();
+        return;
+    }
+    try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        Audio.ctx = new AC();
+        Audio.master = Audio.ctx.createGain();
+        Audio.master.gain.value = settings.volume;
+        Audio.master.connect(Audio.ctx.destination);
+
+        const noise = makeNoiseBuffer(Audio.ctx, 3);
+
+        // Wind bed
+        const windSrc = Audio.ctx.createBufferSource();
+        windSrc.buffer = noise;
+        windSrc.loop = true;
+        Audio.windFilter = Audio.ctx.createBiquadFilter();
+        Audio.windFilter.type = 'bandpass';
+        Audio.windFilter.frequency.value = 420;
+        Audio.windFilter.Q.value = 0.7;
+        Audio.windGain = Audio.ctx.createGain();
+        Audio.windGain.gain.value = 0.05;
+        windSrc.connect(Audio.windFilter);
+        Audio.windFilter.connect(Audio.windGain);
+        Audio.windGain.connect(Audio.master);
+        windSrc.start();
+
+        // Shore wash
+        const waterSrc = Audio.ctx.createBufferSource();
+        waterSrc.buffer = noise;
+        waterSrc.loop = true;
+        const wf = Audio.ctx.createBiquadFilter();
+        wf.type = 'lowpass';
+        wf.frequency.value = 900;
+        Audio.waterGain = Audio.ctx.createGain();
+        Audio.waterGain.gain.value = 0;
+        waterSrc.connect(wf);
+        wf.connect(Audio.waterGain);
+        Audio.waterGain.connect(Audio.master);
+        waterSrc.start();
+
+        Audio.ready = true;
+    } catch (e) {
+        console.warn('Audio unavailable', e);
+    }
+}
+
+function makeNoiseBuffer(ctx, seconds) {
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+        const white = Math.random() * 2 - 1;
+        last = (last + 0.02 * white) / 1.02;
+        data[i] = last * 3.2;
+    }
+    return buf;
+}
+
+function blip(type, freq, endFreq, dur, vol, filterType, filterFreq) {
+    if (!Audio.ready) return;
+    const t = Audio.ctx.currentTime;
+    const osc = Audio.ctx.createOscillator();
+    const g = Audio.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (endFreq !== freq) osc.frequency.exponentialRampToValueAtTime(Math.max(endFreq, 1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, dur * 0.3));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = osc;
+    if (filterType) {
+        const f = Audio.ctx.createBiquadFilter();
+        f.type = filterType;
+        f.frequency.value = filterFreq;
+        osc.connect(f);
+        node = f;
+    }
+    node.connect(g);
+    g.connect(Audio.master);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+}
+
+function noiseBurst(dur, vol, filterType, freq, q) {
+    if (!Audio.ready) return;
+    const ctx = Audio.ctx;
+    const t = ctx.currentTime;
+    const len = Math.max(64, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+        const fade = 1 - i / len;
+        data[i] = (Math.random() * 2 - 1) * fade * fade;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = filterType;
+    f.frequency.value = freq;
+    if (q) f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = vol;
+    src.connect(f);
+    f.connect(g);
+    g.connect(Audio.master);
+    src.start(t);
+}
+
+function sfxFootstep(surface, running) {
+    const v = running ? 1.35 : 1;
+    if (surface === 0) {
+        noiseBurst(0.22, 0.16 * v, 'highpass', 900);
+        blip('sine', 160, 90, 0.1, 0.06 * v);
+    } else if (surface === 1) {
+        noiseBurst(0.14, 0.14 * v, 'bandpass', 1500, 0.8);
+    } else if (surface === 3 || surface === 4) {
+        noiseBurst(0.09, 0.15 * v, 'highpass', 1800);
+        blip('sine', 120, 60, 0.07, 0.1 * v);
+    } else {
+        noiseBurst(0.13, 0.17 * v, 'lowpass', running ? 760 : 920);
+        blip('sine', running ? 105 : 85, 44, 0.09, 0.11 * v);
+    }
+}
+
+function sfxJump() { blip('sine', 190, 340, 0.16, 0.1); }
+function sfxLand(surface) { sfxFootstep(surface, true); blip('sine', 110, 52, 0.13, 0.12); }
+function sfxSplash() {
+    noiseBurst(0.5, 0.3, 'lowpass', 1400);
+    blip('sine', 330, 120, 0.25, 0.08);
+}
+function sfxStroke() { noiseBurst(0.32, 0.1, 'lowpass', 700); }
+
+function sfxRelic() {
+    if (!Audio.ready) return;
+    [784, 1046, 1318, 1568].forEach((f, i) => {
+        setTimeout(() => blip('triangle', f, f, 0.85, 0.11), i * 85);
+    });
+}
+
+function sfxComplete() {
+    if (!Audio.ready) return;
+    [523, 659, 784, 1046, 1318].forEach((f, i) => {
+        setTimeout(() => blip('triangle', f, f, 1.4, 0.13), i * 160);
+    });
+}
+
+function sfxChirp() {
+    const base = 2200 + Math.random() * 1600;
+    blip('sine', base, base * 1.5, 0.07, 0.05);
+    setTimeout(() => blip('sine', base * 1.2, base * 0.8, 0.06, 0.04), 90);
+}
+
+function sfxCricket() {
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => blip('square', 4200, 4200, 0.02, 0.012, 'bandpass', 4200), i * 55);
+    }
+}
+
+/* ============================================================
+   PLAYER
+   ============================================================ */
+
+let player, modelRoot, mixer;
+let fallbackRig = null;
+const actions = {};
+let currentAction = null;
+let hasClips = false;
+
+const P = {
+    vel: new THREE.Vector3(),
+    grounded: true,
+    swimming: false,
+    yaw: 0,
+    speed: 0,
+    stamina: 100,
+    staminaDelay: 0,
+    coyote: 0,
+    jumpBuffer: 0,
+    stepDistance: 0,
+    animPhase: 0,
+    lastSurface: 2,
+    wasSwimming: false,
+    firstPerson: false
+};
+
+function buildFallbackCharacter() {
+    const g = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe3b08c, roughness: 0.85 });
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x3b6e6b, roughness: 0.95 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2b3640, roughness: 0.95 });
+    const hair = new THREE.MeshStandardMaterial({ color: 0x3a2a20, roughness: 1 });
+
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.46, 4, 10), cloth);
+    torso.position.y = 1.2;
+    g.add(torso);
+
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.22), dark);
+    pack.position.set(0, 1.2, -0.3);
+    g.add(pack);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.205, 18, 14), skin);
+    head.position.y = 1.72;
+    g.add(head);
+
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.215, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
+    cap.position.y = 1.74;
+    g.add(cap);
+
+    const limb = (x, y, len, mat, radius) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(x, y, 0);
+        const m = new THREE.Mesh(new THREE.CapsuleGeometry(radius, len, 3, 8), mat);
+        m.position.y = -len / 2 - radius * 0.4;
+        pivot.add(m);
+        g.add(pivot);
+        return pivot;
+    };
+
+    const armL = limb(-0.33, 1.44, 0.46, cloth, 0.085);
+    const armR = limb(0.33, 1.44, 0.46, cloth, 0.085);
+    const legL = limb(-0.14, 0.86, 0.56, dark, 0.1);
+    const legR = limb(0.14, 0.86, 0.56, dark, 0.1);
+
+    g.traverse(o => {
+        if (o.isMesh) { o.castShadow = settings.shadows; o.receiveShadow = true; }
+    });
+
+    fallbackRig = { armL, armR, legL, legR, torso, head: cap, headMesh: head };
+    return g;
+}
+
+function loadPlayerModel() {
+    return new Promise((resolve) => {
+        const loader = new GLTFLoader();
+        loader.load(
+            MODEL_PATH,
+            (gltf) => {
+                modelRoot = gltf.scene;
+
+                const box = new THREE.Box3().setFromObject(modelRoot);
+                const h = box.max.y - box.min.y;
+                if (h > 0.01) modelRoot.scale.setScalar(PLAYER_HEIGHT / h);
+
+                const scaled = new THREE.Box3().setFromObject(modelRoot);
+                modelRoot.position.y -= scaled.min.y;
+
+                modelRoot.traverse(o => {
+                    if (o.isMesh || o.isSkinnedMesh) {
+                        o.castShadow = settings.shadows;
+                        o.receiveShadow = true;
+                        o.frustumCulled = false;
+                    }
+                });
+
+                if (gltf.animations && gltf.animations.length) {
+                    hasClips = true;
+                    mixer = new THREE.AnimationMixer(modelRoot);
+
+                    gltf.animations.forEach((clip) => {
+                        if (STRIP_ROOT_MOTION) {
+                            clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.position'));
+                        }
+                        const name = clip.name.toLowerCase();
+                        const action = mixer.clipAction(clip);
+                        action.enabled = true;
+
+                        if (/idle|stand|breath/.test(name)) register('idle', action);
+                        else if (/sprint|run|jog/.test(name)) register('run', action);
+                        else if (/walk/.test(name)) register('walk', action);
+                        else if (/jump|leap/.test(name)) register('jump', action);
+                        else if (/fall|air/.test(name)) register('fall', action);
+                        else if (/swim/.test(name)) register('swim', action);
+                        else register('misc', action);
+                    });
+
+                    if (!actions.idle) actions.idle = actions.misc || actions.walk || actions.run;
+                    if (!actions.walk) actions.walk = actions.run || actions.misc || actions.idle;
+                    if (!actions.run) actions.run = actions.walk;
+                    if (!actions.fall) actions.fall = actions.jump || actions.idle;
+                    if (!actions.jump) actions.jump = actions.fall || actions.idle;
+                    if (!actions.swim) actions.swim = actions.walk;
+
+                    if (actions.jump) {
+                        actions.jump.setLoop(THREE.LoopOnce, 1);
+                        actions.jump.clampWhenFinished = true;
+                    }
+                }
+
+                resolve(true);
+            },
+            undefined,
+            (err) => {
+                console.warn('GLB not loaded (' + MODEL_PATH + '), using built-in explorer.', err);
+                modelRoot = buildFallbackCharacter();
+                resolve(false);
+            }
+        );
+    });
+
+    function register(key, action) {
+        if (!actions[key]) actions[key] = action;
+    }
+}
+
+function setupPlayer() {
+    player = new THREE.Group();
+    player.add(modelRoot);
+
+    const startX = save.pos ? save.pos[0] : 0;
+    const startZ = save.pos ? save.pos[2] : 4;
+    player.position.set(startX, groundHeight(startX, startZ), startZ);
+    P.yaw = Math.PI;
+    player.rotation.y = P.yaw;
+    scene.add(player);
+
+    playAction('idle', 0);
+}
+
+function playAction(name, fadeTime) {
+    if (!hasClips) return;
+    const next = actions[name];
+    if (!next || currentAction === next) return;
+    const fade = fadeTime === undefined ? 0.22 : fadeTime;
+    if (currentAction) currentAction.fadeOut(fade);
+    next.reset().fadeIn(fade).play();
+    currentAction = next;
+}
+
+function updateAnimation(dt, horizontalSpeed, running) {
+    const modelYawOffset = settings.flip ? Math.PI : 0;
+    modelRoot.rotation.y = modelYawOffset;
+
+    if (hasClips) {
+        if (P.swimming) {
+            playAction('swim');
+            if (actions.swim) actions.swim.setEffectiveTimeScale(1);
+        } else if (!P.grounded) {
+            playAction(P.vel.y > 0.5 ? 'jump' : 'fall');
+        } else if (horizontalSpeed > RUN_SPEED * 0.55) {
+            playAction('run');
+            if (actions.run) actions.run.setEffectiveTimeScale(
+                actions.run === actions.walk ? horizontalSpeed / WALK_SPEED : horizontalSpeed / RUN_SPEED);
+        } else if (horizontalSpeed > 0.35) {
+            playAction('walk');
+            if (actions.walk) actions.walk.setEffectiveTimeScale(
+                Math.max(0.45, horizontalSpeed / WALK_SPEED));
+        } else {
+            playAction('idle');
+            if (actions.idle) actions.idle.setEffectiveTimeScale(1);
         }
         return;
     }
 
-    try {
-        audioContext = new (
-            window.AudioContext || window.webkitAudioContext
-        )();
+    // Procedural animation for the fallback rig
+    if (!fallbackRig) return;
+    const r = fallbackRig;
+    const swing = Math.sin(P.animPhase);
+    const amp = Math.min(horizontalSpeed / RUN_SPEED, 1);
 
-        masterVolume = audioContext.createGain();
-        masterVolume.gain.value = 0.38;
-        masterVolume.connect(audioContext.destination);
-
-        audioReady = true;
-        soundStatus.textContent = 'SOUND: ON';
-    } catch (error) {
-        console.warn('Audio unavailable:', error);
+    if (P.swimming) {
+        r.armL.rotation.x = -2.4 + Math.sin(P.animPhase * 1.4) * 0.9;
+        r.armR.rotation.x = -2.4 + Math.sin(P.animPhase * 1.4 + Math.PI) * 0.9;
+        r.legL.rotation.x = Math.sin(P.animPhase * 2) * 0.45;
+        r.legR.rotation.x = -Math.sin(P.animPhase * 2) * 0.45;
+        modelRoot.rotation.x = -1.15;
+        modelRoot.position.y = 0.1;
+    } else if (!P.grounded) {
+        modelRoot.rotation.x = THREE.MathUtils.damp(modelRoot.rotation.x, -0.12, 8, dt);
+        r.armL.rotation.x = THREE.MathUtils.damp(r.armL.rotation.x, -2.2, 9, dt);
+        r.armR.rotation.x = THREE.MathUtils.damp(r.armR.rotation.x, -2.2, 9, dt);
+        r.legL.rotation.x = THREE.MathUtils.damp(r.legL.rotation.x, -0.5, 9, dt);
+        r.legR.rotation.x = THREE.MathUtils.damp(r.legR.rotation.x, 0.35, 9, dt);
+        modelRoot.position.y = 0;
+    } else {
+        const target = running ? 1.25 : 0.95;
+        r.armL.rotation.x = swing * amp * target;
+        r.armR.rotation.x = -swing * amp * target;
+        r.legL.rotation.x = -swing * amp * target * 0.9;
+        r.legR.rotation.x = swing * amp * target * 0.9;
+        r.torso.rotation.z = Math.sin(P.animPhase * 2) * 0.03 * amp;
+        modelRoot.rotation.x = THREE.MathUtils.damp(modelRoot.rotation.x, amp * 0.14, 8, dt);
+        modelRoot.position.y = Math.abs(Math.sin(P.animPhase)) * 0.055 * amp;
+        if (amp < 0.02) {
+            modelRoot.position.y = Math.sin(elapsed * 1.6) * 0.012;
+            r.torso.rotation.z = Math.sin(elapsed * 1.2) * 0.012;
+        }
     }
 }
 
-window.addEventListener('pointerdown', initialiseAudio);
-window.addEventListener('keydown', initialiseAudio);
+/* ============================================================
+   INPUT
+   ============================================================ */
 
-function makeFootstep(running = false) {
-    if (!audioReady) return;
+const keys = Object.create(null);
+let camYaw = Math.PI, camPitch = 0.22, camDistance = 6.4, camDistanceTarget = 6.4;
+let pointerLocked = false;
+let paused = false;
+let started = false;
+let hudHidden = false;
 
-    const now = audioContext.currentTime;
+const touchState = { moveX: 0, moveY: 0, run: false, lookId: null, lookX: 0, lookY: 0, stickId: null };
 
-    // Soft ground noise
-    const length = Math.floor(audioContext.sampleRate * 0.12);
-    const buffer = audioContext.createBuffer(
-        1, length, audioContext.sampleRate
-    );
+function setupInput() {
+    window.addEventListener('keydown', (e) => {
+        if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+        if (e.repeat) { return; }
+        keys[e.code] = true;
 
-    const data = buffer.getChannelData(0);
+        if (e.code === 'Space') P.jumpBuffer = 0.16;
 
-    for (let i = 0; i < length; i++) {
-        const fade = 1 - i / length;
-        data[i] = (Math.random() * 2 - 1) * fade * fade;
-    }
+        if (!started) return;
 
-    const noise = audioContext.createBufferSource();
-    noise.buffer = buffer;
-
-    const filter = audioContext.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = running ? 650 : 850;
-
-    const noiseGain = audioContext.createGain();
-
-    noiseGain.gain.setValueAtTime(0.0001, now);
-    noiseGain.gain.exponentialRampToValueAtTime(
-        running ? 0.32 : 0.21, now + 0.012
-    );
-    noiseGain.gain.exponentialRampToValueAtTime(
-        0.0001, now + 0.12
-    );
-
-    noise.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(masterVolume);
-    noise.start(now);
-
-    // Low footstep thump
-    const osc = audioContext.createOscillator();
-    const thumpGain = audioContext.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(running ? 105 : 85, now);
-    osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
-
-    thumpGain.gain.setValueAtTime(0.0001, now);
-    thumpGain.gain.exponentialRampToValueAtTime(
-        running ? 0.25 : 0.16, now + 0.008
-    );
-    thumpGain.gain.exponentialRampToValueAtTime(
-        0.0001, now + 0.1
-    );
-
-    osc.connect(thumpGain);
-    thumpGain.connect(masterVolume);
-    osc.start(now);
-    osc.stop(now + 0.12);
-}
-
-function makeJumpSound() {
-    if (!audioReady) return;
-
-    const now = audioContext.currentTime;
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(180, now);
-    osc.frequency.exponentialRampToValueAtTime(320, now + 0.12);
-
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.15, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
-
-    osc.connect(gain);
-    gain.connect(masterVolume);
-    osc.start(now);
-    osc.stop(now + 0.21);
-}
-
-function makeLandingSound() {
-    makeFootstep(true);
-}
-
-// --------------------------------------------------
-// TERRAIN
-// --------------------------------------------------
-
-function terrainHeight(x, z) {
-    return (
-        Math.sin(x * 0.035) * 1.5 +
-        Math.cos(z * 0.04) * 1.4 +
-        Math.sin((x + z) * 0.025) * 1.8 +
-        Math.cos((x - z) * 0.018) * 1.1
-    );
-}
-
-function createTerrain() {
-    const geometry = new THREE.PlaneGeometry(
-        600, 600, 160, 160
-    );
-
-    const positions = geometry.attributes.position;
-
-    for (let i = 0; i < positions.count; i++) {
-        const x = positions.getX(i);
-        const z = -positions.getY(i);
-
-        positions.setZ(i, terrainHeight(x, z));
-    }
-
-    geometry.computeVertexNormals();
-    geometry.rotateX(-Math.PI / 2);
-
-    const material = new THREE.MeshStandardMaterial({
-        color: 0x668a51,
-        roughness: 1
+        if (e.code === 'Escape') { togglePause(); }
+        if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
+        if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
+        if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
+        if (e.code === 'KeyT') { timeOfDay = (timeOfDay + 0.12) % 1; }
     });
 
-    const ground = new THREE.Mesh(geometry, material);
-    ground.receiveShadow = true;
-    scene.add(ground);
-}
+    window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+    window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
-// --------------------------------------------------
-// TREES
-// --------------------------------------------------
+    // Mouse look
+    const canvas = renderer.domElement;
 
-function createTree(x, z, scale = 1) {
-    const group = new THREE.Group();
-
-    group.position.set(x, terrainHeight(x, z), z);
-    group.scale.setScalar(scale);
-
-    const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.32, 3, 7),
-        new THREE.MeshStandardMaterial({ color: 0x63432e })
-    );
-
-    trunk.position.y = 1.5;
-    trunk.castShadow = true;
-    group.add(trunk);
-
-    const colours = [0x315c39, 0x426d42, 0x527c48];
-
-    for (let i = 0; i < 3; i++) {
-        const leaves = new THREE.Mesh(
-            new THREE.ConeGeometry(1.5 - i * 0.18, 2.6, 8),
-            new THREE.MeshStandardMaterial({
-                color: colours[Math.floor(Math.random() * colours.length)],
-                roughness: 1
-            })
-        );
-
-        leaves.position.y = 3.1 + i * 1.05;
-        leaves.castShadow = true;
-        group.add(leaves);
-    }
-
-    scene.add(group);
-}
-
-// --------------------------------------------------
-// ROCKS
-// --------------------------------------------------
-
-function createRock(x, z, scale = 1) {
-    const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(1, 1),
-        new THREE.MeshStandardMaterial({
-            color: 0x777d75,
-            roughness: 1
-        })
-    );
-
-    rock.position.set(
-        x,
-        terrainHeight(x, z) + scale * 0.35,
-        z
-    );
-
-    rock.scale.set(scale * 1.2, scale * 0.65, scale);
-    rock.rotation.set(Math.random(), Math.random(), Math.random());
-    rock.castShadow = true;
-    rock.receiveShadow = true;
-
-    scene.add(rock);
-}
-
-// --------------------------------------------------
-// WORLD
-// --------------------------------------------------
-
-function createWorld() {
-    createTerrain();
-
-    for (let i = 0; i < 180; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 15 + Math.random() * 230;
-
-        const x = Math.cos(angle) * distance;
-        const z = Math.sin(angle) * distance;
-
-        if (Math.hypot(x, z) < 13) continue;
-
-        createTree(x, z, 0.7 + Math.random() * 0.8);
-    }
-
-    for (let i = 0; i < 100; i++) {
-        const x = (Math.random() - 0.5) * 450;
-        const z = (Math.random() - 0.5) * 450;
-
-        if (Math.hypot(x, z) < 12) continue;
-
-        createRock(x, z, 0.3 + Math.random() * 1.2);
-    }
-
-    const mountainMaterial = new THREE.MeshStandardMaterial({
-        color: 0x62766b,
-        roughness: 1,
-        flatShading: true
+    canvas.addEventListener('click', () => {
+        if (!started || paused || isTouch) return;
+        const p = canvas.requestPointerLock();
+        if (p && p.catch) p.catch(() => {});
     });
 
-    for (let i = 0; i < 24; i++) {
-        const angle = i / 24 * Math.PI * 2;
-        const radius = 250 + Math.random() * 45;
-        const height = 25 + Math.random() * 45;
-
-        const mountain = new THREE.Mesh(
-            new THREE.ConeGeometry(height * 0.75, height, 5),
-            mountainMaterial
-        );
-
-        mountain.position.set(
-            Math.cos(angle) * radius,
-            height / 2 - 3,
-            Math.sin(angle) * radius
-        );
-
-        mountain.rotation.y = Math.random() * Math.PI;
-        scene.add(mountain);
-    }
-}
-
-// --------------------------------------------------
-// SCENE AND RENDERER
-// --------------------------------------------------
-
-function initScene() {
-    scene = new THREE.Scene();
-
-    scene.background = new THREE.Color(0x9fc4d1);
-    scene.fog = new THREE.Fog(0x9fc4d1, 100, 340);
-
-    camera = new THREE.PerspectiveCamera(
-        65,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        700
-    );
-
-    camera.position.set(0, 6, 10);
-
-    renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        powerPreference: 'high-performance'
+    document.addEventListener('pointerlockchange', () => {
+        pointerLocked = document.pointerLockElement === canvas;
+        document.getElementById('hint').classList.toggle('gone', pointerLocked);
+        if (!pointerLocked && started && !paused && !isTouch) togglePause(true);
     });
 
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
-
-    document.body.appendChild(renderer.domElement);
-
-    const ambient = new THREE.HemisphereLight(
-        0xd9edff, 0x52633d, 2
-    );
-
-    scene.add(ambient);
-
-    const sun = new THREE.DirectionalLight(0xffe4b5, 3);
-
-    sun.position.set(-80, 130, 65);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -90;
-    sun.shadow.camera.right = 90;
-    sun.shadow.camera.top = 90;
-    sun.shadow.camera.bottom = -90;
-    sun.shadow.bias = -0.0002;
-
-    scene.add(sun);
-
-    clock = new THREE.Clock();
-}
-
-// --------------------------------------------------
-// PLAYER ANIMATIONS
-// --------------------------------------------------
-
-function selectAnimation(type) {
-    if (!animations[type] || activeAnimation === type) return;
-
-    const next = animations[type];
-
-    if (activeAnimation && animations[activeAnimation]) {
-        animations[activeAnimation].fadeOut(0.2);
-    }
-
-    next.reset().fadeIn(0.2).play();
-    activeAnimation = type;
-}
-
-// --------------------------------------------------
-// LOAD PLAYER MODEL
-// --------------------------------------------------
-
-function loadPlayer() {
-    return new Promise((resolve, reject) => {
-        const loader = new GLTFLoader();
-
-        loader.load(
-            MODEL_PATH,
-
-            (gltf) => {
-                modelRoot = gltf.scene;
-                player = new THREE.Group();
-
-                const box = new THREE.Box3().setFromObject(modelRoot);
-                const height = box.max.y - box.min.y;
-
-                if (height > 0) {
-                    modelRoot.scale.setScalar(2.1 / height);
-                }
-
-                const scaledBox = new THREE.Box3().setFromObject(modelRoot);
-                modelRoot.position.y -= scaledBox.min.y;
-
-                modelRoot.traverse((child) => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-
-                player.add(modelRoot);
-
-                player.position.set(
-                    0, terrainHeight(0, 0), 0
-                );
-
-                scene.add(player);
-
-                if (gltf.animations && gltf.animations.length) {
-                    mixer = new THREE.AnimationMixer(modelRoot);
-
-                    gltf.animations.forEach((clip) => {
-                        const name = clip.name.toLowerCase();
-                        const action = mixer.clipAction(clip);
-
-                        if (
-                            name.includes('idle') ||
-                            name.includes('stand')
-                        ) {
-                            animations.idle = action;
-                        } else if (
-                            name.includes('run') ||
-                            name.includes('sprint')
-                        ) {
-                            animations.run = action;
-                        } else if (name.includes('walk')) {
-                            animations.walk = action;
-                        } else if (!animations.other) {
-                            animations.other = action;
-                        }
-                    });
-
-                    if (!animations.idle && animations.other) {
-                        animations.idle = animations.other;
-                    }
-                }
-
-                selectAnimation('idle');
-                resolve();
-            },
-
-            undefined,
-
-            (error) => {
-                reject(error);
-            }
-        );
+    let dragging = false;
+    canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && !pointerLocked) dragging = true;
     });
-}
+    window.addEventListener('pointerup', () => { dragging = false; });
 
-// --------------------------------------------------
-// KEYBOARD INPUT
-// --------------------------------------------------
+    window.addEventListener('mousemove', (e) => {
+        if (!started || paused) return;
+        if (!pointerLocked && !dragging) return;
+        applyLook(e.movementX || 0, e.movementY || 0);
+    });
 
-window.addEventListener('keydown', (e) => {
-    keys[e.code] = true;
-
-    if (
-        ['Space', 'ArrowUp', 'ArrowDown',
-         'ArrowLeft', 'ArrowRight'].includes(e.code)
-    ) {
+    canvas.addEventListener('wheel', (e) => {
+        if (!started || paused) return;
         e.preventDefault();
+        camDistanceTarget = THREE.MathUtils.clamp(camDistanceTarget + e.deltaY * 0.006, 2.6, 13);
+    }, { passive: false });
+
+    // Touch: left stick, right side look
+    const base = document.getElementById('stick-base');
+    const knob = document.getElementById('stick-knob');
+
+    base.addEventListener('pointerdown', (e) => {
+        touchState.stickId = e.pointerId;
+        base.setPointerCapture(e.pointerId);
+        moveStick(e);
+        initAudio();
+    });
+    base.addEventListener('pointermove', (e) => {
+        if (e.pointerId === touchState.stickId) moveStick(e);
+    });
+    const endStick = () => {
+        touchState.stickId = null;
+        touchState.moveX = 0;
+        touchState.moveY = 0;
+        knob.style.transform = 'translate(0px, 0px)';
+    };
+    base.addEventListener('pointerup', endStick);
+    base.addEventListener('pointercancel', endStick);
+
+    function moveStick(e) {
+        const r = base.getBoundingClientRect();
+        let dx = e.clientX - (r.left + r.width / 2);
+        let dy = e.clientY - (r.top + r.height / 2);
+        const max = 42;
+        const len = Math.hypot(dx, dy);
+        if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+        touchState.moveX = dx / max;
+        touchState.moveY = dy / max;
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
     }
 
-    if (e.code === 'Space') {
-        jumpRequested = true;
-    }
-});
+    canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return;
+        if (touchState.lookId !== null) return;
+        touchState.lookId = e.pointerId;
+        touchState.lookX = e.clientX;
+        touchState.lookY = e.clientY;
+    });
+    window.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== touchState.lookId) return;
+        applyLook((e.clientX - touchState.lookX) * 1.6, (e.clientY - touchState.lookY) * 1.6);
+        touchState.lookX = e.clientX;
+        touchState.lookY = e.clientY;
+    });
+    const endLook = (e) => { if (e.pointerId === touchState.lookId) touchState.lookId = null; };
+    window.addEventListener('pointerup', endLook);
+    window.addEventListener('pointercancel', endLook);
 
-window.addEventListener('keyup', (e) => {
-    keys[e.code] = false;
-});
+    const jumpBtn = document.getElementById('btn-jump');
+    jumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); P.jumpBuffer = 0.16; initAudio(); });
 
-function getMovementInput() {
-    let x = 0;
-    let z = 0;
+    const runBtn = document.getElementById('btn-run');
+    runBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        touchState.run = !touchState.run;
+        runBtn.classList.toggle('on', touchState.run);
+    });
 
+    document.getElementById('btn-menu').addEventListener('pointerdown', (e) => { e.preventDefault(); togglePause(); });
+
+    // Pinch zoom on touch
+    const pinch = { active: false, dist: 0 };
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+            const d = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            if (pinch.active) {
+                camDistanceTarget = THREE.MathUtils.clamp(camDistanceTarget - (d - pinch.dist) * 0.02, 2.6, 13);
+            }
+            pinch.active = true;
+            pinch.dist = d;
+        } else {
+            pinch.active = false;
+        }
+    }, { passive: true });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    window.addEventListener('pointerdown', initAudio, { once: true });
+    window.addEventListener('keydown', initAudio, { once: true });
+}
+
+function applyLook(dx, dy) {
+    const s = settings.sens * 0.0024;
+    camYaw -= dx * s;
+    camPitch += (settings.invert ? -dy : dy) * s;
+    camPitch = THREE.MathUtils.clamp(camPitch, -0.55, 1.15);
+}
+
+function readMovementInput() {
+    let x = 0, f = 0;
     if (keys.KeyA || keys.ArrowLeft) x -= 1;
     if (keys.KeyD || keys.ArrowRight) x += 1;
-    if (keys.KeyW || keys.ArrowUp) z -= 1;
-    if (keys.KeyS || keys.ArrowDown) z += 1;
+    if (keys.KeyW || keys.ArrowUp) f += 1;
+    if (keys.KeyS || keys.ArrowDown) f -= 1;
 
-    x += joystick.x;
-    z += joystick.y;
+    x += touchState.moveX;
+    f -= touchState.moveY;
 
-    const length = Math.hypot(x, z);
-
-    if (length > 1) {
-        x /= length;
-        z /= length;
-    }
-
-    return {
-        x,
-        z,
-        moving: length > 0.12
-    };
+    const len = Math.hypot(x, f);
+    if (len > 1) { x /= len; f /= len; }
+    return { x, f, magnitude: Math.min(len, 1) };
 }
 
-// --------------------------------------------------
-// MOBILE JOYSTICK
-// --------------------------------------------------
+/* ============================================================
+   PLAYER UPDATE
+   ============================================================ */
 
-const joystickElement = document.getElementById('joystick');
-const stick = document.getElementById('stick');
+const _move = new THREE.Vector3();
+const _flat = new THREE.Vector3();
 
-let joystickPointer = null;
+function updatePlayer(dt) {
+    const input = readMovementInput();
+    const wantsRun = keys.ShiftLeft || keys.ShiftRight || touchState.run;
 
-joystickElement.addEventListener('pointerdown', (e) => {
-    joystickPointer = e.pointerId;
-    joystickElement.setPointerCapture(e.pointerId);
-    updateJoystick(e);
-});
+    const forwardX = -Math.sin(camYaw);
+    const forwardZ = -Math.cos(camYaw);
+    const rightX = Math.cos(camYaw);
+    const rightZ = -Math.sin(camYaw);
 
-joystickElement.addEventListener('pointermove', (e) => {
-    if (e.pointerId === joystickPointer) {
-        updateJoystick(e);
-    }
-});
+    let dirX = rightX * input.x + forwardX * input.f;
+    let dirZ = rightZ * input.x + forwardZ * input.f;
+    const dirLen = Math.hypot(dirX, dirZ);
+    if (dirLen > 0.0001) { dirX /= dirLen; dirZ /= dirLen; }
 
-function updateJoystick(e) {
-    const rect = joystickElement.getBoundingClientRect();
+    const groundY = groundHeight(player.position.x, player.position.z);
+    const waterDepth = WATER_LEVEL - groundY;
+    const wasSwimming = P.swimming;
+    P.swimming = waterDepth > 1.35 && player.position.y < WATER_LEVEL - 0.35;
 
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
+    if (P.swimming && !wasSwimming) sfxSplash();
+    if (!P.swimming && wasSwimming) sfxSplash();
 
-    let dx = e.clientX - cx;
-    let dy = e.clientY - cy;
-
-    const max = 40;
-    const length = Math.hypot(dx, dy);
-
-    if (length > max) {
-        dx = dx / length * max;
-        dy = dy / length * max;
-    }
-
-    joystick.x = dx / max;
-    joystick.y = dy / max;
-
-    stick.style.transform = `translate(${dx}px, ${dy}px)`;
-}
-
-function resetJoystick() {
-    joystickPointer = null;
-    joystick.x = 0;
-    joystick.y = 0;
-    stick.style.transform = 'translate(0px, 0px)';
-}
-
-joystickElement.addEventListener('pointerup', resetJoystick);
-joystickElement.addEventListener('pointercancel', resetJoystick);
-
-// --------------------------------------------------
-// MOBILE JUMP AND RUN BUTTONS
-// --------------------------------------------------
-
-const jumpButton = document.getElementById('jump');
-
-jumpButton.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    jumpRequested = true;
-    initialiseAudio();
-});
-
-const runButton = document.getElementById('run');
-
-runButton.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    mobileRunning = true;
-});
-
-runButton.addEventListener('pointerup', () => {
-    mobileRunning = false;
-});
-
-runButton.addEventListener('pointerleave', () => {
-    mobileRunning = false;
-});
-
-runButton.addEventListener('pointercancel', () => {
-    mobileRunning = false;
-});
-
-// --------------------------------------------------
-// CAMERA TOUCH CONTROLS
-// IMPORTANT: Attach to document, not renderer.domElement
-// before the renderer has been created.
-// --------------------------------------------------
-
-document.addEventListener('pointerdown', (e) => {
-    if (
-        renderer &&
-        e.target === renderer.domElement &&
-        e.pointerType === 'touch'
-    ) {
-        cameraDrag = true;
-        lastPointerX = e.clientX;
-        lastPointerY = e.clientY;
-    }
-});
-
-window.addEventListener('pointermove', (e) => {
-    if (!cameraDrag) return;
-
-    const dx = e.clientX - lastPointerX;
-    const dy = e.clientY - lastPointerY;
-
-    cameraYaw -= dx * 0.006;
-
-    cameraPitch = THREE.MathUtils.clamp(
-        cameraPitch + dy * 0.003,
-        -0.15,
-        0.85
-    );
-
-    lastPointerX = e.clientX;
-    lastPointerY = e.clientY;
-});
-
-window.addEventListener('pointerup', () => {
-    cameraDrag = false;
-});
-
-window.addEventListener('pointercancel', () => {
-    cameraDrag = false;
-});
-
-// --------------------------------------------------
-// PLAYER UPDATE
-// --------------------------------------------------
-
-function updatePlayer(delta) {
-    const input = getMovementInput();
-
-    const running =
-        keys.ShiftLeft ||
-        keys.ShiftRight ||
-        mobileRunning;
-
-    const targetSpeed = input.moving
-        ? (running ? RUN_SPEED : WALK_SPEED)
-        : 0;
-
-    moveSpeed = THREE.MathUtils.damp(
-        moveSpeed,
-        targetSpeed,
-        input.moving ? 7 : 9,
-        delta
-    );
-
-    if (input.moving) {
-        const sin = Math.sin(cameraYaw);
-        const cos = Math.cos(cameraYaw);
-
-        const worldX = input.x * cos + input.z * sin;
-        const worldZ = -input.x * sin + input.z * cos;
-
-        const length = Math.hypot(worldX, worldZ) || 1;
-
-        const dx = worldX / length;
-        const dz = worldZ / length;
-
-        player.position.x += dx * moveSpeed * delta;
-        player.position.z += dz * moveSpeed * delta;
-
-        const targetYaw = Math.atan2(-dx, -dz);
-
-        // Smoothly rotate the character
-        let difference = targetYaw - player.rotation.y;
-
-        difference = Math.atan2(
-            Math.sin(difference),
-            Math.cos(difference)
-        );
-
-        player.rotation.y += difference * Math.min(1, delta * 12);
-    }
-
-    // Terrain height
-    const groundY = terrainHeight(
-        player.position.x,
-        player.position.z
-    );
-
-    // Jumping
-    if (jumpRequested && grounded) {
-        velocityY = JUMP_FORCE;
-        grounded = false;
-        jumping = true;
-        makeJumpSound();
-    }
-
-    jumpRequested = false;
-
-    if (!grounded) {
-        velocityY -= GRAVITY * delta;
-        player.position.y += velocityY * delta;
-
-        if (player.position.y <= groundY) {
-            player.position.y = groundY;
-            velocityY = 0;
-            grounded = true;
-            jumping = false;
-            makeLandingSound();
-        }
+    // Stamina
+    const sprinting = wantsRun && input.magnitude > 0.1 && P.stamina > 1 && !P.swimming;
+    if (sprinting) {
+        P.stamina = Math.max(0, P.stamina - 17 * dt);
+        P.staminaDelay = 0.9;
+    } else if (P.swimming && input.magnitude > 0.1) {
+        P.stamina = Math.max(0, P.stamina - 6 * dt);
+        P.staminaDelay = 0.9;
     } else {
-        player.position.y = THREE.MathUtils.damp(
-            player.position.y,
-            groundY,
-            12,
-            delta
-        );
+        P.staminaDelay -= dt;
+        if (P.staminaDelay <= 0) P.stamina = Math.min(100, P.stamina + 16 * dt);
     }
 
-    // Animation selection
-    if (!jumping) {
-        if (moveSpeed > 0.25) {
-            if (running && animations.run) {
-                selectAnimation('run');
-            } else if (animations.walk) {
-                selectAnimation('walk');
-            } else if (animations.run) {
-                selectAnimation('run');
+    let targetSpeed = 0;
+    if (input.magnitude > 0.08) {
+        targetSpeed = P.swimming ? SWIM_SPEED : (sprinting ? RUN_SPEED : WALK_SPEED);
+        targetSpeed *= Math.max(input.magnitude, 0.35);
+    }
+
+    // Uphill penalty
+    if (!P.swimming && dirLen > 0.001) {
+        const ahead = groundHeight(player.position.x + dirX * 1.4, player.position.z + dirZ * 1.4);
+        const rise = ahead - groundY;
+        if (rise > 0) targetSpeed *= clamp01(1 - rise * 0.55);
+    }
+
+    const accel = P.grounded || P.swimming ? GROUND_ACCEL : AIR_ACCEL;
+    const desiredX = dirX * targetSpeed;
+    const desiredZ = dirZ * targetSpeed;
+    const blend = 1 - Math.exp(-accel * dt / 3.2);
+    P.vel.x += (desiredX - P.vel.x) * blend;
+    P.vel.z += (desiredZ - P.vel.z) * blend;
+
+    // Jump
+    P.jumpBuffer -= dt;
+    if (P.grounded) P.coyote = 0.13; else P.coyote -= dt;
+
+    if (P.swimming) {
+        const floatY = WATER_LEVEL - 0.85;
+        const buoyancy = (floatY - player.position.y) * 9;
+        P.vel.y += (buoyancy - P.vel.y * 3.4) * dt * 3;
+        if (P.jumpBuffer > 0) { P.vel.y += 4.2 * dt * 8; P.jumpBuffer = 0; }
+        P.grounded = false;
+    } else if (P.jumpBuffer > 0 && P.coyote > 0) {
+        P.vel.y = JUMP_VELOCITY;
+        P.grounded = false;
+        P.coyote = 0;
+        P.jumpBuffer = 0;
+        sfxJump();
+    } else if (!P.grounded) {
+        P.vel.y -= GRAVITY * dt;
+    }
+
+    // Integrate
+    player.position.x += P.vel.x * dt;
+    player.position.z += P.vel.z * dt;
+    player.position.y += P.vel.y * dt;
+
+    resolveCollisions(player.position, PLAYER_RADIUS);
+
+    // World bounds — soft wall
+    const dist = Math.hypot(player.position.x, player.position.z);
+    const maxDist = WORLD_RADIUS + 30;
+    if (dist > maxDist) {
+        const k = maxDist / dist;
+        player.position.x *= k;
+        player.position.z *= k;
+    }
+
+    const newGround = groundHeight(player.position.x, player.position.z);
+
+    if (!P.swimming) {
+        if (player.position.y <= newGround) {
+            const falling = P.vel.y < -2;
+            player.position.y = newGround;
+            P.vel.y = 0;
+            if (!P.grounded) {
+                P.grounded = true;
+                if (falling) sfxLand(surfaceAt(player.position.x, player.position.z, newGround));
             }
-        } else {
-            selectAnimation('idle');
-        }
-    }
-
-    // Footstep sounds
-    if (grounded && moveSpeed > 0.8) {
-        stepTimer -= delta;
-
-        const interval = running ? 0.31 : 0.49;
-
-        if (stepTimer <= 0) {
-            makeFootstep(running);
-            stepTimer = interval;
+        } else if (player.position.y - newGround < 0.22 && P.vel.y <= 0) {
+            // stick to slopes while walking
+            player.position.y = newGround;
+            P.vel.y = 0;
+            P.grounded = true;
+        } else if (P.grounded && player.position.y > newGround + 0.3) {
+            P.grounded = false;
         }
     } else {
-        stepTimer = 0;
+        if (player.position.y < newGround) { player.position.y = newGround; P.vel.y = Math.max(0, P.vel.y); }
     }
 
-    statusText.textContent =
-        moveSpeed > 0.8
-            ? (running ? 'RUNNING' : 'WALKING')
-            : 'EXPLORATION MODE';
+    // Facing
+    const horizontalSpeed = Math.hypot(P.vel.x, P.vel.z);
+    P.speed = horizontalSpeed;
+    if (horizontalSpeed > 0.35) {
+        const targetYaw = Math.atan2(P.vel.x, P.vel.z);
+        let diff = targetYaw - P.yaw;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        P.yaw += diff * (1 - Math.exp(-14 * dt));
+        player.rotation.y = P.yaw;
+    }
+
+    // Footsteps / stroke audio
+    P.animPhase += horizontalSpeed * dt * (sprinting ? 2.5 : 3.1);
+    if (P.swimming) {
+        P.stepDistance += horizontalSpeed * dt;
+        if (P.stepDistance > 1.6 && horizontalSpeed > 0.4) { P.stepDistance = 0; sfxStroke(); }
+    } else if (P.grounded && horizontalSpeed > 0.6) {
+        P.stepDistance += horizontalSpeed * dt;
+        const stride = sprinting ? 2.15 : 1.55;
+        if (P.stepDistance >= stride) {
+            P.stepDistance = 0;
+            const surf = surfaceAt(player.position.x, player.position.z, newGround);
+            P.lastSurface = surf;
+            sfxFootstep(surf, sprinting);
+        }
+    } else {
+        P.stepDistance = Math.min(P.stepDistance, 1.2);
+    }
+
+    updateAnimation(dt, horizontalSpeed, sprinting);
+
+    // HUD state line
+    let state = 'Exploring';
+    if (P.swimming) state = 'Swimming';
+    else if (!P.grounded) state = P.vel.y > 0 ? 'Jumping' : 'Falling';
+    else if (horizontalSpeed > RUN_SPEED * 0.55) state = 'Sprinting';
+    else if (horizontalSpeed > 0.4) state = 'Walking';
+    stateLine.textContent = state;
+
+    return { horizontalSpeed, sprinting, waterDepth };
 }
 
-// --------------------------------------------------
-// CAMERA FOLLOW
-// --------------------------------------------------
+/* ============================================================
+   CAMERA
+   ============================================================ */
 
-function updateCamera(delta) {
-    if (!player) return;
+const _camTarget = new THREE.Vector3();
+const _camDesired = new THREE.Vector3();
+const _focus = new THREE.Vector3();
+const _eye = new THREE.Vector3();
 
-    const yaw = cameraYaw + player.rotation.y;
-    const distance = 7.5;
-    const height = 3.2;
+function updateCamera(dt, horizontalSpeed) {
+    camDistance = THREE.MathUtils.damp(camDistance, camDistanceTarget, 8, dt);
 
-    desiredCamera.set(
-        player.position.x + Math.sin(yaw) * distance,
-        player.position.y + height + cameraPitch * 2,
-        player.position.z + Math.cos(yaw) * distance
-    );
+    const headY = player.position.y + (P.swimming ? 1.1 : 1.52);
+    _focus.set(player.position.x, headY, player.position.z);
 
-    camera.position.lerp(
-        desiredCamera,
-        1 - Math.exp(-5 * delta)
-    );
+    if (P.firstPerson) {
+        modelRoot.visible = false;
+        const fx = -Math.sin(camYaw) * Math.cos(camPitch);
+        const fz = -Math.cos(camYaw) * Math.cos(camPitch);
+        _eye.set(_focus.x + fx * 0.18, _focus.y + 0.1, _focus.z + fz * 0.18);
+        camera.position.lerp(_eye, 1 - Math.exp(-20 * dt));
+        _camTarget.set(
+            camera.position.x + fx,
+            camera.position.y - Math.sin(camPitch),
+            camera.position.z + fz
+        );
+        camera.lookAt(_camTarget);
+    } else {
+        modelRoot.visible = true;
+        const cp = Math.cos(camPitch);
+        _camDesired.set(
+            _focus.x + Math.sin(camYaw) * cp * camDistance,
+            _focus.y + Math.sin(camPitch) * camDistance + 0.75,
+            _focus.z + Math.cos(camYaw) * cp * camDistance
+        );
 
-    cameraLook.set(
-        player.position.x,
-        player.position.y + 1.45,
-        player.position.z
-    );
+        // Pull the camera in if terrain blocks the view
+        let allowed = camDistance;
+        const steps = 6;
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const px = _focus.x + (_camDesired.x - _focus.x) * t;
+            const py = _focus.y + (_camDesired.y - _focus.y) * t;
+            const pz = _focus.z + (_camDesired.z - _focus.z) * t;
+            if (py < groundHeight(px, pz) + 0.55) {
+                allowed = camDistance * (t - 1 / steps);
+                break;
+            }
+        }
+        allowed = Math.max(allowed, 2.6);
 
-    camera.lookAt(cameraLook);
+        if (allowed < camDistance) {
+            const t = allowed / camDistance;
+            _camDesired.set(
+                _focus.x + (_camDesired.x - _focus.x) * t,
+                _focus.y + (_camDesired.y - _focus.y) * t,
+                _focus.z + (_camDesired.z - _focus.z) * t
+            );
+        }
+
+        const floor = groundHeight(_camDesired.x, _camDesired.z) + 0.5;
+        if (_camDesired.y < floor) _camDesired.y = floor;
+
+        camera.position.lerp(_camDesired, 1 - Math.exp(-11 * dt));
+        camera.lookAt(_focus);
+    }
+
+    // Speed FOV
+    const targetFov = settings.fov + (horizontalSpeed > RUN_SPEED * 0.6 ? 7 : 0);
+    if (Math.abs(camera.fov - targetFov) > 0.05) {
+        camera.fov = THREE.MathUtils.damp(camera.fov, targetFov, 5, dt);
+        camera.updateProjectionMatrix();
+    }
 }
 
-// --------------------------------------------------
-// GAME LOOP
-// --------------------------------------------------
+/* ============================================================
+   DAY / NIGHT
+   ============================================================ */
+
+let timeOfDay = save.time;
+const _sunDir = new THREE.Vector3();
+
+const DAY_ZENITH = new THREE.Color(0x3b7fc9);
+const DAY_HORIZON = new THREE.Color(0xc3d8e3);
+const DUSK_ZENITH = new THREE.Color(0x2d3f6b);
+const DUSK_HORIZON = new THREE.Color(0xe08a52);
+const NIGHT_ZENITH = new THREE.Color(0x060b18);
+const NIGHT_HORIZON = new THREE.Color(0x182435);
+
+const _zenith = new THREE.Color();
+const _horizon = new THREE.Color();
+const _sunCol = new THREE.Color();
+const DUSK_SUN = new THREE.Color(0xff8c42);
+const HEMI_WHITE = new THREE.Color(0xffffff);
+
+function updateSky(dt) {
+    if (!settings.freeze) {
+        timeOfDay = (timeOfDay + dt / (settings.dayMinutes * 60)) % 1;
+    }
+
+    const a = (timeOfDay - 0.25) * Math.PI * 2;
+    _sunDir.set(Math.cos(a), Math.sin(a), 0.22).normalize();
+    skyUniforms.uSunDir.value.copy(_sunDir);
+
+    const elevation = _sunDir.y;
+    // Softer than a hard horizon cut: the land stays legible through dusk
+    // instead of going black the moment the sun dips.
+    const dayAmount = clamp01(elevation * 1.8 + 0.5);
+    const duskAmount = clamp01(1 - Math.abs(elevation) * 4.2);
+    const night = clamp01(-elevation * 3.4 + 0.08);
+
+    _zenith.copy(NIGHT_ZENITH).lerp(DAY_ZENITH, dayAmount).lerp(DUSK_ZENITH, duskAmount * 0.75);
+    _horizon.copy(NIGHT_HORIZON).lerp(DAY_HORIZON, dayAmount).lerp(DUSK_HORIZON, duskAmount * 0.85);
+
+    skyUniforms.uZenith.value.copy(_zenith);
+    skyUniforms.uHorizon.value.copy(_horizon);
+    skyUniforms.uNight.value = night;
+
+    _sunCol.setRGB(1, 0.94, 0.84).lerp(DUSK_SUN, duskAmount);
+    skyUniforms.uSunColor.value.copy(_sunCol);
+
+    sun.position.copy(_sunDir).multiplyScalar(180);
+    if (player) {
+        sun.position.add(player.position);
+        sunTarget.position.copy(player.position);
+    }
+    // Keep a low warm sun right at the horizon for golden hour, and let the
+    // sky itself carry the ambient so dusk stays readable.
+    sun.intensity = 3.1 * smoothstep(-0.16, 0.14, elevation);
+    sun.color.copy(_sunCol);
+
+    moon.position.copy(_sunDir).multiplyScalar(-180);
+    moon.intensity = night * 0.8;
+
+    hemi.intensity = 0.5 + dayAmount * 0.95 + duskAmount * 0.35;
+    hemi.color.copy(_horizon).lerp(HEMI_WHITE, 0.35);
+
+    // A little eye-adaptation so night is moody rather than unreadable
+    renderer.toneMappingExposure = 1.0 + night * 0.3;
+
+    scene.fog.color.copy(_horizon);
+    waterUniforms.uSkyColor.value.copy(_horizon);
+    waterUniforms.uFogColor.value.copy(_horizon);
+    waterUniforms.uNight.value = night;
+
+    starMaterial.opacity = night * 0.95;
+    if (fireflies) fireflies.material.opacity = night * 0.9;
+
+    if (campLight) {
+        const flicker = 0.75 + Math.sin(elapsed * 11) * 0.12 + Math.sin(elapsed * 23.3) * 0.08;
+        campLight.intensity = (3 + night * 9) * flicker;
+        if (campFire) {
+            campFire.scale.set(0.9 + flicker * 0.18, 0.85 + flicker * 0.3, 0.9 + flicker * 0.18);
+            campFire.rotation.y = elapsed * 2.1;
+        }
+        if (campEmber) campEmber.scale.setScalar(0.85 + flicker * 0.25);
+    }
+}
+
+function clockString() {
+    const totalMinutes = Math.floor(timeOfDay * 24 * 60);
+    const hh = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+    const mm = String(totalMinutes % 60).padStart(2, '0');
+    return hh + ':' + mm;
+}
+
+/* ============================================================
+   WILDLIFE UPDATE
+   ============================================================ */
+
+function updateWildlife(dt) {
+    // Birds
+    for (const b of birds) {
+        b.phase += b.speed * dt;
+        b.flap += dt * 9;
+        const x = b.cx + Math.cos(b.phase) * b.radius;
+        const z = b.cz + Math.sin(b.phase) * b.radius;
+        b.g.position.set(x, b.y + Math.sin(b.phase * 2.3) * 2.4, z);
+        b.g.rotation.y = -b.phase + Math.PI / 2;
+        const flap = Math.sin(b.flap) * 0.75;
+        b.wingL.rotation.z = flap;
+        b.wingR.rotation.z = -flap;
+    }
+
+    // Deer
+    for (const d of deerList) {
+        d.think -= dt;
+        const dxp = player.position.x - d.x;
+        const dzp = player.position.z - d.z;
+        const distToPlayer = Math.hypot(dxp, dzp);
+
+        if (distToPlayer < 16 && P.speed > 1.5) d.fleeing = 3.2;
+        d.fleeing = Math.max(0, d.fleeing - dt);
+
+        if (d.fleeing > 0) {
+            d.targetX = d.x - dxp / (distToPlayer || 1) * 26;
+            d.targetZ = d.z - dzp / (distToPlayer || 1) * 26;
+        } else if (d.think <= 0) {
+            d.think = 3 + Math.random() * 6;
+            const a = Math.random() * Math.PI * 2;
+            const r = 6 + Math.random() * 22;
+            d.targetX = d.x + Math.cos(a) * r;
+            d.targetZ = d.z + Math.sin(a) * r;
+        }
+
+        const tx = d.targetX - d.x;
+        const tz = d.targetZ - d.z;
+        const td = Math.hypot(tx, tz);
+
+        const targetSpeed = td < 1.5 ? 0 : (d.fleeing > 0 ? 9 : 1.7);
+        d.speed = THREE.MathUtils.damp(d.speed, targetSpeed, 4, dt);
+
+        if (td > 0.001 && d.speed > 0.05) {
+            const nx = tx / td, nz = tz / td;
+            const nextX = d.x + nx * d.speed * dt;
+            const nextZ = d.z + nz * d.speed * dt;
+            const h = groundHeight(nextX, nextZ);
+            if (h > WATER_LEVEL + 0.8 && Math.hypot(nextX, nextZ) < WORLD_RADIUS) {
+                d.x = nextX;
+                d.z = nextZ;
+            } else {
+                d.think = 0;
+            }
+            const targetYaw = Math.atan2(nx, nz);
+            let diff = targetYaw - d.yaw;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            d.yaw += diff * (1 - Math.exp(-6 * dt));
+        }
+
+        d.phase += d.speed * dt * 2.4;
+        d.obj.root.position.set(d.x, groundHeight(d.x, d.z), d.z);
+        d.obj.root.rotation.y = d.yaw;
+
+        const amp = Math.min(d.speed / 5, 1) * 0.8;
+        const s = Math.sin(d.phase);
+        d.obj.legs[0].rotation.x = s * amp;
+        d.obj.legs[1].rotation.x = -s * amp;
+        d.obj.legs[2].rotation.x = -s * amp;
+        d.obj.legs[3].rotation.x = s * amp;
+    }
+
+    // Fireflies
+    if (fireflies && fireflies.material.opacity > 0.01) {
+        for (let i = 0; i < fireflyData.length; i++) {
+            const f = fireflyData[i];
+            f.a += f.sp * dt;
+            f.bob += dt * 1.7;
+            const x = player.position.x + Math.cos(f.a) * f.r;
+            const z = player.position.z + Math.sin(f.a) * f.r;
+            fireflyPositions[i * 3] = x;
+            fireflyPositions[i * 3 + 1] = terrainHeight(x, z) + f.y + Math.sin(f.bob) * 0.4;
+            fireflyPositions[i * 3 + 2] = z;
+        }
+        fireflies.geometry.attributes.position.needsUpdate = true;
+    }
+}
+
+/* ============================================================
+   RELICS
+   ============================================================ */
+
+let collected = 0;
+
+function updateRelics(dt) {
+    let nearest = null;
+    let nearestDist = Infinity;
+
+    for (const r of relics) {
+        if (r.taken) continue;
+        r.group.rotation.y += dt * 0.9;
+        r.group.position.y = r.base + Math.sin(elapsed * 1.6 + r.id) * 0.22;
+        r.halo.rotation.y -= dt * 1.4;
+        r.halo.scale.setScalar(1 + Math.sin(elapsed * 2.2 + r.id) * 0.12);
+
+        const dx = player.position.x - r.x;
+        const dz = player.position.z - r.z;
+        const d = Math.hypot(dx, dz);
+
+        if (d < nearestDist) { nearestDist = d; nearest = r; }
+
+        if (d < 2.2 && Math.abs(player.position.y - r.base) < 3.5) {
+            r.taken = true;
+            r.group.visible = false;
+            collected++;
+            sfxRelic();
+            updateRelicHud();
+            writeSave();
+            if (collected >= RELIC_TOTAL) {
+                toast('Expedition complete — all relics recovered', 5200);
+                sfxComplete();
+            } else {
+                toast('Relic recovered · ' + collected + ' of ' + RELIC_TOTAL, 2600);
+            }
+        }
+    }
+
+    if (nearest && nearestDist < 28) {
+        relicLight.position.set(nearest.x, nearest.base + 0.4, nearest.z);
+        relicLight.intensity = 7 * (1 - nearestDist / 28);
+    } else {
+        relicLight.intensity = 0;
+    }
+
+    return nearest;
+}
+
+function updateRelicHud() {
+    relicCountEl.textContent = collected;
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+
+const stateLine = document.getElementById('state-line');
+const clockEl = document.getElementById('clock');
+const perfEl = document.getElementById('perf');
+const coordsEl = document.getElementById('coords');
+const relicCountEl = document.getElementById('relic-count');
+const staminaEl = document.getElementById('stamina');
+const staminaFill = staminaEl.querySelector('i');
+const toastEl = document.getElementById('toast');
+const underwaterEl = document.getElementById('underwater');
+
+const compassCanvas = document.getElementById('compass');
+const compassCtx = compassCanvas.getContext('2d');
+const minimapCanvas = document.getElementById('minimap-canvas');
+const minimapCtx = minimapCanvas.getContext('2d');
+
+let terrainImage = null;
+const MAP_EXTENT = WORLD_RADIUS + 40;
+
+let toastTimer = 0;
+function toast(message, duration) {
+    toastEl.textContent = message;
+    toastEl.classList.add('show');
+    toastTimer = (duration || 2400) / 1000;
+}
+
+function bakeMinimap() {
+    const res = 420;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = res;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(res, res);
+    const col = new THREE.Color();
+    const scale = (MAP_EXTENT * 2) / res;
+
+    for (let py = 0; py < res; py++) {
+        for (let px = 0; px < res; px++) {
+            const x = -MAP_EXTENT + px * scale;
+            const z = -MAP_EXTENT + py * scale;
+            const h = terrainHeight(x, z);
+            const idx = (py * res + px) * 4;
+
+            if (h < WATER_LEVEL) {
+                const depth = clamp01((WATER_LEVEL - h) / 10);
+                img.data[idx] = Math.round(lerp(90, 22, depth));
+                img.data[idx + 1] = Math.round(lerp(150, 60, depth));
+                img.data[idx + 2] = Math.round(lerp(170, 95, depth));
+            } else {
+                const ny = terrainNormal(x, z, _n).y;
+                biomeColor(x, z, h, 1 - ny, col);
+                // convert linear back to sRGB-ish for the 2D canvas
+                const shade = 0.72 + clamp01(ny) * 0.4;
+                img.data[idx] = Math.round(Math.pow(clamp01(col.r * shade), 1 / 2.2) * 255);
+                img.data[idx + 1] = Math.round(Math.pow(clamp01(col.g * shade), 1 / 2.2) * 255);
+                img.data[idx + 2] = Math.round(Math.pow(clamp01(col.b * shade), 1 / 2.2) * 255);
+            }
+            img.data[idx + 3] = 255;
+        }
+    }
+    ctx.putImageData(img, 0, 0);
+    terrainImage = canvas;
+}
+
+function drawMinimap() {
+    const w = minimapCanvas.width;
+    const h = minimapCanvas.height;
+    minimapCtx.clearRect(0, 0, w, h);
+
+    const viewRange = 190;
+    const scale = w / (viewRange * 2);
+
+    // Open ocean beyond the baked area, so the edge of the world isn't a void
+    minimapCtx.fillStyle = '#16405a';
+    minimapCtx.fillRect(0, 0, w, h);
+
+    minimapCtx.save();
+    minimapCtx.translate(w / 2, h / 2);
+
+    if (terrainImage) {
+        const imgScale = (terrainImage.width / (MAP_EXTENT * 2)) ;
+        const srcX = (player.position.x + MAP_EXTENT - viewRange) * imgScale;
+        const srcY = (player.position.z + MAP_EXTENT - viewRange) * imgScale;
+        const srcSize = viewRange * 2 * imgScale;
+        minimapCtx.imageSmoothingEnabled = true;
+        minimapCtx.drawImage(terrainImage, srcX, srcY, srcSize, srcSize, -w / 2, -h / 2, w, h);
+    }
+
+    // Dim the map after dark so it doesn't glare out of a night scene
+    const mapNight = skyUniforms.uNight.value;
+    if (mapNight > 0.02) {
+        minimapCtx.fillStyle = 'rgba(8, 16, 38, ' + (mapNight * 0.5).toFixed(2) + ')';
+        minimapCtx.fillRect(-w / 2, -h / 2, w, h);
+    }
+
+    // relics
+    for (const r of relics) {
+        const dx = (r.x - player.position.x) * scale;
+        const dz = (r.z - player.position.z) * scale;
+        if (Math.hypot(dx, dz) > w / 2 - 6) continue;
+        minimapCtx.beginPath();
+        minimapCtx.arc(dx, dz, r.taken ? 2.5 : 4.5, 0, Math.PI * 2);
+        minimapCtx.fillStyle = r.taken ? 'rgba(255,255,255,0.3)' : '#ffd166';
+        minimapCtx.fill();
+    }
+
+    // camp
+    const cdx = (0 - player.position.x) * scale;
+    const cdz = (0 - player.position.z) * scale;
+    if (Math.hypot(cdx, cdz) < w / 2 - 6) {
+        minimapCtx.beginPath();
+        minimapCtx.arc(cdx, cdz, 4, 0, Math.PI * 2);
+        minimapCtx.fillStyle = '#ff8a3c';
+        minimapCtx.fill();
+    }
+
+    // player arrow
+    minimapCtx.rotate(-P.yaw + Math.PI);
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(0, -9);
+    minimapCtx.lineTo(6, 7);
+    minimapCtx.lineTo(0, 3.5);
+    minimapCtx.lineTo(-6, 7);
+    minimapCtx.closePath();
+    minimapCtx.fillStyle = '#ffffff';
+    minimapCtx.strokeStyle = 'rgba(0,0,0,0.65)';
+    minimapCtx.lineWidth = 1.6;
+    minimapCtx.fill();
+    minimapCtx.stroke();
+
+    minimapCtx.restore();
+}
+
+function drawCompass(nearestRelic) {
+    const w = compassCanvas.width;
+    const h = compassCanvas.height;
+    compassCtx.clearRect(0, 0, w, h);
+
+    const heading = -camYaw;
+    const span = Math.PI * 0.85;
+    const toX = (bearing) => {
+        let diff = bearing - heading;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        return w / 2 + (diff / span) * w;
+    };
+
+    compassCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+    compassCtx.lineWidth = 2;
+    compassCtx.beginPath();
+    compassCtx.moveTo(0, 38);
+    compassCtx.lineTo(w, 38);
+    compassCtx.stroke();
+
+    for (let deg = 0; deg < 360; deg += 15) {
+        const x = toX(deg * Math.PI / 180);
+        if (x < -20 || x > w + 20) continue;
+        const major = deg % 45 === 0;
+        const edgeFade = 1 - Math.abs(x - w / 2) / (w / 2);
+        compassCtx.globalAlpha = Math.max(0, Math.min(1, edgeFade * 1.6));
+        compassCtx.strokeStyle = 'rgba(255,255,255,0.75)';
+        compassCtx.lineWidth = major ? 2 : 1;
+        compassCtx.beginPath();
+        compassCtx.moveTo(x, major ? 24 : 30);
+        compassCtx.lineTo(x, 38);
+        compassCtx.stroke();
+
+        const labels = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+        if (labels[deg]) {
+            compassCtx.fillStyle = deg === 0 ? '#f0c674' : 'rgba(255,255,255,0.92)';
+            compassCtx.font = 'bold 15px Arial';
+            compassCtx.textAlign = 'center';
+            compassCtx.fillText(labels[deg], x, 18);
+        }
+    }
+
+    // nearest relic marker
+    if (nearestRelic) {
+        const bearing = Math.atan2(nearestRelic.x - player.position.x, -(nearestRelic.z - player.position.z));
+        const x = toX(bearing);
+        if (x > 0 && x < w) {
+            compassCtx.globalAlpha = 1;
+            compassCtx.fillStyle = '#ffd166';
+            compassCtx.beginPath();
+            compassCtx.moveTo(x, 44);
+            compassCtx.lineTo(x + 5, 52);
+            compassCtx.lineTo(x - 5, 52);
+            compassCtx.closePath();
+            compassCtx.fill();
+        }
+    }
+
+    compassCtx.globalAlpha = 1;
+    compassCtx.fillStyle = '#ffffff';
+    compassCtx.fillRect(w / 2 - 1, 22, 2, 20);
+}
+
+/* ============================================================
+   MENU
+   ============================================================ */
+
+const menuEl = document.getElementById('menu');
+
+let lastPauseToggle = 0;
+
+function togglePause(forceOpen) {
+    const now = performance.now();
+    if (now - lastPauseToggle < 220) return;
+    lastPauseToggle = now;
+    paused = forceOpen === true ? true : !paused;
+    menuEl.classList.toggle('open', paused);
+    document.getElementById('menu-note').textContent = paused ? 'Paused · ' + collected + ' of ' + RELIC_TOTAL + ' relics' : '';
+    if (paused && pointerLocked) document.exitPointerLock();
+    if (!paused) {
+        writeSave();
+        if (!isTouch) {
+            const p = renderer.domElement.requestPointerLock();
+            if (p && p.catch) p.catch(() => {});
+        }
+    }
+}
+
+function syncMenu() {
+    document.querySelectorAll('#seg-quality button').forEach(b => {
+        b.classList.toggle('on', b.dataset.v === settings.quality);
+    });
+    document.getElementById('tg-shadows').classList.toggle('on', settings.shadows);
+    document.getElementById('tg-invert').classList.toggle('on', settings.invert);
+    document.getElementById('tg-freeze').classList.toggle('on', settings.freeze);
+    document.getElementById('tg-flip').classList.toggle('on', settings.flip);
+
+    document.getElementById('rg-fov').value = settings.fov;
+    document.getElementById('v-fov').textContent = settings.fov;
+    document.getElementById('rg-sens').value = settings.sens;
+    document.getElementById('v-sens').textContent = settings.sens.toFixed(1);
+    document.getElementById('rg-vol').value = settings.volume;
+    document.getElementById('v-vol').textContent = Math.round(settings.volume * 100);
+    document.getElementById('rg-day').value = settings.dayMinutes;
+    document.getElementById('v-day').textContent = settings.dayMinutes;
+}
+
+function setupMenu() {
+    document.querySelectorAll('#seg-quality button').forEach(b => {
+        b.addEventListener('click', () => {
+            if (settings.quality === b.dataset.v) return;
+            settings.quality = b.dataset.v;
+            writeSave();
+            location.reload();
+        });
+    });
+
+    const toggle = (id, key, after) => {
+        document.getElementById(id).addEventListener('click', () => {
+            settings[key] = !settings[key];
+            syncMenu();
+            writeSave();
+            if (after) after();
+        });
+    };
+
+    toggle('tg-shadows', 'shadows', () => {
+        renderer.shadowMap.enabled = settings.shadows;
+        scene.traverse(o => {
+            if (o.isMesh || o.isInstancedMesh) {
+                if (o !== terrainMesh && o !== water && o !== sky && o !== grassMesh) {
+                    o.castShadow = settings.shadows;
+                }
+                if (o.material) o.material.needsUpdate = true;
+            }
+        });
+    });
+    toggle('tg-invert', 'invert');
+    toggle('tg-freeze', 'freeze');
+    toggle('tg-flip', 'flip');
+
+    const bind = (id, key, label, transform) => {
+        document.getElementById(id).addEventListener('input', (e) => {
+            settings[key] = parseFloat(e.target.value);
+            document.getElementById(label).textContent = transform ? transform(settings[key]) : settings[key];
+            if (key === 'volume' && Audio.master) Audio.master.gain.value = settings.volume;
+            if (key === 'fov') { camera.fov = settings.fov; camera.updateProjectionMatrix(); }
+        });
+        document.getElementById(id).addEventListener('change', writeSave);
+    };
+
+    bind('rg-fov', 'fov', 'v-fov');
+    bind('rg-sens', 'sens', 'v-sens', v => v.toFixed(1));
+    bind('rg-vol', 'volume', 'v-vol', v => Math.round(v * 100));
+    bind('rg-day', 'dayMinutes', 'v-day');
+
+    document.getElementById('btn-resume').addEventListener('click', () => togglePause());
+
+    document.getElementById('btn-respawn').addEventListener('click', () => {
+        player.position.set(0, groundHeight(0, 4) + 0.2, 4);
+        P.vel.set(0, 0, 0);
+        updateGrass(true);
+        togglePause();
+        toast('Returned to camp');
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        relics.forEach(r => { r.taken = false; r.group.visible = true; });
+        collected = 0;
+        updateRelicHud();
+        writeSave();
+        togglePause();
+        toast('Relics scattered again');
+    });
+
+    syncMenu();
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+
+let elapsed = 0;
+let frames = 0, fpsTimer = 0, hudTimer = 0, saveTimer = 0;
 
 function animate() {
     requestAnimationFrame(animate);
 
-    const delta = Math.min(clock.getDelta(), 0.04);
+    const dt = Math.min(clock.getDelta(), 0.05);
 
-    if (mixer) {
-        mixer.update(delta);
-    }
+    if (!paused && started) {
+        elapsed += dt;
+        windUniform.value = elapsed;
+        waterUniforms.uTime.value = elapsed;
 
-    if (player) {
-        updatePlayer(delta);
-        updateCamera(delta);
+        const result = updatePlayer(dt);
+        if (mixer) mixer.update(dt);
+        updateCamera(dt, result.horizontalSpeed);
+        updateSky(dt);
+        updateWildlife(dt);
+        updateGrass(false);
+        const nearestRelic = updateRelics(dt);
+
+        sky.position.copy(camera.position);
+        stars.position.copy(camera.position);
+
+        // Ambient audio levels
+        if (Audio.ready) {
+            const altitude = clamp01((player.position.y - 10) / 45);
+            const exposure = 0.035 + altitude * 0.085 + Math.min(P.speed / RUN_SPEED, 1) * 0.015;
+            Audio.windGain.gain.value = exposure;
+            Audio.windFilter.frequency.value = 380 + altitude * 500;
+
+            const nearWater = clamp01(1 - (groundHeight(player.position.x, player.position.z) - WATER_LEVEL) / 7);
+            Audio.waterGain.gain.value = (P.swimming ? 0.11 : 0.055) * nearWater;
+
+            const night = skyUniforms.uNight.value;
+            Audio.nextChirp -= dt;
+            if (Audio.nextChirp <= 0) {
+                Audio.nextChirp = 2 + Math.random() * 7;
+                if (night < 0.4) sfxChirp();
+            }
+            Audio.nextCricket -= dt;
+            if (Audio.nextCricket <= 0) {
+                Audio.nextCricket = 1.4 + Math.random() * 2.2;
+                if (night > 0.5) sfxCricket();
+            }
+        }
+
+        // HUD, throttled
+        hudTimer -= dt;
+        if (hudTimer <= 0) {
+            hudTimer = 0.1;
+            clockEl.textContent = clockString();
+            coordsEl.textContent = 'x ' + Math.round(player.position.x) + ' · z ' + Math.round(player.position.z);
+            staminaFill.style.width = P.stamina + '%';
+            staminaEl.classList.toggle('low', P.stamina < 30);
+            drawMinimap();
+        }
+        drawCompass(nearestRelic);
+
+        underwaterEl.classList.toggle('on', camera.position.y < WATER_LEVEL - 0.1);
+
+        if (toastTimer > 0) {
+            toastTimer -= dt;
+            if (toastTimer <= 0) toastEl.classList.remove('show');
+        }
+
+        saveTimer -= dt;
+        if (saveTimer <= 0) { saveTimer = 12; writeSave(); }
+
+        frames++;
+        fpsTimer += dt;
+        if (fpsTimer >= 1) {
+            perfEl.textContent = Math.round(frames / fpsTimer) + ' fps · ' + settings.quality;
+            frames = 0;
+            fpsTimer = 0;
+        }
     }
 
     renderer.render(scene, camera);
 }
 
-// --------------------------------------------------
-// RESIZE
-// --------------------------------------------------
+/* ============================================================
+   BOOT
+   ============================================================ */
 
-window.addEventListener('resize', () => {
-    if (!camera || !renderer) return;
+const loaderEl = document.getElementById('loader');
+const loaderText = document.getElementById('loader-text');
+const loaderBar = document.querySelector('#bar i');
 
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+function progress(pct, label) {
+    loaderBar.style.width = pct + '%';
+    if (label) loaderText.textContent = label;
+    return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+}
 
-    renderer.setSize(
-        window.innerWidth,
-        window.innerHeight
-    );
-});
-
-// --------------------------------------------------
-// START GAME
-// --------------------------------------------------
-
-async function startGame() {
+async function boot() {
     try {
-        initScene();
-        createWorld();
+        await progress(6, 'Lighting the sky');
+        initRenderer();
 
-        await loadPlayer();
+        await progress(18, 'Raising the land');
+        buildTerrain();
 
-        loadingScreen.style.opacity = '0';
+        await progress(38, 'Flooding the valleys');
+        buildWater();
 
-        setTimeout(() => {
-            loadingScreen.remove();
-        }, 900);
+        await progress(52, 'Planting forests');
+        buildVegetation();
+
+        await progress(66, 'Scattering relics');
+        buildCamp();
+        buildLandmarks();
+        buildRelics();
+        collected = relics.filter(r => r.taken).length;
+
+        await progress(74, 'Releasing wildlife');
+        buildBirds();
+        buildDeer();
+        buildFireflies();
+
+        await progress(82, 'Drawing the map');
+        bakeMinimap();
+
+        await progress(90, 'Waking the explorer');
+        const usedModel = await loadPlayerModel();
+        setupPlayer();
+        updateGrass(true);
+
+        await progress(100, 'Ready');
+
+        setupInput();
+        setupMenu();
+        updateRelicHud();
+        document.getElementById('relic-total').textContent = RELIC_TOTAL;
+
+        loaderEl.classList.add('ready');
+        loaderText.textContent = usedModel ? 'Ready' : 'Model not found — using the built-in explorer';
+        if (!usedModel) {
+            document.getElementById('loader-keys').innerHTML =
+                'Could not load <b>' + MODEL_PATH + '</b> — playing with the built-in character.<br>' +
+                'Put your .glb next to this file, or add <b>?model=yourfile.glb</b> to the URL.';
+        }
+
+        document.getElementById('start').addEventListener('click', () => {
+            started = true;
+            initAudio();
+            loaderEl.style.opacity = '0';
+            setTimeout(() => loaderEl.remove(), 900);
+            if (!isTouch) {
+                const p = renderer.domElement.requestPointerLock();
+                if (p && p.catch) p.catch(() => {});
+            }
+            clock.getDelta();
+            if (collected > 0) toast('Welcome back · ' + collected + ' of ' + RELIC_TOTAL + ' relics');
+            else toast('Find the ' + RELIC_TOTAL + ' relics', 4000);
+        });
 
         animate();
-
-    } catch (error) {
-        console.error('Game startup error:', error);
-
-        loadingScreen.innerHTML = `
-            <h1>GAME COULD NOT LOAD</h1>
-            <p>CHECK THE BROWSER CONSOLE FOR DETAILS</p>
-            <p>MAKE SURE playerdelete.glb IS NEXT TO game.html</p>
-        `;
+    } catch (err) {
+        console.error(err);
+        loaderEl.classList.add('failed');
+        loaderEl.querySelector('h1').textContent = 'Could not start';
+        loaderText.textContent = String(err && err.message ? err.message : err);
     }
 }
 
-startGame();
+window.addEventListener('beforeunload', writeSave);
 
+boot();
 </script>
 </body>
 </html>
