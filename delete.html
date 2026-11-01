@@ -20,13 +20,18 @@ html, body {
     margin: 0;
     height: 100%;
     overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
     background: #0c1416;
     color: var(--ink);
     font-family: "Helvetica Neue", Arial, sans-serif;
     user-select: none;
 }
 
-canvas { display: block; }
+/* Without this the browser spends the first ~200ms of every drag deciding
+   whether it is a scroll, which reads as the camera sticking, and it may
+   cancel the pointer mid-drag. */
+canvas { display: block; touch-action: none; }
 
 .cap {
     text-transform: uppercase;
@@ -576,7 +581,6 @@ const ENEMY_TYPES = [
         chaseSpeed: 4.6,
         sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
-        tint: [0.16, 0.02, 0.015],
         sounds: {}
     },
     {
@@ -589,7 +593,6 @@ const ENEMY_TYPES = [
         chaseSpeed: 5.4,
         sight: 25,
         fallback: { cloth: 0x2f3f66, dark: 0x1a2032, skin: 0x9a8070, hair: 0x14181f, eyes: 0x6fe0ff, pack: false },
-        tint: [0.03, 0.05, 0.18],
         sounds: { run: './ChrisRunning.mp3', fight: './ChrisFighting.mp3', die: './ChrisDying.mp3' }
     }
 ];
@@ -2479,16 +2482,15 @@ function createEnemy(id, type, rnd) {
         root = cloneSkinned(type.template);
         root.traverse(o => {
             if (o.isMesh || o.isSkinnedMesh) {
-                // Own materials per enemy so a hit can flash just that one,
-                // plus a faint cast that tells the two kinds apart at a glance.
+                // Own materials per enemy so a hit can flash just that one.
+                // The model's own colours/textures are left untouched.
                 if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
                 else if (o.material) o.material = o.material.clone();
                 const mats = Array.isArray(o.material) ? o.material : [o.material];
                 for (const m of mats) {
-                    if (m && m.emissive) {
-                        m.emissive.setRGB(type.tint[0], type.tint[1], type.tint[2]);
-                        m.userData._baseEmissive = m.emissive.clone();
-                    }
+                    // Leave the model's own look alone — just remember the
+                    // original emissive so a hit flash can restore it.
+                    if (m && m.emissive) m.userData._baseEmissive = m.emissive.clone();
                 }
                 o.castShadow = settings.shadows;
                 o.receiveShadow = true;
@@ -3065,19 +3067,33 @@ function setupInput() {
         knob.style.transform = `translate(${dx}px, ${dy}px)`;
     }
 
+    // The newest finger on the view always takes over looking. Any scheme that
+    // waits for the previous finger to report pointerup is unreliable, because
+    // a swallowed or cancelled pointerup is the very thing that left looking
+    // stuck: the old id stayed "active" forever and every later drag was
+    // ignored. Taking over unconditionally cannot latch.
     canvas.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'touch') return;
-        if (touchState.lookId !== null) return;
         touchState.lookId = e.pointerId;
         touchState.lookX = e.clientX;
         touchState.lookY = e.clientY;
     });
+
     window.addEventListener('pointermove', (e) => {
         if (e.pointerId !== touchState.lookId) return;
+        // During a pinch the gesture belongs to the zoom handler. pinch.active
+        // is derived from TouchEvent.touches, which the browser keeps live, so
+        // unlike a hand-maintained set it can never go stale.
+        if (pinch.active) {
+            touchState.lookX = e.clientX;
+            touchState.lookY = e.clientY;
+            return;
+        }
         applyLook((e.clientX - touchState.lookX) * 1.6, (e.clientY - touchState.lookY) * 1.6);
         touchState.lookX = e.clientX;
         touchState.lookY = e.clientY;
     });
+
     const endLook = (e) => { if (e.pointerId === touchState.lookId) touchState.lookId = null; };
     window.addEventListener('pointerup', endLook);
     window.addEventListener('pointercancel', endLook);
@@ -3101,10 +3117,13 @@ function setupInput() {
 
     document.getElementById('btn-menu').addEventListener('pointerdown', (e) => { e.preventDefault(); togglePause(); });
 
-    // Pinch zoom on touch
+    // Pinch zoom — only when both fingers are on the 3D view. Otherwise
+    // thumbing the stick while dragging to look counted as a pinch and the
+    // camera crept in and out on its own.
     const pinch = { active: false, dist: 0 };
     window.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2) {
+        if (e.touches.length === 2 &&
+            e.touches[0].target === canvas && e.touches[1].target === canvas) {
             const d = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
@@ -3217,11 +3236,12 @@ function updatePlayer(dt) {
         targetSpeed *= Math.max(input.magnitude, 0.35);
     }
 
-    // Uphill penalty
+    // Uphill penalty — climbing costs speed, but never stalls you out. The
+    // old curve hit zero at about a 52° slope, which made peaks unreachable.
     if (!P.swimming && dirLen > 0.001) {
         const ahead = groundHeight(player.position.x + dirX * 1.4, player.position.z + dirZ * 1.4);
         const rise = ahead - groundY;
-        if (rise > 0) targetSpeed *= clamp01(1 - rise * 0.55);
+        if (rise > 0) targetSpeed *= Math.max(0.5, 1 - rise * 0.3);
     }
 
     const accel = P.grounded || P.swimming ? GROUND_ACCEL : AIR_ACCEL;
