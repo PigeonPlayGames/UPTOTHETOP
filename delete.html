@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>UPTOTHETOP - 3D Prototype</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #87bce0;
+  font-family: Arial, sans-serif;
+  touch-action: none;
+  user-select: none;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#hud {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  color: white;
+  z-index: 5;
+  text-shadow: 0 2px 5px #000;
+  pointer-events: none;
+}
+
+#hud h2 {
+  margin: 0 0 6px;
+  letter-spacing: 2px;
+}
+
+#status {
+  font-size: 12px;
+  opacity: .85;
+}
+
+#instructions {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  color: white;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: right;
+  text-shadow: 0 2px 5px black;
+  pointer-events: none;
+}
+
+#message {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  background: rgba(0,0,0,.75);
+  padding: 18px 24px;
+  border-radius: 12px;
+  text-align: center;
+  z-index: 20;
+  max-width: 85%;
+}
+
+#mobileControls {
+  display: none;
+}
+
+#joystick {
+  position: fixed;
+  bottom: 35px;
+  left: 30px;
+  width: 125px;
+  height: 125px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.17);
+  border: 2px solid rgba(255,255,255,.45);
+  z-index: 10;
+  touch-action: none;
+}
+
+#stick {
+  position: absolute;
+  left: 37px;
+  top: 37px;
+  width: 47px;
+  height: 47px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.8);
+  box-shadow: 0 2px 8px #333;
+  pointer-events: none;
+}
+
+.mobileButton {
+  position: fixed;
+  right: 28px;
+  width: 75px;
+  height: 75px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.7);
+  color: white;
+  background: rgba(20,30,40,.55);
+  font-weight: bold;
+  z-index: 10;
+  touch-action: none;
+}
+
+#jumpButton { bottom: 38px; }
+#runButton { bottom: 125px; width: 62px; height: 62px; right: 105px; font-size: 11px; }
+
+.mobileButton.active {
+  background: rgba(40,150,70,.85);
+}
+
+#lookHint {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 11px;
+  text-shadow: 0 2px 5px black;
+  pointer-events: none;
+  display: none;
+}
+
+@media (pointer: coarse) {
+  #mobileControls { display: block; }
+  #instructions { display: none; }
+  #lookHint { display: block; }
+}
+</style>
+
+<!-- Three.js -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+
+<body>
+
+<div id="hud">
+  <h2>UPTOTHETOP</h2>
+  <div id="status">Loading character...</div>
+</div>
+
+<div id="instructions">
+  WASD / ARROWS – MOVE<br>
+  SHIFT – RUN<br>
+  SPACE – JUMP<br>
+  DRAG MOUSE – ROTATE CAMERA
+</div>
+
+<div id="message">Loading your character...</div>
+
+<div id="mobileControls">
+  <div id="joystick">
+    <div id="stick"></div>
+  </div>
+
+  <button class="mobileButton" id="jumpButton">JUMP</button>
+  <button class="mobileButton" id="runButton">RUN</button>
+</div>
+
+<div id="lookHint">Drag the screen to look around</div>
+
+<script type="module">
+
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// =====================================
+// 1. GAME SETTINGS
+// =====================================
+
+const MODEL_PATH = './playerdelete.glb';
+
+const WALK_SPEED = 3.2;
+const RUN_SPEED = 6.0;
+const JUMP_FORCE = 6.5;
+const GRAVITY = 17;
+
+const CAMERA_DISTANCE = 6;
+const CAMERA_HEIGHT = 2.5;
+
+// =====================================
+// 2. SCENE
+// =====================================
+
+const scene = new THREE.Scene();
+
+scene.background = new THREE.Color(0x8bc2e8);
+scene.fog = new THREE.Fog(0x8bc2e8, 35, 110);
+
+const camera = new THREE.PerspectiveCamera(
+  65,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  300
+);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+document.body.appendChild(renderer.domElement);
+
+// =====================================
+// 3. LIGHTING
+// =====================================
+
+const ambient = new THREE.HemisphereLight(
+  0xffffff,
+  0x526b38,
+  2
+);
+
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+
+sun.position.set(-20, 35, 15);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -40;
+sun.shadow.camera.right = 40;
+sun.shadow.camera.top = 40;
+sun.shadow.camera.bottom = -40;
+
+scene.add(sun);
+
+// =====================================
+// 4. WORLD
+// =====================================
+
+// Ground
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.MeshStandardMaterial({
+    color: 0x477d36,
+    roughness: 1
+  })
+);
+
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// A simple dirt path
+
+const path = new THREE.Mesh(
+  new THREE.PlaneGeometry(5, 100),
+  new THREE.MeshStandardMaterial({
+    color: 0x9b825e,
+    roughness: 1
+  })
+);
+
+path.rotation.x = -Math.PI / 2;
+path.position.y = 0.015;
+path.receiveShadow = true;
+scene.add(path);
+
+// Trees
+
+function createTree(x, z, scale = 1) {
+
+  const tree = new THREE.Group();
+
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.3, 2, 8),
+    new THREE.MeshStandardMaterial({ color: 0x654321 })
+  );
+
+  trunk.position.y = 1;
+  trunk.castShadow = true;
+  tree.add(trunk);
+
+  const leaves = new THREE.Mesh(
+    new THREE.ConeGeometry(1.5, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x285c29 })
+  );
+
+  leaves.position.y = 3.3;
+  leaves.castShadow = true;
+  tree.add(leaves);
+
+  tree.position.set(x, 0, z);
+  tree.scale.setScalar(scale);
+
+  scene.add(tree);
+}
+
+// Generate trees away from the central path
+
+for (let i = 0; i < 75; i++) {
+
+  const side = Math.random() < 0.5 ? -1 : 1;
+
+  const x = side * (7 + Math.random() * 35);
+  const z = (Math.random() - 0.5) * 100;
+
+  createTree(
+    x,
+    z,
+    0.7 + Math.random() * 0.8
+  );
+}
+
+// Distant hills
+
+for (let i = 0; i < 14; i++) {
+
+  const hill = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 16, 12),
+    new THREE.MeshStandardMaterial({
+      color: i % 2 ? 0x557b43 : 0x648d4d
+    })
+  );
+
+  hill.scale.set(
+    12 + Math.random() * 10,
+    5 + Math.random() * 7,
+    12 + Math.random() * 10
+  );
+
+  hill.position.set(
+    (Math.random() - 0.5) * 100,
+    -4,
+    -55 - Math.random() * 35
+  );
+
+  scene.add(hill);
+}
+
+// =====================================
+// 5. PLAYER
+// =====================================
+
+const player = new THREE.Group();
+scene.add(player);
+
+let character = null;
+let mixer = null;
+
+let actions = {};
+let currentAction = null;
+
+let characterReady = false;
+
+const loader = new GLTFLoader();
+
+loader.load(
+  MODEL_PATH,
+
+  (gltf) => {
+
+    character = gltf.scene;
+
+    // Scale model to approximately human height
+
+    const initialBox = new THREE.Box3().setFromObject(character);
+    const size = new THREE.Vector3();
+
+    initialBox.getSize(size);
+
+    const targetHeight = 1.75;
+
+    if (size.y > 0) {
+      character.scale.setScalar(targetHeight / size.y);
+    }
+
+    // Put the feet on the ground
+
+    const scaledBox = new THREE.Box3().setFromObject(character);
+
+    character.position.y = -scaledBox.min.y;
+
+    character.traverse((object) => {
+
+      if (object.isMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+
+    });
+
+    player.add(character);
+
+    // Set up animation system
+
+    mixer = new THREE.AnimationMixer(character);
+
+    const clips = gltf.animations;
+
+    console.log(
+      'Animations found:',
+      clips.map(clip => clip.name)
+    );
+
+    // Find animations by their names
+
+    const findClip = (words) => {
+
+      return clips.find(clip =>
+        words.some(word =>
+          clip.name.toLowerCase().includes(word)
+        )
+      );
+
+    };
+
+    const idleClip = findClip([
+      'idle', 'stand', 'rest'
+    ]);
+
+    const walkClip = findClip([
+      'walk', 'walking'
+    ]);
+
+    const runClip = findClip([
+      'run', 'running', 'sprint'
+    ]);
+
+    // Use first available clip if no walk clip is found
+
+    const fallbackClip = clips[0];
+
+    if (idleClip) {
+      actions.idle = mixer.clipAction(idleClip);
+    }
+
+    if (walkClip || fallbackClip) {
+      actions.walk = mixer.clipAction(
+        walkClip || fallbackClip
+      );
+    }
+
+    if (runClip) {
+      actions.run = mixer.clipAction(runClip);
+    }
+
+    characterReady = true;
+
+    if (actions.idle) {
+      playAnimation('idle');
+    }
+
+    document.getElementById('message').style.display = 'none';
+
+    document.getElementById('status').innerText =
+      'Character ready – explore the world!';
+
+  },
+
+  undefined,
+
+  (error) => {
+
+    console.error(error);
+
+    document.getElementById('message').innerHTML =
+      'Could not load playerdelete.glb.<br><br>' +
+      'Check that the file is in the same folder as game.html.';
+
+    document.getElementById('status').innerText =
+      'Character loading error';
+
+  }
+);
+
+// =====================================
+// 6. ANIMATION SWITCHING
+// =====================================
+
+function playAnimation(name) {
+
+  const nextAction = actions[name];
+
+  if (!nextAction || currentAction === nextAction) return;
+
+  if (currentAction) {
+    currentAction.fadeOut(0.2);
+  }
+
+  nextAction.reset();
+  nextAction.fadeIn(0.2);
+  nextAction.play();
+
+  currentAction = nextAction;
+}
+
+// =====================================
+// 7. PLAYER MOVEMENT
+// =====================================
+
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+
+let verticalVelocity = 0;
+let grounded = true;
+
+let isRunning = false;
+
+// Keyboard
+
+const keys = {};
+
+window.addEventListener('keydown', (event) => {
+
+  keys[event.key.toLowerCase()] = true;
+
+  if (
+    [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
+    .includes(event.key.toLowerCase())
+  ) {
+    event.preventDefault();
+  }
+
+});
+
+window.addEventListener('keyup', (event) => {
+  keys[event.key.toLowerCase()] = false;
+});
+
+// Mobile movement
+
+let joystickX = 0;
+let joystickY = 0;
+
+let mobileRunning = false;
+
+const joystick = document.getElementById('joystick');
+const stick = document.getElementById('stick');
+
+let joystickPointer = null;
+
+joystick.addEventListener('pointerdown', (event) => {
+
+  joystickPointer = event.pointerId;
+  joystick.setPointerCapture(event.pointerId);
+
+  updateJoystick(event);
+
+});
+
+joystick.addEventListener('pointermove', (event) => {
+
+  if (event.pointerId === joystickPointer) {
+    updateJoystick(event);
+  }
+
+});
+
+function updateJoystick(event) {
+
+  const rect = joystick.getBoundingClientRect();
+
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+
+  let dx = event.clientX - rect.left - centerX;
+  let dy = event.clientY - rect.top - centerY;
+
+  const maxDistance = 40;
+
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance > maxDistance) {
+    dx = dx / distance * maxDistance;
+    dy = dy / distance * maxDistance;
+  }
+
+  joystickX = dx / maxDistance;
+  joystickY = -dy / maxDistance;
+
+  stick.style.transform =
+    `translate(${dx}px, ${dy}px)`;
+
+}
+
+function resetJoystick() {
+
+  joystickPointer = null;
+
+  joystickX = 0;
+  joystickY = 0;
+
+  stick.style.transform = 'translate(0px, 0px)';
+}
+
+joystick.addEventListener('pointerup', resetJoystick);
+joystick.addEventListener('pointercancel', resetJoystick);
+
+// Mobile run button
+
+const runButton = document.getElementById('runButton');
+
+runButton.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  mobileRunning = true;
+  runButton.classList.add('active');
+});
+
+function stopMobileRun() {
+  mobileRunning = false;
+  runButton.classList.remove('active');
+}
+
+runButton.addEventListener('pointerup', stopMobileRun);
+runButton.addEventListener('pointercancel', stopMobileRun);
+runButton.addEventListener('lostpointercapture', stopMobileRun);
+
+// Jump
+
+function jump() {
+
+  if (grounded && characterReady) {
+    verticalVelocity = JUMP_FORCE;
+    grounded = false;
+  }
+
+}
+
+window.addEventListener('keydown', (event) => {
+
+  if (event.code === 'Space') {
+    jump();
+  }
+
+});
+
+const jumpButton = document.getElementById('jumpButton');
+
+jumpButton.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  jump();
+  jumpButton.classList.add('active');
+});
+
+jumpButton.addEventListener('pointerup', () => {
+  jumpButton.classList.remove('active');
+});
+
+jumpButton.addEventListener('pointercancel', () => {
+  jumpButton.classList.remove('active');
+});
+
+// =====================================
+// 8. CAMERA CONTROL
+// =====================================
+
+let cameraYaw = 0;
+let cameraPitch = 0.28;
+
+let cameraDragging = false;
+
+let lastPointerX = 0;
+let lastPointerY = 0;
+
+renderer.domElement.addEventListener('pointerdown', (event) => {
+
+  // Ignore left-side mobile joystick area
+
+  if (
+    event.pointerType === 'touch' &&
+    event.clientX < window.innerWidth * 0.38
+  ) {
+    return;
+  }
+
+  cameraDragging = true;
+
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
+
+  renderer.domElement.setPointerCapture(event.pointerId);
+
+});
+
+renderer.domElement.addEventListener('pointermove', (event) => {
+
+  if (!cameraDragging) return;
+
+  const dx = event.clientX - lastPointerX;
+  const dy = event.clientY - lastPointerY;
+
+  cameraYaw -= dx * 0.006;
+  cameraPitch += dy * 0.004;
+
+  cameraPitch = THREE.MathUtils.clamp(
+    cameraPitch,
+    -0.1,
+    0.85
+  );
+
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
+
+});
+
+renderer.domElement.addEventListener('pointerup', () => {
+  cameraDragging = false;
+});
+
+renderer.domElement.addEventListener('pointercancel', () => {
+  cameraDragging = false;
+});
+
+// =====================================
+// 9. GAME LOOP
+// =====================================
+
+const clock = new THREE.Clock();
+
+function animate() {
+
+  requestAnimationFrame(animate);
+
+  const delta = Math.min(clock.getDelta(), 0.05);
+
+  // Read controls
+
+  const forward =
+    (keys['w'] || keys['arrowup'] ? 1 : 0) -
+    (keys['s'] || keys['arrowdown'] ? 1 : 0);
+
+  const sideways =
+    (keys['d'] || keys['arrowright'] ? 1 : 0) -
+    (keys['a'] || keys['arrowleft'] ? 1 : 0);
+
+  let inputForward = forward + joystickY;
+  let inputSideways = sideways + joystickX;
+
+  // Prevent faster diagonal movement
+
+  const inputLength = Math.sqrt(
+    inputForward * inputForward +
+    inputSideways * inputSideways
+  );
+
+  if (inputLength > 1) {
+    inputForward /= inputLength;
+    inputSideways /= inputLength;
+  }
+
+  const moving = inputLength > 0.08;
+
+  isRunning =
+    keys['shift'] || mobileRunning;
+
+  // Movement relative to camera direction
+
+  const forwardX = Math.sin(cameraYaw);
+  const forwardZ = -Math.cos(cameraYaw);
+
+  const rightX = Math.cos(cameraYaw);
+  const rightZ = Math.sin(cameraYaw);
+
+  direction.set(
+    forwardX * inputForward + rightX * inputSideways,
+    0,
+    forwardZ * inputForward + rightZ * inputSideways
+  );
+
+  const speed = isRunning ? RUN_SPEED : WALK_SPEED;
+
+  if (moving) {
+
+    player.position.x += direction.x * speed * delta;
+    player.position.z += direction.z * speed * delta;
+
+    // Face direction of movement
+    // This assumes the model faces +Z by default.
+
+    const targetRotation = Math.atan2(
+      direction.x,
+      direction.z
+    );
+
+    const rotationDifference = Math.atan2(
+      Math.sin(targetRotation - player.rotation.y),
+      Math.cos(targetRotation - player.rotation.y)
+    );
+
+    player.rotation.y += rotationDifference *
+      Math.min(1, delta * 10);
+
+  }
+
+  // Keep player inside the playable area
+
+  player.position.x = THREE.MathUtils.clamp(
+    player.position.x,
+    -90,
+    90
+  );
+
+  player.position.z = THREE.MathUtils.clamp(
+    player.position.z,
+    -90,
+    90
+  );
+
+  // Jump physics
+
+  if (!grounded) {
+
+    verticalVelocity -= GRAVITY * delta;
+
+    player.position.y += verticalVelocity * delta;
+
+    if (player.position.y <= 0) {
+      player.position.y = 0;
+      verticalVelocity = 0;
+      grounded = true;
+    }
+
+  }
+
+  // Choose animation
+
+  if (characterReady) {
+
+    if (moving) {
+
+      if (isRunning && actions.run) {
+        playAnimation('run');
+      } else {
+        playAnimation('walk');
+      }
+
+    } else if (actions.idle) {
+
+      playAnimation('idle');
+
+    } else if (currentAction) {
+
+      currentAction.fadeOut(0.2);
+      currentAction = null;
+
+    }
+
+    if (mixer) {
+      mixer.update(delta);
+    }
+
+  }
+
+  // Camera follows player
+
+  const cameraTarget = new THREE.Vector3(
+    player.position.x,
+    player.position.y + CAMERA_HEIGHT,
+    player.position.z
+  );
+
+  const horizontalDistance =
+    CAMERA_DISTANCE * Math.cos(cameraPitch);
+
+  const cameraPosition = new THREE.Vector3(
+    player.position.x +
+      Math.sin(cameraYaw) * horizontalDistance,
+
+    player.position.y +
+      CAMERA_HEIGHT +
+      CAMERA_DISTANCE * Math.sin(cameraPitch),
+
+    player.position.z +
+      Math.cos(cameraYaw) * horizontalDistance
+  );
+
+  camera.position.lerp(cameraPosition, 1 - Math.pow(0.001, delta));
+  camera.lookAt(cameraTarget);
+
+  renderer.render(scene, camera);
+
+}
+
+animate();
+
+// =====================================
+// 10. RESIZE
+// =====================================
+
+window.addEventListener('resize', () => {
+
+  camera.aspect =
+    window.innerWidth / window.innerHeight;
+
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
+
+});
+
+</script>
+</body>
+</html>
