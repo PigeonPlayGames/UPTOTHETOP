@@ -384,6 +384,67 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 #intro-sound { display: none; }
 #intro-video.muted #intro-sound { display: block; }
 
+/* ---------- In-engine cinematic ---------- */
+
+#cinematic {
+    position: fixed;
+    inset: 0;
+    z-index: 31;
+    display: none;
+    pointer-events: none;
+}
+#cinematic.on { display: block; }
+/* Letterbox bars sell it as a title sequence rather than a stuck camera */
+#cinematic::before, #cinematic::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0;
+    height: 9vh;
+    background: #05090a;
+}
+#cinematic::before { top: 0; }
+#cinematic::after { bottom: 0; }
+
+.cine-text {
+    position: absolute;
+    left: clamp(24px, 9vw, 130px);
+    bottom: 22vh;
+    max-width: min(560px, 80vw);
+}
+#cine-title {
+    margin: 0;
+    font-size: clamp(28px, 5.6vw, 50px);
+    letter-spacing: 0.3em;
+    font-weight: 200;
+    text-indent: 0.3em;
+    color: #f4f8f6;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 1.2s, transform 1.4s;
+    text-shadow: 0 6px 40px rgba(0,0,0,.9);
+}
+#cine-sub {
+    margin: 10px 0 0;
+    font-size: clamp(10px, 1.5vw, 13px);
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0;
+    transition: opacity 1.2s;
+    text-shadow: 0 2px 20px rgba(0,0,0,.9);
+}
+#cine-title.show, #cine-sub.show { opacity: 1; transform: translateY(0); }
+
+#cine-skip {
+    position: absolute;
+    right: calc(22px + env(safe-area-inset-right));
+    bottom: calc(11vh + 14px);
+    pointer-events: auto;
+    background: rgba(8, 14, 16, 0.55);
+    backdrop-filter: blur(6px);
+    padding: 10px 18px;
+}
+
 /* ---------- Main menu ---------- */
 
 #main-menu {
@@ -668,7 +729,9 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
 <div id="hurt"></div>
 <div id="death"><div><h2>You fell</h2><p id="death-note">Returning to camp…</p></div></div>
 
-<div id="hud">
+<!-- Starts hidden: nothing from the playing HUD should show during loading,
+     the intro video, the cinematic or the menu. enterWorld() reveals it. -->
+<div id="hud" class="menu-hidden">
     <div class="corner" id="tl">
         <div class="brand">EON EXPANSE</div>
         <div class="sub" id="state-line">Exploring</div>
@@ -709,6 +772,14 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <button class="ghost" id="intro-sound">Sound on</button>
         <button class="ghost" id="intro-skip">Skip intro ›</button>
     </div>
+</div>
+
+<div id="cinematic">
+    <div class="cine-text">
+        <h1 id="cine-title"></h1>
+        <p id="cine-sub"></p>
+    </div>
+    <button class="ghost" id="cine-skip">Skip ›</button>
 </div>
 
 <div id="main-menu">
@@ -819,6 +890,13 @@ const INTRO_VIDEO = params.get('intro') || './Intro.mp4';
 const HUB_URL = '../index.html';
 const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 
+// If Tom3D2.glb's clips aren't picked up correctly, name them here exactly as
+// they appear in the file — these win over any guessing by name.
+const PLAYER_CLIP_NAMES = {
+    // idle: 'Idle', walk: 'Walking', run: 'Running',
+    // attack: 'Punch', jump: 'Jump', death: 'Dead'
+};
+
 const PLAYER_HEIGHT = 1.85;
 const WATER_LEVEL = 0;
 const WORLD_RADIUS = 430;          // land fades to ocean past this
@@ -867,6 +945,14 @@ const ENEMY_TYPES = [
         chaseSpeed: 4.6,
         sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
+        // Exact clip names inside Kyle.glb. Edit these if you re-export with
+        // different ones — they take priority over any name guessing.
+        clipNames: {
+            attack: '360 Power Spin Jump',
+            death: 'Dead',
+            run: 'Running',
+            walk: 'Walking'
+        },
         sounds: { run: './KyleRunning.mp3', fight: './KyleFighting.mp3', die: './KyleDying.mp3' }
     },
     {
@@ -879,6 +965,13 @@ const ENEMY_TYPES = [
         chaseSpeed: 5.4,
         sight: 25,
         fallback: { cloth: 0x2f3f66, dark: 0x1a2032, skin: 0x9a8070, hair: 0x14181f, eyes: 0x6fe0ff, pack: false },
+        clipNames: {
+            idle: 'idle',
+            attack: 'fighting',
+            death: 'dying',
+            run: 'running',
+            walk: 'walking'
+        },
         sounds: { run: './ChrisRunning.mp3', fight: './ChrisFighting.mp3', die: './ChrisDying.mp3' }
     }
 ];
@@ -2646,18 +2739,57 @@ function buildFallbackCharacter() {
 
 // Shared clip-name matching, so the player and the enemies read their .glb
 // animations the same way.
-function buildActions(mixer, clips) {
+// Find a clip by an exact name the caller supplied. Handles the common
+// "Armature|Some Clip" prefixes, and falls back to a loose contains.
+function findClip(clips, wanted) {
+    if (!wanted) return null;
+    const w = String(wanted).toLowerCase().trim();
+    for (const c of clips) {
+        const n = c.name.toLowerCase().trim();
+        if (n === w || n.split('|').pop().trim() === w) return c;
+    }
+    for (const c of clips) if (c.name.toLowerCase().includes(w)) return c;
+    return null;
+}
+
+// `names` maps a game state to an exact clip name and always wins over
+// guessing. Guessing by name alone is fragile — a clip called
+// "360 Power Spin Jump" used as an attack contains "jump", and enemies never
+// jump, so it would silently never play.
+function buildActions(mixer, clips, names, opts) {
     const map = {};
+    const options = opts || {};
+    const used = new Set();
     const put = (key, action) => { if (!map[key]) map[key] = action; };
 
-    clips.forEach((clip) => {
+    const actionFor = (clip) => {
+        let c = clip;
         if (STRIP_ROOT_MOTION) {
-            clip = clip.clone();
-            clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.position'));
+            c = clip.clone();
+            c.tracks = c.tracks.filter(t => !t.name.endsWith('.position'));
         }
+        const a = mixer.clipAction(c);
+        a.enabled = true;
+        a.userData = { duration: c.duration };
+        return a;
+    };
+
+    // 1. Explicit mapping first
+    if (names) {
+        for (const key of Object.keys(names)) {
+            const clip = findClip(clips, names[key]);
+            if (clip && !used.has(clip)) {
+                used.add(clip);
+                map[key] = actionFor(clip);
+            }
+        }
+    }
+
+    // 2. Guess from the name for whatever is left
+    clips.forEach((clip) => {
+        if (used.has(clip)) return;
         const name = clip.name.toLowerCase();
-        const action = mixer.clipAction(clip);
-        action.enabled = true;
+        const action = actionFor(clip);
 
         if (/idle|stand|breath/.test(name)) put('idle', action);
         else if (/attack|fight|punch|hit|strike|slash|kick|combat|swing/.test(name)) put('attack', action);
@@ -2669,6 +2801,10 @@ function buildActions(mixer, clips) {
         else if (/swim/.test(name)) put('swim', action);
         else put('misc', action);
     });
+
+    // 3. Enemies have no use for jump/fall/swim, so a spare clip is far more
+    // likely to be their attack than nothing at all.
+    if (options.enemy && !map.attack) map.attack = map.misc || map.jump || map.fall || null;
 
     if (!map.idle) map.idle = map.misc || map.walk || map.run;
     if (!map.walk) map.walk = map.run || map.misc || map.idle;
@@ -2734,7 +2870,7 @@ function loadPlayerModel() {
                 if (gltf.animations && gltf.animations.length) {
                     hasClips = true;
                     mixer = new THREE.AnimationMixer(modelRoot);
-                    Object.assign(actions, buildActions(mixer, gltf.animations));
+                    Object.assign(actions, buildActions(mixer, gltf.animations, PLAYER_CLIP_NAMES));
                 }
 
                 resolve(true);
@@ -2868,6 +3004,15 @@ function loadEnemyType(type) {
                 type.template = root;
                 type.clips = gltf.animations || [];
                 type.loaded = true;
+
+                // Pace the attack to the animation. A long move like a spin
+                // jump needs a longer wind-up and cooldown or it gets cut off
+                // mid-swing by the next decision.
+                const atk = findClip(type.clips, type.clipNames && type.clipNames.attack);
+                if (atk && atk.duration > 0.1) {
+                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.3, 1.1);
+                    type.cooldown = THREE.MathUtils.clamp(atk.duration + 0.35, 1.2, 3.0);
+                }
                 resolve(true);
             },
             undefined,
@@ -2951,7 +3096,7 @@ function createEnemy(id, type, rnd) {
         });
         if (type.clips && type.clips.length) {
             mixer = new THREE.AnimationMixer(root);
-            acts = buildActions(mixer, type.clips);
+            acts = buildActions(mixer, type.clips, type.clipNames, { enemy: true });
         }
     } else {
         const built = buildFallbackHumanoid(type.fallback);
@@ -3195,8 +3340,8 @@ function updateEnemies(dt) {
             moveSpeed = dist < ENEMY_ATTACK_RANGE * 0.85 ? 0 : e.type.chaseSpeed * (1 + night * 0.12);
             if (dist < ENEMY_ATTACK_RANGE && e.attackCd <= 0) {
                 e.state = 'attack';
-                e.windup = ENEMY_WINDUP;
-                e.attackCd = ENEMY_ATTACK_COOLDOWN;
+                e.windup = e.type.windup || ENEMY_WINDUP;
+                e.attackCd = e.type.cooldown || ENEMY_ATTACK_COOLDOWN;
                 enemyPlay(e, 'attack', 0.08, true);
                 stopRunSound(e);
                 if (!playOneShotOnce(e, 'fightSound', enemySound(e, 'fight'), 1)) sfxSwing(0.55);
@@ -4546,22 +4691,109 @@ const controlsEl = document.getElementById('controls-screen');
 let introDone = false;
 let bootDone = false;
 let introWatchdog = 0;
+let wantCinematic = false;
+let cineActive = false;
+let cineTime = 0;
+let cineShot = -1;
+
+// A title sequence flown through the real world. Used when there is no
+// Intro.mp4 to play, so there is always a visual intro.
+const CINE_SHOTS = [
+    { from: [-250, 34, 250], to: [-150, 20, 150], look: [0, 8, 0], dur: 6,
+      title: 'EON EXPANSE', sub: '' },
+    { from: [120, 58, -150], to: [60, 26, -60], look: [0, 10, 0], dur: 5,
+      title: '', sub: 'Twelve relics lie scattered' },
+    { from: [40, 14, 40], to: [13, 7, 13], look: [0, 3.5, 0], dur: 4.5,
+      title: '', sub: 'And the far country is not empty' }
+];
 
 function maybeShowMenu() {
     if (bootDone && introDone && !started) showMainMenu();
+}
+
+function setCineText(title, sub) {
+    const t = document.getElementById('cine-title');
+    const s = document.getElementById('cine-sub');
+    t.textContent = title || '';
+    s.textContent = sub || '';
+    t.classList.toggle('show', !!title);
+    s.classList.toggle('show', !!sub);
+}
+
+function startCinematic() {
+    if (introDone || cineActive) return;
+    cineActive = true;
+    cineTime = 0;
+    cineShot = -1;
+    document.getElementById('cinematic').classList.add('on');
+    introPlaying = false;     // the cinematic is silent, so let the theme play
+    syncMusic();
+}
+
+const _cineLook = new THREE.Vector3();
+
+function updateCinematic(dt) {
+    cineTime += dt;
+
+    let t = cineTime;
+    let index = 0;
+    while (index < CINE_SHOTS.length && t > CINE_SHOTS[index].dur) {
+        t -= CINE_SHOTS[index].dur;
+        index++;
+    }
+    if (index >= CINE_SHOTS.length) { finishIntro(); return; }
+
+    const shot = CINE_SHOTS[index];
+    if (index !== cineShot) {
+        cineShot = index;
+        setCineText(shot.title, shot.sub);
+    }
+
+    // Ease so each shot drifts rather than tracks at a constant rate
+    const k = t / shot.dur;
+    const e = k * k * (3 - 2 * k);
+    camera.position.set(
+        shot.from[0] + (shot.to[0] - shot.from[0]) * e,
+        shot.from[1] + (shot.to[1] - shot.from[1]) * e,
+        shot.from[2] + (shot.to[2] - shot.from[2]) * e
+    );
+    _cineLook.set(shot.look[0], shot.look[1], shot.look[2]);
+    camera.lookAt(_cineLook);
+
+    // Fade each caption out before the cut
+    const fadeOut = t > shot.dur - 1.2;
+    if (fadeOut && cineShot === index) {
+        document.getElementById('cine-title').classList.remove('show');
+        document.getElementById('cine-sub').classList.remove('show');
+    }
 }
 
 function finishIntro() {
     if (introDone) return;
     introDone = true;
     introPlaying = false;
+    cineActive = false;
+    wantCinematic = false;
     clearTimeout(introWatchdog);
     const wrap = document.getElementById('intro-video');
     const vid = document.getElementById('intro-vid');
     try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (e) { /* nothing playing */ }
     wrap.classList.remove('on');
+    document.getElementById('cinematic').classList.remove('on');
+    setCineText('', '');
     syncMusic();
     maybeShowMenu();
+}
+
+// No usable video file: fall back to the in-engine title sequence, which can
+// only run once the world exists.
+function videoUnavailable() {
+    if (introDone || cineActive) return;
+    introPlaying = false;
+    document.getElementById('intro-video').classList.remove('on');
+    clearTimeout(introWatchdog);
+    wantCinematic = true;
+    if (bootDone) startCinematic();
 }
 
 function startIntro() {
@@ -4573,8 +4805,9 @@ function startIntro() {
     wrap.classList.add('on');
 
     vid.addEventListener('ended', finishIntro);
-    vid.addEventListener('error', finishIntro);
+    vid.addEventListener('error', videoUnavailable);
     document.getElementById('intro-skip').addEventListener('click', finishIntro);
+    document.getElementById('cine-skip').addEventListener('click', finishIntro);
     document.getElementById('intro-sound').addEventListener('click', () => {
         vid.muted = false;
         wrap.classList.remove('muted');
@@ -4584,8 +4817,8 @@ function startIntro() {
         if (!introDone && ['Escape', 'Space', 'Enter'].includes(e.code)) finishIntro();
     });
 
-    // If it never actually starts playing, don't strand anyone on a black screen
-    introWatchdog = setTimeout(() => { if (!vid.currentTime) finishIntro(); }, 8000);
+    // If it never actually starts playing, use the in-engine sequence instead
+    introWatchdog = setTimeout(() => { if (!vid.currentTime) videoUnavailable(); }, 6000);
     vid.addEventListener('playing', () => clearTimeout(introWatchdog), { once: true });
 
     vid.src = INTRO_VIDEO;
@@ -4598,7 +4831,7 @@ function startIntro() {
             vid.muted = true;
             wrap.classList.add('muted');
             const retry = vid.play();
-            if (retry && retry.catch) retry.catch(finishIntro);
+            if (retry && retry.catch) retry.catch(videoUnavailable);
         });
     }
 }
@@ -4907,7 +5140,8 @@ function animate() {
         windUniform.value = elapsed;
         waterUniforms.uTime.value = elapsed;
         updateSky(dt);
-        updateIntroCamera(dt);
+        if (cineActive) updateCinematic(dt);
+        else updateIntroCamera(dt);
         sky.position.copy(camera.position);
         stars.position.copy(camera.position);
     } else if (!paused && !overlay) {
@@ -5090,7 +5324,8 @@ async function boot() {
         setTimeout(() => loaderEl.remove(), 900);
 
         bootDone = true;
-        maybeShowMenu();   // waits for the intro video if it is still running
+        if (wantCinematic) startCinematic();   // no video — fly the title sequence
+        else maybeShowMenu();                  // otherwise wait for the video
 
         animate();
     } catch (err) {
