@@ -525,6 +525,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3D2.glb';
 const ENEMY_PATH = params.get('enemy') || './playerdelete.glb';
+const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 
 const PLAYER_HEIGHT = 1.85;
@@ -552,18 +553,46 @@ const ATTACK_DAMAGE = 30;
 const PLAYER_INVULN = 0.65;
 const RESPAWN_DELAY = 2.4;
 
-const ENEMY_MAX_HEALTH = 60;
-const ENEMY_DAMAGE = 12;
 const ENEMY_ATTACK_RANGE = 2.1;
 const ENEMY_ATTACK_COOLDOWN = 1.35;
 const ENEMY_WINDUP = 0.42;             // telegraph before the blow lands
-const ENEMY_CHASE_SPEED = 4.6;         // slower than a sprint, so you can run
 const ENEMY_WANDER_SPEED = 1.35;
-const ENEMY_SIGHT = 22;
 const ENEMY_LOSE_SIGHT = 36;
 const ENEMY_RESPAWN = 28;
 const ENEMY_RADIUS = 0.5;
 const CAMP_SAFE_RADIUS = 46;           // enemies won't press the attack this close to camp
+
+// Each entry is one kind of foe. Add another by copying a block and pointing
+// it at a new .glb; everything else (spawning, AI, audio) follows from here.
+// Chase speeds stay under the player's sprint (7.4) so running away works.
+const ENEMY_TYPES = [
+    {
+        key: 'raider',
+        name: 'Raider',
+        path: ENEMY_PATH,
+        height: 1.95,
+        health: 60,
+        damage: 12,
+        chaseSpeed: 4.6,
+        sight: 22,
+        fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
+        tint: [0.16, 0.02, 0.015],
+        sounds: {}
+    },
+    {
+        key: 'chris',
+        name: 'Chris',
+        path: CHRIS_PATH,
+        height: 2.0,
+        health: 85,            // tougher, hits harder, closes faster
+        damage: 16,
+        chaseSpeed: 5.4,
+        sight: 25,
+        fallback: { cloth: 0x2f3f66, dark: 0x1a2032, skin: 0x9a8070, hair: 0x14181f, eyes: 0x6fe0ff, pack: false },
+        tint: [0.03, 0.05, 0.18],
+        sounds: { run: './ChrisRunning.mp3', fight: './ChrisFighting.mp3', die: './ChrisDying.mp3' }
+    }
+];
 
 const QUALITY = {
     low:    { seg: 150, trees: 520,  rocks: 220, grassCells: 8,  grassPer: 10, shadowSize: 1024, pixel: 1.0,  waterSeg: 110, deer: 3, enemies: 7 },
@@ -1815,6 +1844,7 @@ function initAudio() {
         waterSrc.start();
 
         Audio.ready = true;
+        loadEnemySounds();
     } catch (e) {
         console.warn('Audio unavailable', e);
     }
@@ -1925,6 +1955,96 @@ function sfxChirp() {
     const base = 2200 + Math.random() * 1600;
     blip('sine', base, base * 1.5, 0.07, 0.05);
     setTimeout(() => blip('sine', base * 1.2, base * 0.8, 0.06, 0.04), 90);
+}
+
+/* ---- Sampled sound effects (enemy voices), mixed through the same
+   master gain as the procedural audio so one volume slider covers all ---- */
+
+const Sounds = { buffers: {} };
+const MAX_SOUND_DIST = 45;
+const _camRight = new THREE.Vector3();
+
+function loadSample(url) {
+    if (!Audio.ready || Sounds.buffers[url] !== undefined) return Promise.resolve();
+    Sounds.buffers[url] = null;                       // mark as attempted
+    return fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.arrayBuffer();
+        })
+        .then(data => Audio.ctx.decodeAudioData(data))
+        .then(buf => { Sounds.buffers[url] = buf; })
+        .catch(err => {
+            console.warn('Sound not loaded (' + url + '), falling back to the built-in effect.', err.message || err);
+        });
+}
+
+function loadEnemySounds() {
+    const jobs = [];
+    for (const type of ENEMY_TYPES) {
+        for (const key of Object.keys(type.sounds || {})) jobs.push(loadSample(type.sounds[key]));
+    }
+    return Promise.all(jobs);
+}
+
+function hasSample(url) {
+    return !!(url && Sounds.buffers[url]);
+}
+
+// Positions a sound in the world: quieter with distance, panned left/right
+// relative to where the camera is facing.
+function updateSpatial(handle, x, y, z) {
+    if (!handle || handle.stopped) return;
+    const dx = x - camera.position.x;
+    const dy = y - camera.position.y;
+    const dz = z - camera.position.z;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const atten = Math.max(0, 1 - d / MAX_SOUND_DIST);
+    handle.gain.gain.value = handle.volume * atten * atten;
+    if (handle.panner && d > 0.01) {
+        _camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+        const pan = (dx * _camRight.x + dy * _camRight.y + dz * _camRight.z) / d;
+        handle.panner.pan.value = Math.max(-1, Math.min(1, pan));
+    }
+}
+
+function playSample(url, x, y, z, opts) {
+    if (!Audio.ready || !hasSample(url)) return null;
+    const o = opts || {};
+    const ctx = Audio.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = Sounds.buffers[url];
+    src.loop = !!o.loop;
+    if (o.rate) src.playbackRate.value = o.rate;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    src.connect(gain);
+
+    let panner = null;
+    if (ctx.createStereoPanner) {
+        panner = ctx.createStereoPanner();
+        gain.connect(panner);
+        panner.connect(Audio.master);
+    } else {
+        gain.connect(Audio.master);
+    }
+
+    const handle = { src, gain, panner, volume: o.volume === undefined ? 1 : o.volume, stopped: false };
+    updateSpatial(handle, x, y, z);
+    try { src.start(); } catch (e) { return null; }
+    if (!o.loop) src.onended = () => { handle.stopped = true; };
+    return handle;
+}
+
+function stopSample(handle) {
+    if (!handle || handle.stopped) return;
+    handle.stopped = true;
+    try {
+        const now = Audio.ctx.currentTime;
+        handle.gain.gain.setTargetAtTime(0, now, 0.04);
+        handle.src.stop(now + 0.2);
+    } catch (e) { /* already stopped */ }
 }
 
 function sfxSwing(strength) {
@@ -2085,8 +2205,8 @@ function buildActions(mixer, clips) {
         action.enabled = true;
 
         if (/idle|stand|breath/.test(name)) put('idle', action);
-        else if (/attack|punch|hit|strike|slash|kick/.test(name)) put('attack', action);
-        else if (/death|die|dead/.test(name)) put('death', action);
+        else if (/attack|fight|punch|hit|strike|slash|kick|combat|swing/.test(name)) put('attack', action);
+        else if (/death|dying|dies|die|dead|defeat/.test(name)) put('death', action);
         else if (/sprint|run|jog/.test(name)) put('run', action);
         else if (/walk/.test(name)) put('walk', action);
         else if (/jump|leap/.test(name)) put('jump', action);
@@ -2274,38 +2394,41 @@ function updateAnimation(dt, horizontalSpeed, running) {
    COMBAT — ENEMIES
    ============================================================ */
 
-const ENEMY_HEIGHT = 1.95;
 const enemies = [];
-let enemyTemplate = null;
-let enemyClips = [];
-let enemyModelLoaded = false;
 let swingMesh = null;
 let camShake = 0;
 const _enemyPos = new THREE.Vector3();
 
-function loadEnemyModel() {
+function loadEnemyType(type) {
     return new Promise((resolve) => {
         new GLTFLoader().load(
-            ENEMY_PATH,
+            type.path,
             (gltf) => {
                 const root = gltf.scene;
                 const box = new THREE.Box3().setFromObject(root);
                 const h = box.max.y - box.min.y;
-                if (h > 0.01) root.scale.setScalar(ENEMY_HEIGHT / h);
+                if (h > 0.01) root.scale.setScalar(type.height / h);
                 const scaled = new THREE.Box3().setFromObject(root);
                 root.position.y -= scaled.min.y;
-                enemyTemplate = root;
-                enemyClips = gltf.animations || [];
-                enemyModelLoaded = true;
+                type.template = root;
+                type.clips = gltf.animations || [];
+                type.loaded = true;
                 resolve(true);
             },
             undefined,
             (err) => {
-                console.warn('Enemy GLB not loaded (' + ENEMY_PATH + '), using built-in foe.', err);
+                console.warn('Enemy GLB not loaded (' + type.path + '), using a built-in stand-in for ' + type.name + '.', err);
+                type.template = null;
+                type.clips = [];
+                type.loaded = false;
                 resolve(false);
             }
         );
     });
+}
+
+function loadEnemyModels() {
+    return Promise.all(ENEMY_TYPES.map(loadEnemyType));
 }
 
 function makeHealthBar() {
@@ -2348,22 +2471,22 @@ function placeEnemy(e, rnd, minFromPlayer) {
     return false;
 }
 
-function createEnemy(id, rnd) {
+function createEnemy(id, type, rnd) {
     const holder = new THREE.Group();
     let root, rig = null, mixer = null, acts = null;
 
-    if (enemyTemplate) {
-        root = cloneSkinned(enemyTemplate);
+    if (type.template) {
+        root = cloneSkinned(type.template);
         root.traverse(o => {
             if (o.isMesh || o.isSkinnedMesh) {
                 // Own materials per enemy so a hit can flash just that one,
-                // plus a dull red cast so foes read as hostile at a glance.
+                // plus a faint cast that tells the two kinds apart at a glance.
                 if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
                 else if (o.material) o.material = o.material.clone();
                 const mats = Array.isArray(o.material) ? o.material : [o.material];
                 for (const m of mats) {
                     if (m && m.emissive) {
-                        m.emissive.setRGB(0.16, 0.02, 0.015);
+                        m.emissive.setRGB(type.tint[0], type.tint[1], type.tint[2]);
                         m.userData._baseEmissive = m.emissive.clone();
                     }
                 }
@@ -2372,34 +2495,31 @@ function createEnemy(id, rnd) {
                 o.frustumCulled = false;
             }
         });
-        if (enemyClips.length) {
+        if (type.clips && type.clips.length) {
             mixer = new THREE.AnimationMixer(root);
-            acts = buildActions(mixer, enemyClips);
+            acts = buildActions(mixer, type.clips);
         }
     } else {
-        const built = buildFallbackHumanoid({
-            cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f,
-            eyes: 0xff5a3c, pack: false
-        });
+        const built = buildFallbackHumanoid(type.fallback);
         root = built.root;
         rig = built.rig;
         root.traverse(o => {
             const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
             for (const m of mats) if (m.emissive) m.userData._baseEmissive = m.emissive.clone();
         });
-        root.scale.setScalar(ENEMY_HEIGHT / PLAYER_HEIGHT);
+        root.scale.setScalar(type.height / PLAYER_HEIGHT);
     }
 
     holder.add(root);
     scene.add(holder);
 
     const e = {
-        id, holder, root, rig, mixer, actions: acts, current: null,
-        hp: ENEMY_MAX_HEALTH, x: 0, z: 0, y: 0, yaw: rnd() * 6.283,
+        id, type, holder, root, rig, mixer, actions: acts, current: null,
+        hp: type.health, x: 0, z: 0, y: 0, yaw: rnd() * 6.283,
         vx: 0, vz: 0, state: 'idle', think: rnd() * 5,
         targetX: 0, targetZ: 0, attackCd: 0, windup: -1,
         hurt: 0, deadTimer: 0, phase: rnd() * 6.283,
-        flash: 0, flashOn: false,
+        flash: 0, flashOn: false, runSound: null,
         bar: makeHealthBar()
     };
     e.barFill = e.bar.userData.fill;
@@ -2412,7 +2532,38 @@ function createEnemy(id, rnd) {
 
 function buildEnemies() {
     const rnd = mulberry32(SEED ^ 0xe17e);
-    for (let i = 0; i < Q.enemies; i++) createEnemy(i, rnd);
+    for (let i = 0; i < Q.enemies; i++) {
+        createEnemy(i, ENEMY_TYPES[i % ENEMY_TYPES.length], rnd);
+    }
+}
+
+function enemySound(e, key) {
+    return e.type.sounds ? e.type.sounds[key] : null;
+}
+
+function startRunSound(e) {
+    const url = enemySound(e, 'run');
+    if (!url || e.runSound || !hasSample(url)) return;
+    // No point opening a silent looping source for a foe across the valley
+    const d = Math.hypot(e.x - camera.position.x, e.z - camera.position.z);
+    if (d > MAX_SOUND_DIST) return;
+    e.runSound = playSample(url, e.x, e.y + 1, e.z, { loop: true, volume: 0.85 });
+}
+
+// These clips run about three seconds but attacks come faster than that, so
+// don't stack a second copy on top of one that is still playing.
+function playOneShotOnce(e, slot, url, volume) {
+    if (!hasSample(url)) return false;
+    const prev = e[slot];
+    if (prev && !prev.stopped) return true;
+    e[slot] = playSample(url, e.x, e.y + 1, e.z, { volume: volume === undefined ? 1 : volume });
+    return true;
+}
+
+function stopRunSound(e) {
+    if (!e.runSound) return;
+    stopSample(e.runSound);
+    e.runSound = null;
 }
 
 function buildSwingArc() {
@@ -2473,9 +2624,12 @@ function killEnemy(e) {
     e.bar.visible = false;
     e.vx = 0;
     e.vz = 0;
+    stopRunSound(e);
     P.kills++;
     P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 5);
-    sfxEnemyDown();
+
+    if (!playOneShotOnce(e, 'dieSound', enemySound(e, 'die'), 1)) sfxEnemyDown();
+
     updateRelicHud();
     if (e.mixer && e.actions && e.actions.death) enemyPlay(e, 'death', 0.12);
 }
@@ -2508,8 +2662,9 @@ function relocateNearPlayer(e) {
 
 function respawnEnemy(e) {
     const rnd = Math.random;
+    stopRunSound(e);
     placeEnemy(e, rnd, 70);
-    e.hp = ENEMY_MAX_HEALTH;
+    e.hp = e.type.health;
     e.state = 'idle';
     e.holder.rotation.x = 0;
     e.holder.visible = true;
@@ -2528,12 +2683,12 @@ function updateEnemies(dt) {
     if (settings.peaceful) {
         for (const e of enemies) {
             if (e.holder.visible) { e.holder.visible = false; e.bar.visible = false; }
+            stopRunSound(e);
         }
         return;
     }
 
     const night = skyUniforms.uNight.value;
-    const sight = ENEMY_SIGHT + night * 10;
     const px = player.position.x;
     const pz = player.position.z;
     const playerInCamp = Math.hypot(px, pz) < CAMP_SAFE_RADIUS;
@@ -2541,6 +2696,7 @@ function updateEnemies(dt) {
     for (const e of enemies) {
         if (e.state === 'dead') {
             e.deadTimer -= dt;
+            if (e.runSound) stopRunSound(e);
             const fallen = clamp01((ENEMY_RESPAWN - e.deadTimer) / 0.8);
             e.holder.rotation.x = -fallen * 1.45;
             e.holder.position.y = e.y - fallen * 0.12;
@@ -2564,6 +2720,7 @@ function updateEnemies(dt) {
         const nz = dist > 0.001 ? dz / dist : 0;
 
         const hunting = e.state === 'chase' || e.state === 'attack';
+        const sight = e.type.sight + night * 10;
         const canSee = !P.dead && !playerInCamp && dist < (hunting ? ENEMY_LOSE_SIGHT : sight);
 
         if (!hunting && canSee) {
@@ -2581,18 +2738,19 @@ function updateEnemies(dt) {
         if (e.state === 'chase') {
             targetX = px;
             targetZ = pz;
-            moveSpeed = dist < ENEMY_ATTACK_RANGE * 0.85 ? 0 : ENEMY_CHASE_SPEED * (1 + night * 0.12);
+            moveSpeed = dist < ENEMY_ATTACK_RANGE * 0.85 ? 0 : e.type.chaseSpeed * (1 + night * 0.12);
             if (dist < ENEMY_ATTACK_RANGE && e.attackCd <= 0) {
                 e.state = 'attack';
                 e.windup = ENEMY_WINDUP;
                 e.attackCd = ENEMY_ATTACK_COOLDOWN;
                 enemyPlay(e, 'attack', 0.08, true);
-                sfxSwing(0.55);
+                stopRunSound(e);
+                if (!playOneShotOnce(e, 'fightSound', enemySound(e, 'fight'), 1)) sfxSwing(0.55);
             }
         } else if (e.state === 'attack') {
             e.windup -= dt;
             if (e.windup <= 0) {
-                if (dist < ENEMY_ATTACK_RANGE + 0.6) damagePlayer(ENEMY_DAMAGE, nx, nz);
+                if (dist < ENEMY_ATTACK_RANGE + 0.6) damagePlayer(e.type.damage, nx, nz);
                 e.state = 'chase';
                 e.windup = -1;
             }
@@ -2689,11 +2847,18 @@ function updateEnemies(dt) {
             poseFallbackRig(e.rig, e.root, dt, moving, e.phase, e.state === 'attack' ? 'attack' : 'move');
         }
 
-        const frac = clamp01(e.hp / ENEMY_MAX_HEALTH);
+        // Looping run audio, if this kind of foe has one
+        if (enemySound(e, 'run')) {
+            if (e.state === 'chase' && moving > 1.5) startRunSound(e);
+            else stopRunSound(e);
+            if (e.runSound) updateSpatial(e.runSound, e.x, e.y + 1, e.z);
+        }
+
+        const frac = clamp01(e.hp / e.type.health);
         const showBar = (frac < 1 || hunting) && dist < 48;
         e.bar.visible = showBar;
         if (showBar) {
-            e.bar.position.set(e.x, e.y + ENEMY_HEIGHT + 0.38, e.z);
+            e.bar.position.set(e.x, e.y + e.type.height + 0.38, e.z);
             e.bar.quaternion.copy(camera.quaternion);
             e.barFill.scale.x = Math.max(frac, 0.001);
             e.barFill.position.x = -(1 - frac) * e.bar.userData.width / 2;
@@ -3971,7 +4136,7 @@ async function boot() {
         updateGrass(true);
 
         await progress(95, 'Rousing the hostiles');
-        await loadEnemyModel();
+        await loadEnemyModels();
         buildEnemies();
         buildSwingArc();
         P.kills = save.kills || 0;
@@ -3987,7 +4152,9 @@ async function boot() {
 
         const missing = [];
         if (!usedModel) missing.push(MODEL_PATH + ' (player)');
-        if (!enemyModelLoaded) missing.push(ENEMY_PATH + ' (enemy)');
+        for (const type of ENEMY_TYPES) {
+            if (!type.loaded) missing.push(type.path + ' (' + type.name + ')');
+        }
 
         if (missing.length === 0) {
             loaderText.textContent = 'Ready';
@@ -3995,7 +4162,8 @@ async function boot() {
             loaderText.textContent = 'Some models missing — using built-in stand-ins';
             document.getElementById('loader-keys').innerHTML =
                 'Could not load <b>' + missing.join('</b> and <b>') + '</b>.<br>' +
-                'Put the .glb files next to this page, or pass <b>?model=you.glb&amp;enemy=them.glb</b> in the URL.';
+                'Put the .glb files next to this page, or override paths with ' +
+                '<b>?model=&hellip;&amp;enemy=&hellip;&amp;chris=&hellip;</b> in the URL.';
         }
 
         document.getElementById('start').addEventListener('click', () => {
