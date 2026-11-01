@@ -287,7 +287,7 @@ button.primary:hover { background: rgba(240, 198, 116, 0.9); color: #10191a; }
     padding: 26px 28px 22px;
 }
 .panel h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.34em; font-weight: 600; text-transform: uppercase; }
-.panel .note { margin: 0 0 20px; font-size: 10px; letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase; }
+.panel .note, .sheet .note { margin: 0 0 20px; font-size: 10px; letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase; }
 
 .row {
     display: flex;
@@ -354,6 +354,83 @@ button.ghost {
 }
 button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 
+/* ---------- Map and completion screens ---------- */
+
+#map-screen, #finish {
+    position: fixed;
+    inset: 0;
+    z-index: 24;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 12, 13, 0.82);
+    backdrop-filter: blur(10px);
+}
+#map-screen.on, #finish.on { display: flex; }
+
+.sheet {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: rgba(13, 22, 24, 0.92);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    padding: 20px 22px 18px;
+    max-height: 94vh;
+    overflow-y: auto;   /* short landscape phones must still reach the button */
+}
+.sheet.narrow { width: min(380px, 88vw); }
+.sheet h2 {
+    margin: 0;
+    font-size: 13px;
+    letter-spacing: 0.34em;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+#big-map {
+    width: min(74vh, 86vw);
+    height: min(74vh, 86vw);
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: #16405a;
+}
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--dim);
+    align-items: center;
+    justify-content: center;
+}
+.legend i.sw {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: -1px;
+}
+.sw.camp { background: #ff8a3c; }
+.sw.way { background: #7fd8ff; }
+.sw.relic { background: #ffd166; }
+.sw.hint { background: rgba(255, 209, 102, 0.28); border: 1px solid rgba(255,209,102,.5); }
+
+#finish-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    width: 100%;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+#finish-stats div { display: flex; justify-content: space-between; }
+#finish-stats b { color: var(--gold); font-size: 14px; letter-spacing: 0.04em; }
+
 /* ---------- Touch controls ---------- */
 
 #touch { display: none; position: fixed; inset: 0; z-index: 8; pointer-events: none; }
@@ -415,6 +492,14 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     border-radius: 3px;
     font-size: 14px;
 }
+#btn-map {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top));
+    right: calc(58px + env(safe-area-inset-right));
+    width: 48px; height: 36px;
+    border-radius: 3px;
+    font-size: 9px;
+}
 
 body.touch #touch { display: block; }
 body.touch #minimap { width: 118px; height: 118px; bottom: calc(176px + env(safe-area-inset-bottom)); right: 16px; }
@@ -442,7 +527,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button class="primary" id="start">Enter the world</button>
     <p class="keys" id="loader-keys">
         WASD move &nbsp;·&nbsp; Shift sprint &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Scroll zoom<br>
-        Click or E to strike &nbsp;·&nbsp; V first person &nbsp;·&nbsp; F hide HUD &nbsp;·&nbsp; B flip model &nbsp;·&nbsp; Esc settings
+        Click or E to strike &nbsp;·&nbsp; M map &nbsp;·&nbsp; V first person &nbsp;·&nbsp; F hide HUD &nbsp;·&nbsp; B flip model &nbsp;·&nbsp; Esc settings
     </p>
 </div>
 
@@ -481,7 +566,32 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button class="tbtn" id="btn-attack">HIT</button>
     <button class="tbtn" id="btn-jump">JUMP</button>
     <button class="tbtn" id="btn-run">RUN</button>
+    <button class="tbtn" id="btn-map">MAP</button>
     <button class="tbtn" id="btn-menu">≡</button>
+</div>
+
+<div id="map-screen">
+    <div class="sheet">
+        <h2>Survey map</h2>
+        <canvas id="big-map" width="760" height="760"></canvas>
+        <div class="legend">
+            <span><i class="sw camp"></i>Camp</span>
+            <span><i class="sw way"></i>Waystone</span>
+            <span><i class="sw relic"></i>Relic</span>
+            <span><i class="sw hint"></i>Unsurveyed</span>
+            <span id="map-scale">—</span>
+        </div>
+        <button class="ghost" id="map-close">Close</button>
+    </div>
+</div>
+
+<div id="finish">
+    <div class="sheet narrow">
+        <h2>Expedition complete</h2>
+        <p class="note">Every relic recovered</p>
+        <div id="finish-stats"></div>
+        <button class="primary" id="finish-close">Keep exploring</button>
+    </div>
 </div>
 
 <div id="menu">
@@ -625,7 +735,7 @@ const settings = {
     peaceful: false
 };
 
-let save = { relics: [], time: 0.3, pos: null, kills: 0 };
+let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false };
 
 function loadSave() {
     try {
@@ -636,6 +746,9 @@ function loadSave() {
         if (Array.isArray(data.relics)) save.relics = data.relics;
         if (typeof data.time === 'number') save.time = data.time;
         if (typeof data.kills === 'number') save.kills = data.kills;
+        if (Array.isArray(data.surveyed)) save.surveyed = data.surveyed;
+        if (Array.isArray(data.waystones)) save.waystones = data.waystones;
+        if (data.completed) save.completed = true;
         if (Array.isArray(data.pos)) save.pos = data.pos;
     } catch (e) { /* corrupt save, start fresh */ }
 }
@@ -645,6 +758,9 @@ function writeSave() {
         localStorage.setItem(SAVE_KEY, JSON.stringify({
             settings,
             relics: relics.filter(r => r.taken).map(r => r.id),
+            surveyed: relics.filter(r => r.surveyed).map(r => r.id),
+            waystones: waystones.filter(w => w.awake).map(w => w.id),
+            completed: P.completed,
             kills: P.kills,
             time: timeOfDay,
             pos: player ? [player.position.x, player.position.y, player.position.z] : null
@@ -1528,6 +1644,7 @@ function updateGrass(force) {
    ============================================================ */
 
 const relics = [];
+const waystones = [];
 let relicLight;
 let campFire, campLight, campEmber;
 
@@ -1592,6 +1709,7 @@ function buildCamp() {
 function buildLandmarks() {
     const rnd = mulberry32(SEED ^ 0x3131);
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.95, flatShading: true });
+    const woken = new Set(save.waystones || []);
 
     for (let s = 0; s < 5; s++) {
         let x = 0, z = 0, h = -99, tries = 0;
@@ -1628,13 +1746,78 @@ function buildLandmarks() {
         altar.receiveShadow = true;
         altar.castShadow = settings.shadows;
         g.add(altar);
+
+        // The brazier on the altar is what lights when the stone wakes
+        const flame = new THREE.Mesh(
+            new THREE.ConeGeometry(0.42, 1.3, 8),
+            new THREE.MeshBasicMaterial({ color: 0x9fe4ff, transparent: true, opacity: 0.9, fog: false })
+        );
+        flame.position.y = 1.0;
+        flame.visible = false;
+        g.add(flame);
+
         scene.add(g);
+
+        waystones.push({
+            id: s, x, y: h, z, group: g, flame,
+            light: null,
+            awake: woken.has(s)
+        });
+    }
+
+    // Light any that were already awake in a previous session
+    for (const w of waystones) if (w.awake) wakeWaystone(w, true);
+}
+
+function wakeWaystone(w, silent) {
+    w.awake = true;
+    w.flame.visible = true;
+    if (!w.light) {
+        w.light = new THREE.PointLight(0x7fd8ff, 0, 30, 2);
+        w.light.position.set(0, 1.6, 0);
+        w.group.add(w.light);
+    }
+    // Surveying marks nearby relics precisely on the map
+    let found = 0;
+    for (const r of relics) {
+        if (!r.surveyed && Math.hypot(r.x - w.x, r.z - w.z) < 150) { r.surveyed = true; found++; }
+    }
+    if (silent) return;
+    sfxWaystone();
+    const awake = waystones.filter(s => s.awake).length;
+    toast('Waystone awakened · ' + awake + ' of ' + waystones.length +
+        (found ? ' · ' + found + ' relic' + (found > 1 ? 's' : '') + ' surveyed' : ''), 3600);
+    writeSave();
+}
+
+// Nearest awakened waystone, else camp
+function nearestRefuge(x, z) {
+    let best = { x: 0, z: 4, d: Math.hypot(x, z) };
+    for (const w of waystones) {
+        if (!w.awake) continue;
+        const d = Math.hypot(w.x - x, w.z - z);
+        if (d < best.d) best = { x: w.x, z: w.z, d };
+    }
+    return best;
+}
+
+function updateWaystones(dt) {
+    for (const w of waystones) {
+        if (!w.awake) {
+            if (!P.dead && Math.hypot(player.position.x - w.x, player.position.z - w.z) < 7) wakeWaystone(w);
+            continue;
+        }
+        const flicker = 0.75 + Math.sin(elapsed * 6 + w.id) * 0.14 + Math.sin(elapsed * 13.7 + w.id) * 0.1;
+        w.flame.scale.set(0.85 + flicker * 0.2, 0.8 + flicker * 0.35, 0.85 + flicker * 0.2);
+        w.flame.rotation.y = elapsed * 1.4 + w.id;
+        if (w.light) w.light.intensity = (2.5 + skyUniforms.uNight.value * 7) * flicker;
     }
 }
 
 function buildRelics() {
     const rnd = mulberry32(SEED ^ 0x9a9a);
     const taken = new Set(save.relics);
+    const surveyed = new Set(save.surveyed || []);
 
     const geo = new THREE.OctahedronGeometry(0.42, 0);
     const haloGeo = new THREE.OctahedronGeometry(0.78, 0);
@@ -1663,7 +1846,11 @@ function buildRelics() {
         }));
         group.add(halo);
 
-        const relic = { id: i, group, core, halo, taken: taken.has(i), base: h + 1.25, x, z };
+        const relic = {
+            id: i, group, core, halo, taken: taken.has(i),
+            base: h + 1.25, x, z,
+            surveyed: taken.has(i) || surveyed.has(i)
+        };
         if (relic.taken) group.visible = false;
         scene.add(group);
         relics.push(relic);
@@ -1947,6 +2134,13 @@ function sfxRelic() {
     });
 }
 
+function sfxWaystone() {
+    if (!Audio.ready) return;
+    [392, 587, 784].forEach((f, i) => {
+        setTimeout(() => blip('sine', f, f, 1.6, 0.1), i * 130);
+    });
+}
+
 function sfxComplete() {
     if (!Audio.ready) return;
     [523, 659, 784, 1046, 1318].forEach((f, i) => {
@@ -2121,7 +2315,8 @@ const P = {
     dead: false,
     deadTimer: 0,
     combatTimer: 0,
-    kills: 0
+    kills: 0,
+    completed: false
 };
 
 // Used for the player when the .glb is missing, and for every enemy when the
@@ -2940,13 +3135,15 @@ function respawnPlayer() {
     P.invuln = 2;
     P.hitFlash = 0;
     P.vel.set(0, 0, 0);
-    player.position.set(0, groundHeight(0, 4) + 0.1, 4);
+    // Back at the nearest waystone you woke, so dying far out isn't a trek
+    const refuge = nearestRefuge(player.position.x, player.position.z);
+    player.position.set(refuge.x, groundHeight(refuge.x, refuge.z) + 0.1, refuge.z);
     deathEl.classList.remove('on');
     for (const e of enemies) {
         if (e.state !== 'dead') e.state = 'idle';
     }
     updateGrass(true);
-    toast('Recovered at camp');
+    toast(refuge.d < 1 || (refuge.x === 0 && refuge.z === 4) ? 'Recovered at camp' : 'Recovered at a waystone');
 }
 
 function updateSwing(dt) {
@@ -2987,7 +3184,8 @@ function setupInput() {
 
         if (!started) return;
 
-        if (e.code === 'Escape') { togglePause(); }
+        if (e.code === 'Escape') { if (overlay) closeOverlay(); else togglePause(); }
+        if (e.code === 'KeyM') { if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map'); }
         if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
@@ -3002,7 +3200,7 @@ function setupInput() {
     const canvas = renderer.domElement;
 
     canvas.addEventListener('click', () => {
-        if (!started || paused || isTouch) return;
+        if (!started || paused || overlay || isTouch) return;
         // Once the mouse is captured, a click is a swing
         if (pointerLocked) { playerAttack(); return; }
         const p = canvas.requestPointerLock();
@@ -3012,7 +3210,7 @@ function setupInput() {
     document.addEventListener('pointerlockchange', () => {
         pointerLocked = document.pointerLockElement === canvas;
         document.getElementById('hint').classList.toggle('gone', pointerLocked);
-        if (!pointerLocked && started && !paused && !isTouch) togglePause(true);
+        if (!pointerLocked && started && !paused && !overlay && !isTouch) togglePause(true);
     });
 
     let dragging = false;
@@ -3116,6 +3314,23 @@ function setupInput() {
     });
 
     document.getElementById('btn-menu').addEventListener('pointerdown', (e) => { e.preventDefault(); togglePause(); });
+    document.getElementById('btn-map').addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map');
+    });
+    // Several independent ways out of a full-screen panel: the button (by
+    // click or touch), a tap on the backdrop, or Escape. No single quirk of
+    // one input path can trap someone on these screens.
+    for (const id of ['map-close', 'finish-close']) {
+        const btn = document.getElementById(id);
+        btn.addEventListener('click', closeOverlay);
+        btn.addEventListener('pointerdown', (e) => { e.preventDefault(); closeOverlay(); });
+    }
+    for (const id of ['map-screen', 'finish']) {
+        document.getElementById(id).addEventListener('pointerdown', (e) => {
+            if (e.target.id === id) closeOverlay();     // backdrop only
+        });
+    }
 
     // Pinch zoom — only when both fingers are on the 3D view. Otherwise
     // thumbing the stick while dragging to look counted as a pinch and the
@@ -3643,6 +3858,9 @@ function updateRelics(dt) {
 
         if (d < nearestDist) { nearestDist = d; nearest = r; }
 
+        // Come close enough and its position is pinned on the map for good
+        if (!r.surveyed && d < 120) r.surveyed = true;
+
         if (d < 2.2 && Math.abs(player.position.y - r.base) < 3.5) {
             r.taken = true;
             r.group.visible = false;
@@ -3652,8 +3870,7 @@ function updateRelics(dt) {
             updateRelicHud();
             writeSave();
             if (collected >= RELIC_TOTAL) {
-                toast('Expedition complete — all relics recovered', 5200);
-                sfxComplete();
+                finishExpedition();
             } else {
                 toast('Relic recovered · ' + collected + ' of ' + RELIC_TOTAL, 2600);
             }
@@ -3801,6 +4018,18 @@ function drawMinimap() {
         minimapCtx.fill();
     }
 
+    // waystones
+    for (const ws of waystones) {
+        if (!ws.awake) continue;
+        const dx = (ws.x - player.position.x) * scale;
+        const dz = (ws.z - player.position.z) * scale;
+        if (Math.hypot(dx, dz) > w / 2 - 6) continue;
+        minimapCtx.beginPath();
+        minimapCtx.arc(dx, dz, 3.6, 0, Math.PI * 2);
+        minimapCtx.fillStyle = '#7fd8ff';
+        minimapCtx.fill();
+    }
+
     // camp
     const cdx = (0 - player.position.x) * scale;
     const cdz = (0 - player.position.z) * scale;
@@ -3890,6 +4119,152 @@ function drawCompass(nearestRelic) {
     compassCtx.globalAlpha = 1;
     compassCtx.fillStyle = '#ffffff';
     compassCtx.fillRect(w / 2 - 1, 22, 2, 20);
+}
+
+/* ============================================================
+   MAP SCREEN + COMPLETION
+   ============================================================ */
+
+// A screen that freezes play without opening the settings menu.
+let overlay = null;
+const overlayEls = { map: 'map-screen', finish: 'finish' };
+
+function openOverlay(name) {
+    if (paused || overlay) return;
+    overlay = name;
+    document.getElementById(overlayEls[name]).classList.add('on');
+    if (pointerLocked) document.exitPointerLock();
+    if (name === 'map') drawBigMap();
+}
+
+function closeOverlay() {
+    if (!overlay) return;
+    document.getElementById(overlayEls[overlay]).classList.remove('on');
+    overlay = null;
+    if (!isTouch && started) {
+        const p = renderer.domElement.requestPointerLock();
+        if (p && p.catch) p.catch(() => {});
+    }
+}
+
+const bigMapCanvas = document.getElementById('big-map');
+const bigMapCtx = bigMapCanvas.getContext('2d');
+
+// Stable per-relic offset so an unsurveyed relic shows a vague area rather
+// than an exact pin — finding it should still take some walking.
+function relicHint(r) {
+    const a = hash2i(r.id * 37 + 11, r.id * 91 + 7) * Math.PI * 2;
+    const d = 18 + hash2i(r.id * 53 + 3, r.id * 17 + 29) * 22;
+    return { x: r.x + Math.cos(a) * d, z: r.z + Math.sin(a) * d };
+}
+
+function drawBigMap() {
+    const size = bigMapCanvas.width;
+    const ctx = bigMapCtx;
+    const toPx = w => (w + MAP_EXTENT) / (MAP_EXTENT * 2) * size;
+
+    ctx.fillStyle = '#16405a';
+    ctx.fillRect(0, 0, size, size);
+    if (terrainImage) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(terrainImage, 0, 0, size, size);
+    }
+
+    // unsurveyed relics: a soft area, not a point
+    for (const r of relics) {
+        if (r.taken || r.surveyed) continue;
+        const h = relicHint(r);
+        const rad = 45 / (MAP_EXTENT * 2) * size;
+        const g = ctx.createRadialGradient(toPx(h.x), toPx(h.z), 0, toPx(h.x), toPx(h.z), rad);
+        g.addColorStop(0, 'rgba(255, 209, 102, 0.30)');
+        g.addColorStop(1, 'rgba(255, 209, 102, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(toPx(h.x), toPx(h.z), rad, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // waystones you have woken
+    for (const w of waystones) {
+        if (!w.awake) continue;
+        ctx.beginPath();
+        ctx.arc(toPx(w.x), toPx(w.z), 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#7fd8ff';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.6)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    // surveyed relics
+    for (const r of relics) {
+        if (!r.surveyed) continue;
+        const px = toPx(r.x), pz = toPx(r.z);
+        ctx.save();
+        ctx.translate(px, pz);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = r.taken ? 'rgba(255,255,255,.34)' : '#ffd166';
+        ctx.strokeStyle = 'rgba(0,0,0,.6)';
+        ctx.lineWidth = 2;
+        ctx.fillRect(-5, -5, 10, 10);
+        ctx.strokeRect(-5, -5, 10, 10);
+        ctx.restore();
+    }
+
+    // camp
+    ctx.beginPath();
+    ctx.arc(toPx(0), toPx(0), 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff8a3c';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // player
+    ctx.save();
+    ctx.translate(toPx(player.position.x), toPx(player.position.z));
+    ctx.rotate(-P.yaw + Math.PI);
+    ctx.beginPath();
+    ctx.moveTo(0, -13);
+    ctx.lineTo(9, 10);
+    ctx.lineTo(0, 5);
+    ctx.lineTo(-9, 10);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(0,0,0,.7)';
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // north + scale bar
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('N', size / 2, 28);
+
+    const barMetres = 100;
+    const barPx = barMetres / (MAP_EXTENT * 2) * size;
+    ctx.strokeStyle = 'rgba(255,255,255,.85)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(size - barPx - 24, size - 24);
+    ctx.lineTo(size - 24, size - 24);
+    ctx.stroke();
+    document.getElementById('map-scale').textContent = barMetres + ' m scale';
+}
+
+function finishExpedition() {
+    P.completed = true;
+    sfxComplete();
+    for (const w of waystones) if (!w.awake) wakeWaystone(w, true);
+    const woken = waystones.filter(w => w.awake).length;
+    document.getElementById('finish-stats').innerHTML =
+        '<div><span>Relics recovered</span><b>' + collected + ' / ' + RELIC_TOTAL + '</b></div>' +
+        '<div><span>Foes felled</span><b>' + P.kills + '</b></div>' +
+        '<div><span>Waystones awake</span><b>' + woken + ' / ' + waystones.length + '</b></div>';
+    writeSave();
+    openOverlay('finish');
 }
 
 /* ============================================================
@@ -4005,7 +4380,11 @@ function setupMenu() {
     });
 
     document.getElementById('btn-reset').addEventListener('click', () => {
-        relics.forEach(r => { r.taken = false; r.group.visible = true; });
+        // Hide them again properly: clear the survey marks too, then let any
+        // awakened waystone re-reveal the ones in its range.
+        relics.forEach(r => { r.taken = false; r.group.visible = true; r.surveyed = false; });
+        waystones.forEach(w => { if (w.awake) wakeWaystone(w, true); });
+        P.completed = false;
         collected = 0;
         updateRelicHud();
         writeSave();
@@ -4021,14 +4400,15 @@ function setupMenu() {
    ============================================================ */
 
 let elapsed = 0;
-let frames = 0, fpsTimer = 0, hudTimer = 0, saveTimer = 0;
+let frames = 0, fpsSince = 0, hudTimer = 0, saveTimer = 0;
+let slowSeconds = 0, perfHinted = false;
 
 function animate() {
     requestAnimationFrame(animate);
 
     const dt = Math.min(clock.getDelta(), 0.05);
 
-    if (!paused && started) {
+    if (!paused && !overlay && started) {
         elapsed += dt;
         windUniform.value = elapsed;
         waterUniforms.uTime.value = elapsed;
@@ -4038,6 +4418,7 @@ function animate() {
         updateCamera(dt, result.horizontalSpeed);
         updateSky(dt);
         updateEnemies(dt);
+        updateWaystones(dt);
         updateSwing(dt);
         updateWildlife(dt);
         updateGrass(false);
@@ -4096,12 +4477,24 @@ function animate() {
         saveTimer -= dt;
         if (saveTimer <= 0) { saveTimer = 12; writeSave(); }
 
+        // Measured against the wall clock, not dt: dt is clamped to 50ms, so
+        // dividing by it can never report below 20fps however slow things get.
         frames++;
-        fpsTimer += dt;
-        if (fpsTimer >= 1) {
-            perfEl.textContent = Math.round(frames / fpsTimer) + ' fps · ' + settings.quality;
+        const nowMs = performance.now();
+        if (nowMs - fpsSince >= 1000) {
+            const fps = frames * 1000 / (nowMs - fpsSince);
+            perfEl.textContent = Math.round(fps) + ' fps · ' + settings.quality;
             frames = 0;
-            fpsTimer = 0;
+            fpsSince = nowMs;
+
+            // Offer a way out once, if the machine is clearly struggling
+            if (!perfHinted && settings.quality !== 'low') {
+                slowSeconds = fps < 24 ? slowSeconds + 1 : 0;
+                if (slowSeconds >= 8) {
+                    perfHinted = true;
+                    toast('Running slowly — try a lower Quality in settings (Esc)', 6000);
+                }
+            }
         }
     }
 
@@ -4138,8 +4531,8 @@ async function boot() {
 
         await progress(66, 'Scattering relics');
         buildCamp();
-        buildLandmarks();
         buildRelics();
+        buildLandmarks();   // after relics: waking a waystone surveys those near it
         collected = relics.filter(r => r.taken).length;
 
         await progress(74, 'Releasing wildlife');
@@ -4160,6 +4553,7 @@ async function boot() {
         buildEnemies();
         buildSwingArc();
         P.kills = save.kills || 0;
+        P.completed = !!save.completed;
 
         await progress(100, 'Ready');
 
@@ -4196,6 +4590,7 @@ async function boot() {
                 if (p && p.catch) p.catch(() => {});
             }
             clock.getDelta();
+            fpsSince = performance.now();
             if (collected > 0) toast('Welcome back · ' + collected + ' of ' + RELIC_TOTAL + ' relics');
             else toast('Find the ' + RELIC_TOTAL + ' relics', 4000);
         });
