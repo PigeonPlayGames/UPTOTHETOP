@@ -353,6 +353,37 @@ button.ghost {
 }
 button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 
+/* ---------- Intro video ---------- */
+
+#intro-video {
+    position: fixed;
+    inset: 0;
+    z-index: 32;
+    display: none;
+    background: #05090a;
+}
+#intro-video.on { display: block; }
+#intro-vid {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #05090a;
+}
+.intro-bar {
+    position: absolute;
+    right: calc(20px + env(safe-area-inset-right));
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 8px;
+}
+.intro-bar button {
+    background: rgba(8, 14, 16, 0.6);
+    backdrop-filter: blur(6px);
+    padding: 10px 16px;
+}
+#intro-sound { display: none; }
+#intro-video.muted #intro-sound { display: block; }
+
 /* ---------- Main menu ---------- */
 
 #main-menu {
@@ -672,6 +703,14 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button class="tbtn" id="btn-menu">≡</button>
 </div>
 
+<div id="intro-video">
+    <video id="intro-vid" playsinline preload="auto"></video>
+    <div class="intro-bar">
+        <button class="ghost" id="intro-sound">Sound on</button>
+        <button class="ghost" id="intro-skip">Skip intro ›</button>
+    </div>
+</div>
+
 <div id="main-menu">
     <div class="mm-inner">
         <h1>EON EXPANSE</h1>
@@ -742,7 +781,8 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <div class="row"><label>Freeze time</label><div class="toggle" id="tg-freeze"></div></div>
         <div class="row"><label>Model faces backwards</label><div class="toggle" id="tg-flip"></div></div>
         <div class="row"><label>Peaceful mode (no enemies)</label><div class="toggle" id="tg-peaceful"></div></div>
-        <div class="row"><label>Menu music</label><div class="toggle" id="tg-music"></div></div>
+        <div class="row"><label>Music</label><div class="toggle" id="tg-music"></div></div>
+        <div class="row"><label>Play intro video</label><div class="toggle" id="tg-intro"></div></div>
 
         <div class="menu-actions">
             <button class="primary" id="btn-resume">Resume</button>
@@ -769,9 +809,11 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3D2.glb';
-const ENEMY_PATH = params.get('enemy') || './playerdelete.glb';
+const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
-const MUSIC_PATH = params.get('music') || './Expanse1.mp3';
+const MUSIC_PATH = params.get('music') || './Expanse1.mp3';        // menu / intro
+const GAME_MUSIC_PATH = params.get('music2') || './Expanse2.mp3';  // quiet bed while playing
+const INTRO_VIDEO = params.get('intro') || './Intro.mp4';
 // Link back to the games hub. This page is expected to sit in its own folder
 // (Expanse/Expanse.html) like the other games; change if you put it elsewhere.
 const HUB_URL = '../index.html';
@@ -816,16 +858,16 @@ const CAMP_SAFE_RADIUS = 46;           // enemies won't press the attack this cl
 // Chase speeds stay under the player's sprint (7.4) so running away works.
 const ENEMY_TYPES = [
     {
-        key: 'raider',
-        name: 'Raider',
-        path: ENEMY_PATH,
+        key: 'kyle',
+        name: 'Kyle',
+        path: KYLE_PATH,
         height: 1.95,
         health: 60,
         damage: 12,
         chaseSpeed: 4.6,
         sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
-        sounds: {}
+        sounds: { run: './KyleRunning.mp3', fight: './KyleFighting.mp3', die: './KyleDying.mp3' }
     },
     {
         key: 'chris',
@@ -867,7 +909,8 @@ const settings = {
     freeze: false,
     flip: false,
     peaceful: false,
-    music: true
+    music: true,
+    intro: true
 };
 
 let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false };
@@ -2175,8 +2218,9 @@ function initAudio() {
 
         Audio.ready = true;
         loadEnemySounds();
-        // Decode the music early so it can begin the instant audio unlocks
+        // Decode both tracks early so they can begin the instant audio unlocks
         loadSample(MUSIC_PATH).then(syncMusic);
+        loadSample(GAME_MUSIC_PATH).then(syncMusic);
     } catch (e) {
         console.warn('Audio unavailable', e);
     }
@@ -2388,51 +2432,71 @@ function stopSample(handle) {
 
 /* ---- Menu music ---- */
 
-const Music = { gain: null, src: null, playing: false };
-let musicWanted = false;
+// Two tracks — the menu theme and a quiet bed for play — each on its own
+// gain node so one can fade up while the other fades down.
+const MUSIC_VOLUME = {};
+MUSIC_VOLUME[MUSIC_PATH] = 0.6;
+MUSIC_VOLUME[GAME_MUSIC_PATH] = 0.2;
 
-function startMusic() {
-    if (Music.playing || !Audio.ready || !hasSample(MUSIC_PATH)) return;
-    const ctx = Audio.ctx;
-    if (!Music.gain) {
-        Music.gain = ctx.createGain();
-        Music.gain.connect(Audio.master);
-    }
-    const now = ctx.currentTime;
-    Music.gain.gain.cancelScheduledValues(now);
-    Music.gain.gain.setValueAtTime(0.0001, now);
-    Music.gain.gain.linearRampToValueAtTime(0.6, now + 1.6);
+const MusicTracks = {};
+let introPlaying = false;
 
-    const src = ctx.createBufferSource();
-    src.buffer = Sounds.buffers[MUSIC_PATH];
-    src.loop = true;
-    src.connect(Music.gain);
-    try { src.start(); } catch (e) { return; }
-    Music.src = src;
-    Music.playing = true;
+function musicTrack(url) {
+    if (!MusicTracks[url]) MusicTracks[url] = { gain: null, src: null, playing: false };
+    return MusicTracks[url];
 }
 
-function stopMusic(fade) {
-    if (!Music.playing || !Music.src) return;
+function startTrack(url, fade) {
+    const t = musicTrack(url);
+    if (t.playing || !Audio.ready || !hasSample(url)) return;
+    const ctx = Audio.ctx;
+    if (!t.gain) {
+        t.gain = ctx.createGain();
+        t.gain.connect(Audio.master);
+    }
+    const now = ctx.currentTime;
+    const vol = MUSIC_VOLUME[url] === undefined ? 0.5 : MUSIC_VOLUME[url];
+    t.gain.gain.cancelScheduledValues(now);
+    t.gain.gain.setValueAtTime(0.0001, now);
+    t.gain.gain.linearRampToValueAtTime(vol, now + (fade === undefined ? 1.6 : fade));
+
+    const src = ctx.createBufferSource();
+    src.buffer = Sounds.buffers[url];
+    src.loop = true;
+    src.connect(t.gain);
+    try { src.start(); } catch (e) { return; }
+    t.src = src;
+    t.playing = true;
+}
+
+function stopTrack(url, fade) {
+    const t = MusicTracks[url];
+    if (!t || !t.playing || !t.src) return;
     const ctx = Audio.ctx;
     const f = fade === undefined ? 1.8 : fade;
     try {
         const now = ctx.currentTime;
-        Music.gain.gain.cancelScheduledValues(now);
-        Music.gain.gain.setValueAtTime(Music.gain.gain.value, now);
-        Music.gain.gain.linearRampToValueAtTime(0.0001, now + f);
-        Music.src.stop(now + f + 0.1);
+        t.gain.gain.cancelScheduledValues(now);
+        t.gain.gain.setValueAtTime(t.gain.gain.value, now);
+        t.gain.gain.linearRampToValueAtTime(0.0001, now + f);
+        t.src.stop(now + f + 0.1);
     } catch (e) { /* already stopped */ }
-    Music.src = null;
-    Music.playing = false;
+    t.src = null;
+    t.playing = false;
 }
 
-// Single place that decides whether music should be sounding right now.
-// Audio can only actually start after a gesture, so this is safe to call
-// repeatedly — it simply does nothing until the context is running.
+// Single place that decides what should be sounding right now. Audio can only
+// start after a gesture, so this is safe to call repeatedly — it does nothing
+// until the context is running.
 function syncMusic() {
-    if (musicWanted && settings.music && Audio.ready && Audio.ctx.state === 'running') startMusic();
-    else stopMusic(musicWanted ? 0.3 : 1.8);
+    const silent = !settings.music || !Audio.ready || Audio.ctx.state !== 'running' || introPlaying;
+    const wanted = silent ? null : (started ? GAME_MUSIC_PATH : MUSIC_PATH);
+
+    for (const url of [MUSIC_PATH, GAME_MUSIC_PATH]) {
+        if (url === wanted) startTrack(url);
+        else stopTrack(url);
+    }
+
     const hint = document.getElementById('mm-audio-hint');
     if (hint) hint.classList.toggle('gone', !!(Audio.ready && Audio.ctx.state === 'running'));
 }
@@ -4473,6 +4537,71 @@ function finishExpedition() {
 
 const mainMenuEl = document.getElementById('main-menu');
 const controlsEl = document.getElementById('controls-screen');
+
+/* ---- Intro video ----
+   Plays over the loading screen, so the world is being built behind it and
+   the wait is hidden. The menu waits for both to finish. A missing, broken or
+   stalled file just falls through to the menu rather than hanging. */
+
+let introDone = false;
+let bootDone = false;
+let introWatchdog = 0;
+
+function maybeShowMenu() {
+    if (bootDone && introDone && !started) showMainMenu();
+}
+
+function finishIntro() {
+    if (introDone) return;
+    introDone = true;
+    introPlaying = false;
+    clearTimeout(introWatchdog);
+    const wrap = document.getElementById('intro-video');
+    const vid = document.getElementById('intro-vid');
+    try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (e) { /* nothing playing */ }
+    wrap.classList.remove('on');
+    syncMusic();
+    maybeShowMenu();
+}
+
+function startIntro() {
+    if (!settings.intro) { introDone = true; return; }
+
+    const wrap = document.getElementById('intro-video');
+    const vid = document.getElementById('intro-vid');
+    introPlaying = true;
+    wrap.classList.add('on');
+
+    vid.addEventListener('ended', finishIntro);
+    vid.addEventListener('error', finishIntro);
+    document.getElementById('intro-skip').addEventListener('click', finishIntro);
+    document.getElementById('intro-sound').addEventListener('click', () => {
+        vid.muted = false;
+        wrap.classList.remove('muted');
+        vid.play().catch(() => {});
+    });
+    window.addEventListener('keydown', (e) => {
+        if (!introDone && ['Escape', 'Space', 'Enter'].includes(e.code)) finishIntro();
+    });
+
+    // If it never actually starts playing, don't strand anyone on a black screen
+    introWatchdog = setTimeout(() => { if (!vid.currentTime) finishIntro(); }, 8000);
+    vid.addEventListener('playing', () => clearTimeout(introWatchdog), { once: true });
+
+    vid.src = INTRO_VIDEO;
+    // Try with sound; browsers only allow that in some cases, so fall back to
+    // muted playback with a button to turn sound on.
+    vid.muted = false;
+    const attempt = vid.play();
+    if (attempt && attempt.catch) {
+        attempt.catch(() => {
+            vid.muted = true;
+            wrap.classList.add('muted');
+            const retry = vid.play();
+            if (retry && retry.catch) retry.catch(finishIntro);
+        });
+    }
+}
 let introAngle = 0.4;
 const _introLook = new THREE.Vector3();
 
@@ -4515,7 +4644,6 @@ function showMainMenu() {
     document.getElementById('hud').classList.add('menu-hidden');
     if (document.pointerLockElement) document.exitPointerLock();
     updateMenuProgress();
-    musicWanted = true;
     syncMusic();
 }
 
@@ -4524,7 +4652,6 @@ function enterWorld() {
     controlsEl.classList.remove('on');
     document.getElementById('hud').classList.remove('menu-hidden');
     started = true;
-    musicWanted = false;
     syncMusic();
     clock.getDelta();
     fpsSince = performance.now();
@@ -4659,6 +4786,7 @@ function syncMenu() {
     document.getElementById('tg-flip').classList.toggle('on', settings.flip);
     document.getElementById('tg-peaceful').classList.toggle('on', settings.peaceful);
     document.getElementById('tg-music').classList.toggle('on', settings.music);
+    document.getElementById('tg-intro').classList.toggle('on', settings.intro);
 
     document.getElementById('rg-fov').value = settings.fov;
     document.getElementById('v-fov').textContent = settings.fov;
@@ -4704,6 +4832,7 @@ function setupMenu() {
     toggle('tg-freeze', 'freeze');
     toggle('tg-flip', 'flip');
     toggle('tg-music', 'music', syncMusic);
+    toggle('tg-intro', 'intro');
     toggle('tg-peaceful', 'peaceful', () => {
         toast(settings.peaceful ? 'Peaceful mode on' : 'The hostiles return');
         if (!settings.peaceful) {
@@ -4959,7 +5088,9 @@ async function boot() {
 
         loaderEl.style.opacity = '0';
         setTimeout(() => loaderEl.remove(), 900);
-        showMainMenu();
+
+        bootDone = true;
+        maybeShowMenu();   // waits for the intro video if it is still running
 
         animate();
     } catch (err) {
@@ -4972,6 +5103,7 @@ async function boot() {
 
 window.addEventListener('beforeunload', writeSave);
 
+startIntro();   // runs over the loading screen
 boot();
 </script>
 </body>
