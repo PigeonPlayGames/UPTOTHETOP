@@ -884,7 +884,7 @@ const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const MUSIC_PATH = params.get('music') || './Expanse1.mp3';        // menu / intro
 const GAME_MUSIC_PATH = params.get('music2') || './Expanse2.mp3';  // quiet bed while playing
-const INTRO_VIDEO = params.get('intro') || './Intro.mp4';
+const INTRO_VIDEO = params.get('intro') || './Expanse1.mp3';
 // Link back to the games hub. This page is expected to sit in its own folder
 // (Expanse/Expanse.html) like the other games; change if you put it elsewhere.
 const HUB_URL = '../index.html';
@@ -939,10 +939,10 @@ const ENEMY_TYPES = [
         key: 'kyle',
         name: 'Kyle',
         path: KYLE_PATH,
-        height: 1.95,
-        health: 60,
-        damage: 12,
-        chaseSpeed: 4.6,
+        height: 2.4,
+        health: 200,
+        damage: 18,
+        chaseSpeed: 4.8,
         sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
         // Exact clip names inside Kyle.glb. Edit these if you re-export with
@@ -3010,7 +3010,7 @@ function loadEnemyType(type) {
                 // mid-swing by the next decision.
                 const atk = findClip(type.clips, type.clipNames && type.clipNames.attack);
                 if (atk && atk.duration > 0.1) {
-                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.3, 1.1);
+                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.8, 1.1);
                     type.cooldown = THREE.MathUtils.clamp(atk.duration + 0.35, 1.2, 3.0);
                 }
                 resolve(true);
