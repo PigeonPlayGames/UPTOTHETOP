@@ -80,8 +80,29 @@ canvas { display: block; }
 #relic-line { font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; text-shadow: 0 2px 8px rgba(0,0,0,.85); }
 #relic-line b { color: var(--gold); font-size: 15px; letter-spacing: 0.06em; }
 
+#health {
+    margin-top: 10px;
+    width: 220px;
+    height: 7px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 3px;
+    overflow: hidden;
+}
+#health i {
+    display: block;
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #d2644f, #e8a07a);
+    transition: width 0.18s ease-out, background 0.3s;
+}
+#health.hurt i { background: linear-gradient(90deg, #c23b2e, #e06a52); }
+
+#kill-line { color: var(--dim); }
+#kill-line b { color: #e8a07a; font-size: 15px; letter-spacing: 0.06em; }
+
 #stamina {
-    margin-top: 9px;
+    margin-top: 7px;
     width: 168px;
     height: 4px;
     background: rgba(255, 255, 255, 0.16);
@@ -164,6 +185,39 @@ canvas { display: block; }
     transition: opacity 0.35s;
 }
 #underwater.on { opacity: 1; }
+
+#hurt {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(130, 10, 10, 0) 38%, rgba(140, 12, 12, 0.85) 100%);
+    opacity: 0;
+}
+
+#death {
+    position: fixed;
+    inset: 0;
+    z-index: 22;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 4, 4, 0.82);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s;
+    text-align: center;
+}
+#death.on { opacity: 1; }
+#death h2 {
+    margin: 0 0 10px;
+    font-size: 22px;
+    letter-spacing: 0.4em;
+    font-weight: 300;
+    text-indent: 0.4em;
+    color: #e8cfc6;
+}
+#death p { margin: 0; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: #a98d85; }
 
 /* ---------- Loader ---------- */
 
@@ -339,6 +393,14 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     bottom: calc(36px + env(safe-area-inset-bottom));
     width: 62px; height: 62px;
 }
+#btn-attack {
+    right: calc(112px + env(safe-area-inset-right));
+    bottom: calc(120px + env(safe-area-inset-bottom));
+    width: 68px; height: 68px;
+    background: rgba(210, 100, 79, 0.28);
+    border-color: rgba(240, 160, 130, 0.7);
+}
+#btn-attack:active { background: rgba(230, 120, 95, 0.6); }
 .tbtn.on { background: rgba(127, 212, 193, 0.4); border-color: #9fe3d3; }
 #btn-menu {
     position: absolute;
@@ -375,11 +437,13 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button class="primary" id="start">Enter the world</button>
     <p class="keys" id="loader-keys">
         WASD move &nbsp;·&nbsp; Shift sprint &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Scroll zoom<br>
-        V first person &nbsp;·&nbsp; F hide HUD &nbsp;·&nbsp; B flip model &nbsp;·&nbsp; Esc settings
+        Click or E to strike &nbsp;·&nbsp; V first person &nbsp;·&nbsp; F hide HUD &nbsp;·&nbsp; B flip model &nbsp;·&nbsp; Esc settings
     </p>
 </div>
 
 <div id="underwater"></div>
+<div id="hurt"></div>
+<div id="death"><div><h2>You fell</h2><p id="death-note">Returning to camp…</p></div></div>
 
 <div id="hud">
     <div class="corner" id="tl">
@@ -395,7 +459,8 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     </div>
 
     <div class="corner" id="bl">
-        <div id="relic-line"><b id="relic-count">0</b> / <span id="relic-total">12</span> relics</div>
+        <div id="relic-line"><b id="relic-count">0</b> / <span id="relic-total">12</span> relics<span id="kill-line"></span></div>
+        <div id="health"><i></i></div>
         <div id="stamina"><i></i></div>
         <div class="sub" id="coords">x 0 · z 0</div>
     </div>
@@ -408,6 +473,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
 
 <div id="touch">
     <div id="stick-base"><div id="stick-knob"></div></div>
+    <button class="tbtn" id="btn-attack">HIT</button>
     <button class="tbtn" id="btn-jump">JUMP</button>
     <button class="tbtn" id="btn-run">RUN</button>
     <button class="tbtn" id="btn-menu">≡</button>
@@ -434,6 +500,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <div class="row"><label>Day length (min)</label><input type="range" id="rg-day" min="2" max="30" step="1"><span class="val" id="v-day">8</span></div>
         <div class="row"><label>Freeze time</label><div class="toggle" id="tg-freeze"></div></div>
         <div class="row"><label>Model faces backwards</label><div class="toggle" id="tg-flip"></div></div>
+        <div class="row"><label>Peaceful mode (no enemies)</label><div class="toggle" id="tg-peaceful"></div></div>
 
         <div class="menu-actions">
             <button class="primary" id="btn-resume">Resume</button>
@@ -449,6 +516,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 /* ============================================================
    CONFIG
@@ -456,6 +524,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3D2.glb';
+const ENEMY_PATH = params.get('enemy') || './playerdelete.glb';
 const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 
 const PLAYER_HEIGHT = 1.85;
@@ -474,10 +543,32 @@ const GROUND_ACCEL = 30;
 const AIR_ACCEL = 8;
 const PLAYER_RADIUS = 0.45;
 
+// --- Combat ---
+const PLAYER_MAX_HEALTH = 100;
+const ATTACK_COOLDOWN = 0.45;
+const ATTACK_RANGE = 3.0;
+const ATTACK_ARC = Math.PI * 0.62;     // total swing width
+const ATTACK_DAMAGE = 30;
+const PLAYER_INVULN = 0.65;
+const RESPAWN_DELAY = 2.4;
+
+const ENEMY_MAX_HEALTH = 60;
+const ENEMY_DAMAGE = 12;
+const ENEMY_ATTACK_RANGE = 2.1;
+const ENEMY_ATTACK_COOLDOWN = 1.35;
+const ENEMY_WINDUP = 0.42;             // telegraph before the blow lands
+const ENEMY_CHASE_SPEED = 4.6;         // slower than a sprint, so you can run
+const ENEMY_WANDER_SPEED = 1.35;
+const ENEMY_SIGHT = 22;
+const ENEMY_LOSE_SIGHT = 36;
+const ENEMY_RESPAWN = 28;
+const ENEMY_RADIUS = 0.5;
+const CAMP_SAFE_RADIUS = 46;           // enemies won't press the attack this close to camp
+
 const QUALITY = {
-    low:    { seg: 150, trees: 520,  rocks: 220, grassCells: 8,  grassPer: 10, shadowSize: 1024, pixel: 1.0,  waterSeg: 110, deer: 3 },
-    medium: { seg: 230, trees: 1150, rocks: 420, grassCells: 11, grassPer: 20, shadowSize: 1536, pixel: 1.35, waterSeg: 150, deer: 6 },
-    high:   { seg: 320, trees: 1900, rocks: 650, grassCells: 15, grassPer: 24, shadowSize: 2048, pixel: 1.8,  waterSeg: 190, deer: 8 }
+    low:    { seg: 150, trees: 520,  rocks: 220, grassCells: 8,  grassPer: 10, shadowSize: 1024, pixel: 1.0,  waterSeg: 110, deer: 3, enemies: 7 },
+    medium: { seg: 230, trees: 1150, rocks: 420, grassCells: 11, grassPer: 20, shadowSize: 1536, pixel: 1.35, waterSeg: 150, deer: 6, enemies: 12 },
+    high:   { seg: 320, trees: 1900, rocks: 650, grassCells: 15, grassPer: 24, shadowSize: 2048, pixel: 1.8,  waterSeg: 190, deer: 8, enemies: 16 }
 };
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -498,10 +589,11 @@ const settings = {
     volume: 0.7,
     dayMinutes: 8,
     freeze: false,
-    flip: false
+    flip: false,
+    peaceful: false
 };
 
-let save = { relics: [], time: 0.3, pos: null };
+let save = { relics: [], time: 0.3, pos: null, kills: 0 };
 
 function loadSave() {
     try {
@@ -511,6 +603,7 @@ function loadSave() {
         if (data.settings) Object.assign(settings, data.settings);
         if (Array.isArray(data.relics)) save.relics = data.relics;
         if (typeof data.time === 'number') save.time = data.time;
+        if (typeof data.kills === 'number') save.kills = data.kills;
         if (Array.isArray(data.pos)) save.pos = data.pos;
     } catch (e) { /* corrupt save, start fresh */ }
 }
@@ -520,6 +613,7 @@ function writeSave() {
         localStorage.setItem(SAVE_KEY, JSON.stringify({
             settings,
             relics: relics.filter(r => r.taken).map(r => r.id),
+            kills: P.kills,
             time: timeOfDay,
             pos: player ? [player.position.x, player.position.y, player.position.z] : null
         }));
@@ -1833,6 +1927,38 @@ function sfxChirp() {
     setTimeout(() => blip('sine', base * 1.2, base * 0.8, 0.06, 0.04), 90);
 }
 
+function sfxSwing(strength) {
+    const s = strength === undefined ? 1 : strength;
+    noiseBurst(0.18, 0.1 * s, 'bandpass', 1700, 1.2);
+    blip('sawtooth', 420 * s, 140, 0.14, 0.045 * s, 'lowpass', 1200);
+}
+
+function sfxEnemyHit() {
+    noiseBurst(0.12, 0.26, 'lowpass', 1100);
+    blip('square', 150, 70, 0.1, 0.1, 'lowpass', 900);
+}
+
+function sfxEnemyDown() {
+    blip('sawtooth', 220, 48, 0.55, 0.12, 'lowpass', 800);
+    noiseBurst(0.42, 0.2, 'lowpass', 600);
+}
+
+function sfxEnemyAlert() {
+    blip('sawtooth', 180, 320, 0.26, 0.06, 'lowpass', 1100);
+}
+
+function sfxPlayerHurt() {
+    blip('triangle', 300, 120, 0.3, 0.14);
+    noiseBurst(0.22, 0.2, 'lowpass', 1500);
+}
+
+function sfxDeath() {
+    if (!Audio.ready) return;
+    [330, 262, 196, 131].forEach((f, i) => {
+        setTimeout(() => blip('triangle', f, f * 0.92, 1.1, 0.13), i * 220);
+    });
+}
+
 function sfxCricket() {
     for (let i = 0; i < 3; i++) {
         setTimeout(() => blip('square', 4200, 4200, 0.02, 0.012, 'bandpass', 4200), i * 55);
@@ -1863,23 +1989,37 @@ const P = {
     animPhase: 0,
     lastSurface: 2,
     wasSwimming: false,
-    firstPerson: false
+    firstPerson: false,
+    health: PLAYER_MAX_HEALTH,
+    invuln: 0,
+    hitFlash: 0,
+    attackCd: 0,
+    swingTimer: 0,
+    dead: false,
+    deadTimer: 0,
+    combatTimer: 0,
+    kills: 0
 };
 
-function buildFallbackCharacter() {
+// Used for the player when the .glb is missing, and for every enemy when the
+// enemy .glb is missing, so the game is always playable.
+function buildFallbackHumanoid(opts) {
+    const o = opts || {};
     const g = new THREE.Group();
-    const skin = new THREE.MeshStandardMaterial({ color: 0xe3b08c, roughness: 0.85 });
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x3b6e6b, roughness: 0.95 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2b3640, roughness: 0.95 });
-    const hair = new THREE.MeshStandardMaterial({ color: 0x3a2a20, roughness: 1 });
+    const skin = new THREE.MeshStandardMaterial({ color: o.skin || 0xe3b08c, roughness: 0.85 });
+    const cloth = new THREE.MeshStandardMaterial({ color: o.cloth || 0x3b6e6b, roughness: 0.95 });
+    const dark = new THREE.MeshStandardMaterial({ color: o.dark || 0x2b3640, roughness: 0.95 });
+    const hair = new THREE.MeshStandardMaterial({ color: o.hair || 0x3a2a20, roughness: 1 });
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.46, 4, 10), cloth);
     torso.position.y = 1.2;
     g.add(torso);
 
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.22), dark);
-    pack.position.set(0, 1.2, -0.3);
-    g.add(pack);
+    if (o.pack !== false) {
+        const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.22), dark);
+        pack.position.set(0, 1.2, -0.3);
+        g.add(pack);
+    }
 
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.205, 18, 14), skin);
     head.position.y = 1.72;
@@ -1888,6 +2028,15 @@ function buildFallbackCharacter() {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.215, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
     cap.position.y = 1.74;
     g.add(cap);
+
+    if (o.eyes) {
+        const eyeMat = new THREE.MeshBasicMaterial({ color: o.eyes, fog: false });
+        for (const ex of [-0.075, 0.075]) {
+            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), eyeMat);
+            eye.position.set(ex, 1.74, 0.185);
+            g.add(eye);
+        }
+    }
 
     const limb = (x, y, len, mat, radius) => {
         const pivot = new THREE.Group();
@@ -1899,17 +2048,89 @@ function buildFallbackCharacter() {
         return pivot;
     };
 
-    const armL = limb(-0.33, 1.44, 0.46, cloth, 0.085);
-    const armR = limb(0.33, 1.44, 0.46, cloth, 0.085);
-    const legL = limb(-0.14, 0.86, 0.56, dark, 0.1);
-    const legR = limb(0.14, 0.86, 0.56, dark, 0.1);
+    const rig = {
+        armL: limb(-0.33, 1.44, 0.46, cloth, 0.085),
+        armR: limb(0.33, 1.44, 0.46, cloth, 0.085),
+        legL: limb(-0.14, 0.86, 0.56, dark, 0.1),
+        legR: limb(0.14, 0.86, 0.56, dark, 0.1),
+        torso
+    };
 
-    g.traverse(o => {
-        if (o.isMesh) { o.castShadow = settings.shadows; o.receiveShadow = true; }
+    g.traverse(n => {
+        if (n.isMesh) { n.castShadow = settings.shadows; n.receiveShadow = true; }
     });
 
-    fallbackRig = { armL, armR, legL, legR, torso, head: cap, headMesh: head };
-    return g;
+    return { root: g, rig };
+}
+
+function buildFallbackCharacter() {
+    const built = buildFallbackHumanoid();
+    fallbackRig = built.rig;
+    return built.root;
+}
+
+// Shared clip-name matching, so the player and the enemies read their .glb
+// animations the same way.
+function buildActions(mixer, clips) {
+    const map = {};
+    const put = (key, action) => { if (!map[key]) map[key] = action; };
+
+    clips.forEach((clip) => {
+        if (STRIP_ROOT_MOTION) {
+            clip = clip.clone();
+            clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.position'));
+        }
+        const name = clip.name.toLowerCase();
+        const action = mixer.clipAction(clip);
+        action.enabled = true;
+
+        if (/idle|stand|breath/.test(name)) put('idle', action);
+        else if (/attack|punch|hit|strike|slash|kick/.test(name)) put('attack', action);
+        else if (/death|die|dead/.test(name)) put('death', action);
+        else if (/sprint|run|jog/.test(name)) put('run', action);
+        else if (/walk/.test(name)) put('walk', action);
+        else if (/jump|leap/.test(name)) put('jump', action);
+        else if (/fall|air/.test(name)) put('fall', action);
+        else if (/swim/.test(name)) put('swim', action);
+        else put('misc', action);
+    });
+
+    if (!map.idle) map.idle = map.misc || map.walk || map.run;
+    if (!map.walk) map.walk = map.run || map.misc || map.idle;
+    if (!map.run) map.run = map.walk;
+    if (!map.fall) map.fall = map.jump || map.idle;
+    if (!map.jump) map.jump = map.fall || map.idle;
+    if (!map.swim) map.swim = map.walk;
+
+    if (map.jump) { map.jump.setLoop(THREE.LoopOnce, 1); map.jump.clampWhenFinished = true; }
+    if (map.attack) { map.attack.setLoop(THREE.LoopOnce, 1); map.attack.clampWhenFinished = true; }
+    if (map.death) { map.death.setLoop(THREE.LoopOnce, 1); map.death.clampWhenFinished = true; }
+
+    return map;
+}
+
+// Walk/attack posing for a procedurally built humanoid.
+function poseFallbackRig(rig, root, dt, speed, phase, mode) {
+    const swing = Math.sin(phase);
+    const amp = Math.min(speed / RUN_SPEED, 1);
+
+    if (mode === 'attack') {
+        root.rotation.x = THREE.MathUtils.damp(root.rotation.x, 0.12, 14, dt);
+        rig.armR.rotation.x = THREE.MathUtils.damp(rig.armR.rotation.x, -2.5, 20, dt);
+        rig.armL.rotation.x = THREE.MathUtils.damp(rig.armL.rotation.x, -0.5, 14, dt);
+        rig.legL.rotation.x = THREE.MathUtils.damp(rig.legL.rotation.x, 0.2, 10, dt);
+        rig.legR.rotation.x = THREE.MathUtils.damp(rig.legR.rotation.x, -0.2, 10, dt);
+        return;
+    }
+
+    const reach = 0.95;
+    rig.armL.rotation.x = swing * amp * reach;
+    rig.armR.rotation.x = -swing * amp * reach;
+    rig.legL.rotation.x = -swing * amp * reach * 0.9;
+    rig.legR.rotation.x = swing * amp * reach * 0.9;
+    rig.torso.rotation.z = Math.sin(phase * 2) * 0.03 * amp;
+    root.rotation.x = THREE.MathUtils.damp(root.rotation.x, amp * 0.14, 8, dt);
+    root.position.y = Math.abs(Math.sin(phase)) * 0.055 * amp;
 }
 
 function loadPlayerModel() {
@@ -1938,51 +2159,19 @@ function loadPlayerModel() {
                 if (gltf.animations && gltf.animations.length) {
                     hasClips = true;
                     mixer = new THREE.AnimationMixer(modelRoot);
-
-                    gltf.animations.forEach((clip) => {
-                        if (STRIP_ROOT_MOTION) {
-                            clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.position'));
-                        }
-                        const name = clip.name.toLowerCase();
-                        const action = mixer.clipAction(clip);
-                        action.enabled = true;
-
-                        if (/idle|stand|breath/.test(name)) register('idle', action);
-                        else if (/sprint|run|jog/.test(name)) register('run', action);
-                        else if (/walk/.test(name)) register('walk', action);
-                        else if (/jump|leap/.test(name)) register('jump', action);
-                        else if (/fall|air/.test(name)) register('fall', action);
-                        else if (/swim/.test(name)) register('swim', action);
-                        else register('misc', action);
-                    });
-
-                    if (!actions.idle) actions.idle = actions.misc || actions.walk || actions.run;
-                    if (!actions.walk) actions.walk = actions.run || actions.misc || actions.idle;
-                    if (!actions.run) actions.run = actions.walk;
-                    if (!actions.fall) actions.fall = actions.jump || actions.idle;
-                    if (!actions.jump) actions.jump = actions.fall || actions.idle;
-                    if (!actions.swim) actions.swim = actions.walk;
-
-                    if (actions.jump) {
-                        actions.jump.setLoop(THREE.LoopOnce, 1);
-                        actions.jump.clampWhenFinished = true;
-                    }
+                    Object.assign(actions, buildActions(mixer, gltf.animations));
                 }
 
                 resolve(true);
             },
             undefined,
             (err) => {
-                console.warn('GLB not loaded (' + MODEL_PATH + '), using built-in explorer.', err);
+                console.warn('Player GLB not loaded (' + MODEL_PATH + '), using built-in explorer.', err);
                 modelRoot = buildFallbackCharacter();
                 resolve(false);
             }
         );
     });
-
-    function register(key, action) {
-        if (!actions[key]) actions[key] = action;
-    }
 }
 
 function setupPlayer() {
@@ -2014,7 +2203,11 @@ function updateAnimation(dt, horizontalSpeed, running) {
     modelRoot.rotation.y = modelYawOffset;
 
     if (hasClips) {
-        if (P.swimming) {
+        if (P.dead && actions.death) {
+            playAction('death', 0.15);
+        } else if (P.swingTimer > 0 && actions.attack) {
+            playAction('attack', 0.07);
+        } else if (P.swimming) {
             playAction('swim');
             if (actions.swim) actions.swim.setEffectiveTimeScale(1);
         } else if (!P.grounded) {
@@ -2040,7 +2233,14 @@ function updateAnimation(dt, horizontalSpeed, running) {
     const swing = Math.sin(P.animPhase);
     const amp = Math.min(horizontalSpeed / RUN_SPEED, 1);
 
-    if (P.swimming) {
+    if (P.dead) {
+        modelRoot.rotation.x = THREE.MathUtils.damp(modelRoot.rotation.x, -1.45, 6, dt);
+        modelRoot.position.y = THREE.MathUtils.damp(modelRoot.position.y, 0.1, 6, dt);
+        r.armL.rotation.x = THREE.MathUtils.damp(r.armL.rotation.x, 0.6, 6, dt);
+        r.armR.rotation.x = THREE.MathUtils.damp(r.armR.rotation.x, 0.6, 6, dt);
+    } else if (P.swingTimer > 0) {
+        poseFallbackRig(r, modelRoot, dt, horizontalSpeed, P.animPhase, 'attack');
+    } else if (P.swimming) {
         r.armL.rotation.x = -2.4 + Math.sin(P.animPhase * 1.4) * 0.9;
         r.armR.rotation.x = -2.4 + Math.sin(P.animPhase * 1.4 + Math.PI) * 0.9;
         r.legL.rotation.x = Math.sin(P.animPhase * 2) * 0.45;
@@ -2067,6 +2267,533 @@ function updateAnimation(dt, horizontalSpeed, running) {
             modelRoot.position.y = Math.sin(elapsed * 1.6) * 0.012;
             r.torso.rotation.z = Math.sin(elapsed * 1.2) * 0.012;
         }
+    }
+}
+
+/* ============================================================
+   COMBAT — ENEMIES
+   ============================================================ */
+
+const ENEMY_HEIGHT = 1.95;
+const enemies = [];
+let enemyTemplate = null;
+let enemyClips = [];
+let enemyModelLoaded = false;
+let swingMesh = null;
+let camShake = 0;
+const _enemyPos = new THREE.Vector3();
+
+function loadEnemyModel() {
+    return new Promise((resolve) => {
+        new GLTFLoader().load(
+            ENEMY_PATH,
+            (gltf) => {
+                const root = gltf.scene;
+                const box = new THREE.Box3().setFromObject(root);
+                const h = box.max.y - box.min.y;
+                if (h > 0.01) root.scale.setScalar(ENEMY_HEIGHT / h);
+                const scaled = new THREE.Box3().setFromObject(root);
+                root.position.y -= scaled.min.y;
+                enemyTemplate = root;
+                enemyClips = gltf.animations || [];
+                enemyModelLoaded = true;
+                resolve(true);
+            },
+            undefined,
+            (err) => {
+                console.warn('Enemy GLB not loaded (' + ENEMY_PATH + '), using built-in foe.', err);
+                resolve(false);
+            }
+        );
+    });
+}
+
+function makeHealthBar() {
+    const g = new THREE.Group();
+    const w = 1.0;
+    const bg = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, 0.13),
+        new THREE.MeshBasicMaterial({ color: 0x120a0a, transparent: true, opacity: 0.72, depthWrite: false, fog: false })
+    );
+    const fill = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, 0.085),
+        new THREE.MeshBasicMaterial({ color: 0x7fd4c1, depthWrite: false, fog: false })
+    );
+    fill.position.z = 0.004;
+    g.add(bg, fill);
+    g.renderOrder = 900;
+    g.userData.fill = fill;
+    g.userData.width = w;
+    g.visible = false;
+    scene.add(g);
+    return g;
+}
+
+function placeEnemy(e, rnd, minFromPlayer) {
+    for (let tries = 0; tries < 200; tries++) {
+        const a = rnd() * Math.PI * 2;
+        const d = 85 + rnd() * (WORLD_RADIUS - 125);
+        const x = Math.cos(a) * d;
+        const z = Math.sin(a) * d;
+        const h = groundHeight(x, z);
+        if (h < WATER_LEVEL + 1.5 || h > 50) continue;
+        if (slopeAt(x, z) > 0.34) continue;
+        if (player && minFromPlayer) {
+            if (Math.hypot(x - player.position.x, z - player.position.z) < minFromPlayer) continue;
+        }
+        e.x = x; e.z = z; e.y = h;
+        e.targetX = x; e.targetZ = z;
+        return true;
+    }
+    return false;
+}
+
+function createEnemy(id, rnd) {
+    const holder = new THREE.Group();
+    let root, rig = null, mixer = null, acts = null;
+
+    if (enemyTemplate) {
+        root = cloneSkinned(enemyTemplate);
+        root.traverse(o => {
+            if (o.isMesh || o.isSkinnedMesh) {
+                // Own materials per enemy so a hit can flash just that one,
+                // plus a dull red cast so foes read as hostile at a glance.
+                if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
+                else if (o.material) o.material = o.material.clone();
+                const mats = Array.isArray(o.material) ? o.material : [o.material];
+                for (const m of mats) {
+                    if (m && m.emissive) {
+                        m.emissive.setRGB(0.16, 0.02, 0.015);
+                        m.userData._baseEmissive = m.emissive.clone();
+                    }
+                }
+                o.castShadow = settings.shadows;
+                o.receiveShadow = true;
+                o.frustumCulled = false;
+            }
+        });
+        if (enemyClips.length) {
+            mixer = new THREE.AnimationMixer(root);
+            acts = buildActions(mixer, enemyClips);
+        }
+    } else {
+        const built = buildFallbackHumanoid({
+            cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f,
+            eyes: 0xff5a3c, pack: false
+        });
+        root = built.root;
+        rig = built.rig;
+        root.traverse(o => {
+            const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+            for (const m of mats) if (m.emissive) m.userData._baseEmissive = m.emissive.clone();
+        });
+        root.scale.setScalar(ENEMY_HEIGHT / PLAYER_HEIGHT);
+    }
+
+    holder.add(root);
+    scene.add(holder);
+
+    const e = {
+        id, holder, root, rig, mixer, actions: acts, current: null,
+        hp: ENEMY_MAX_HEALTH, x: 0, z: 0, y: 0, yaw: rnd() * 6.283,
+        vx: 0, vz: 0, state: 'idle', think: rnd() * 5,
+        targetX: 0, targetZ: 0, attackCd: 0, windup: -1,
+        hurt: 0, deadTimer: 0, phase: rnd() * 6.283,
+        flash: 0, flashOn: false,
+        bar: makeHealthBar()
+    };
+    e.barFill = e.bar.userData.fill;
+
+    placeEnemy(e, rnd, 0);
+    e.holder.position.set(e.x, e.y, e.z);
+    enemies.push(e);
+    return e;
+}
+
+function buildEnemies() {
+    const rnd = mulberry32(SEED ^ 0xe17e);
+    for (let i = 0; i < Q.enemies; i++) createEnemy(i, rnd);
+}
+
+function buildSwingArc() {
+    const geo = new THREE.RingGeometry(1.0, ATTACK_RANGE, 20, 1, -ATTACK_ARC / 2, ATTACK_ARC);
+    geo.rotateX(-Math.PI / 2);
+    swingMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: 0xffe2b0, transparent: true, opacity: 0,
+        depthWrite: false, side: THREE.DoubleSide, fog: false
+    }));
+    swingMesh.visible = false;
+    swingMesh.renderOrder = 880;
+    scene.add(swingMesh);
+}
+
+function enemyPlay(e, name, fade, force) {
+    if (!e.mixer || !e.actions) return;
+    const next = e.actions[name];
+    if (!next) return;
+    if (e.current === next && !force) return;
+    const f = fade === undefined ? 0.2 : fade;
+    // Must fade the old one out here — dropping the reference instead would
+    // leave it playing at full weight underneath the new clip.
+    if (e.current && e.current !== next) e.current.fadeOut(f);
+    next.reset().fadeIn(f).play();
+    e.current = next;
+}
+
+function setEnemyFlash(e, on) {
+    if (e.flashOn === on) return;
+    e.flashOn = on;
+    e.root.traverse(o => {
+        const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+        for (const m of mats) {
+            if (!m || !m.emissive) continue;
+            if (on) m.emissive.setRGB(0.95, 0.22, 0.12);
+            else if (m.userData._baseEmissive) m.emissive.copy(m.userData._baseEmissive);
+            else m.emissive.setRGB(0, 0, 0);
+        }
+    });
+}
+
+function damageEnemy(e, amount, nx, nz) {
+    if (e.state === 'dead') return;
+    e.hp -= amount;
+    e.flash = 0.16;
+    e.hurt = 0.3;
+    e.vx += nx * 6;
+    e.vz += nz * 6;
+    if (e.state === 'idle') e.state = 'chase';
+    if (e.hp <= 0) killEnemy(e);
+    else sfxEnemyHit();
+}
+
+function killEnemy(e) {
+    e.hp = 0;
+    e.state = 'dead';
+    e.deadTimer = ENEMY_RESPAWN;
+    e.bar.visible = false;
+    e.vx = 0;
+    e.vz = 0;
+    P.kills++;
+    P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 5);
+    sfxEnemyDown();
+    updateRelicHud();
+    if (e.mixer && e.actions && e.actions.death) enemyPlay(e, 'death', 0.12);
+}
+
+// Move an unseen enemy to a spot 70–130m from the player, on walkable land
+// and outside the camp's safe ring.
+function relocateNearPlayer(e) {
+    for (let tries = 0; tries < 60; tries++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 70 + Math.random() * 60;
+        const x = player.position.x + Math.cos(a) * d;
+        const z = player.position.z + Math.sin(a) * d;
+        if (Math.hypot(x, z) > WORLD_RADIUS - 15) continue;
+        if (Math.hypot(x, z) < CAMP_SAFE_RADIUS + 25) continue;
+        const h = groundHeight(x, z);
+        if (h < WATER_LEVEL + 1.5 || h > 50) continue;
+        if (slopeAt(x, z) > 0.34) continue;
+        e.x = x;
+        e.z = z;
+        e.y = h;
+        e.targetX = x;
+        e.targetZ = z;
+        e.vx = 0;
+        e.vz = 0;
+        e.holder.position.set(x, h, z);
+        return true;
+    }
+    return false;
+}
+
+function respawnEnemy(e) {
+    const rnd = Math.random;
+    placeEnemy(e, rnd, 70);
+    e.hp = ENEMY_MAX_HEALTH;
+    e.state = 'idle';
+    e.holder.rotation.x = 0;
+    e.holder.visible = true;
+    e.holder.position.set(e.x, e.y, e.z);
+    e.root.rotation.x = 0;
+    e.root.position.y = 0;
+    if (e.mixer) e.mixer.stopAllAction();   // clear a clamped death clip
+    e.current = null;
+    e.attackCd = 0;
+    e.windup = -1;
+    e.think = 1 + rnd() * 4;
+    setEnemyFlash(e, false);
+}
+
+function updateEnemies(dt) {
+    if (settings.peaceful) {
+        for (const e of enemies) {
+            if (e.holder.visible) { e.holder.visible = false; e.bar.visible = false; }
+        }
+        return;
+    }
+
+    const night = skyUniforms.uNight.value;
+    const sight = ENEMY_SIGHT + night * 10;
+    const px = player.position.x;
+    const pz = player.position.z;
+    const playerInCamp = Math.hypot(px, pz) < CAMP_SAFE_RADIUS;
+
+    for (const e of enemies) {
+        if (e.state === 'dead') {
+            e.deadTimer -= dt;
+            const fallen = clamp01((ENEMY_RESPAWN - e.deadTimer) / 0.8);
+            e.holder.rotation.x = -fallen * 1.45;
+            e.holder.position.y = e.y - fallen * 0.12;
+            if (e.deadTimer < ENEMY_RESPAWN - 3.2) e.holder.visible = false;
+            if (e.deadTimer <= 0) respawnEnemy(e);
+            if (e.mixer) e.mixer.update(dt);
+            continue;
+        }
+
+        if (!e.holder.visible) e.holder.visible = true;
+
+        e.attackCd -= dt;
+        e.hurt -= dt;
+        e.flash -= dt;
+        setEnemyFlash(e, e.flash > 0);
+
+        const dx = px - e.x;
+        const dz = pz - e.z;
+        const dist = Math.hypot(dx, dz);
+        const nx = dist > 0.001 ? dx / dist : 0;
+        const nz = dist > 0.001 ? dz / dist : 0;
+
+        const hunting = e.state === 'chase' || e.state === 'attack';
+        const canSee = !P.dead && !playerInCamp && dist < (hunting ? ENEMY_LOSE_SIGHT : sight);
+
+        if (!hunting && canSee) {
+            e.state = 'chase';
+            sfxEnemyAlert();
+        } else if (hunting && !canSee) {
+            e.state = 'idle';
+            e.think = 0;
+        }
+
+        let moveSpeed = 0;
+        let targetX = e.targetX;
+        let targetZ = e.targetZ;
+
+        if (e.state === 'chase') {
+            targetX = px;
+            targetZ = pz;
+            moveSpeed = dist < ENEMY_ATTACK_RANGE * 0.85 ? 0 : ENEMY_CHASE_SPEED * (1 + night * 0.12);
+            if (dist < ENEMY_ATTACK_RANGE && e.attackCd <= 0) {
+                e.state = 'attack';
+                e.windup = ENEMY_WINDUP;
+                e.attackCd = ENEMY_ATTACK_COOLDOWN;
+                enemyPlay(e, 'attack', 0.08, true);
+                sfxSwing(0.55);
+            }
+        } else if (e.state === 'attack') {
+            e.windup -= dt;
+            if (e.windup <= 0) {
+                if (dist < ENEMY_ATTACK_RANGE + 0.6) damagePlayer(ENEMY_DAMAGE, nx, nz);
+                e.state = 'chase';
+                e.windup = -1;
+            }
+        } else {
+            // The world is big enough that a fixed roster would almost never
+            // be met. Foes that have been far away for a while quietly
+            // relocate to within earshot — never in view, never near camp.
+            if (dist > 200) {
+                e.farTimer = (e.farTimer || 0) + dt;
+                if (e.farTimer > 8) {
+                    e.farTimer = 0;
+                    relocateNearPlayer(e);
+                }
+            } else {
+                e.farTimer = 0;
+            }
+
+            e.think -= dt;
+            if (e.think <= 0) {
+                e.think = 4 + Math.random() * 7;
+                const a = Math.random() * Math.PI * 2;
+                const r = 5 + Math.random() * 18;
+                e.targetX = e.x + Math.cos(a) * r;
+                e.targetZ = e.z + Math.sin(a) * r;
+            }
+            targetX = e.targetX;
+            targetZ = e.targetZ;
+            moveSpeed = Math.hypot(targetX - e.x, targetZ - e.z) > 1.2 ? ENEMY_WANDER_SPEED : 0;
+        }
+
+        if (e.hurt > 0) moveSpeed *= 0.3;
+
+        const tx = targetX - e.x;
+        const tz = targetZ - e.z;
+        const td = Math.hypot(tx, tz);
+        const blend = Math.min(1, dt * 8);
+
+        if (td > 0.001 && moveSpeed > 0) {
+            e.vx += (tx / td * moveSpeed - e.vx) * blend;
+            e.vz += (tz / td * moveSpeed - e.vz) * blend;
+        } else {
+            const decay = Math.min(1, dt * 6);
+            e.vx -= e.vx * decay;
+            e.vz -= e.vz * decay;
+        }
+
+        const stepX = e.x + e.vx * dt;
+        const stepZ = e.z + e.vz * dt;
+        const stepH = groundHeight(stepX, stepZ);
+        if (stepH > WATER_LEVEL + 0.4 && Math.hypot(stepX, stepZ) < WORLD_RADIUS) {
+            e.x = stepX;
+            e.z = stepZ;
+        } else {
+            e.vx = 0;
+            e.vz = 0;
+            e.think = 0;
+        }
+
+        _enemyPos.set(e.x, 0, e.z);
+        resolveCollisions(_enemyPos, ENEMY_RADIUS);
+        e.x = _enemyPos.x;
+        e.z = _enemyPos.z;
+
+        // Don't let foes stand inside the player
+        const overlap = ENEMY_RADIUS + PLAYER_RADIUS;
+        if (dist < overlap && dist > 0.001) {
+            e.x -= nx * (overlap - dist);
+            e.z -= nz * (overlap - dist);
+        }
+
+        e.y = groundHeight(e.x, e.z);
+
+        const moving = Math.hypot(e.vx, e.vz);
+        const face = hunting ? Math.atan2(nx, nz) : Math.atan2(e.vx, e.vz);
+        if (hunting || moving > 0.25) {
+            let diff = face - e.yaw;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            e.yaw += diff * (1 - Math.exp(-9 * dt));
+        }
+
+        e.holder.position.set(e.x, e.y, e.z);
+        e.holder.rotation.y = e.yaw + (settings.flip ? Math.PI : 0);
+
+        e.phase += moving * dt * 3.1;
+        if (e.mixer) {
+            if (e.state !== 'attack') {
+                if (moving > RUN_SPEED * 0.4) enemyPlay(e, 'run');
+                else if (moving > 0.3) enemyPlay(e, 'walk');
+                else enemyPlay(e, 'idle');
+            }
+            e.mixer.update(dt);
+        } else if (e.rig) {
+            poseFallbackRig(e.rig, e.root, dt, moving, e.phase, e.state === 'attack' ? 'attack' : 'move');
+        }
+
+        const frac = clamp01(e.hp / ENEMY_MAX_HEALTH);
+        const showBar = (frac < 1 || hunting) && dist < 48;
+        e.bar.visible = showBar;
+        if (showBar) {
+            e.bar.position.set(e.x, e.y + ENEMY_HEIGHT + 0.38, e.z);
+            e.bar.quaternion.copy(camera.quaternion);
+            e.barFill.scale.x = Math.max(frac, 0.001);
+            e.barFill.position.x = -(1 - frac) * e.bar.userData.width / 2;
+            e.barFill.material.color.setHex(frac > 0.5 ? 0x7fd4c1 : frac > 0.25 ? 0xe8b45c : 0xd2443a);
+        }
+    }
+}
+
+/* ============================================================
+   COMBAT — PLAYER SIDE
+   ============================================================ */
+
+function playerAttack() {
+    if (P.dead || P.attackCd > 0 || P.swimming) return;
+
+    P.attackCd = ATTACK_COOLDOWN;
+    P.swingTimer = 0.3;
+    P.combatTimer = 6;
+
+    // Strike where the camera is looking, not where you last walked
+    P.yaw = camYaw + Math.PI;
+    player.rotation.y = P.yaw;
+
+    if (hasClips && actions.attack) {
+        actions.attack.reset();
+        playAction('attack', 0.07);
+    }
+    sfxSwing(1);
+
+    const fx = Math.sin(P.yaw);
+    const fz = Math.cos(P.yaw);
+    const minDot = Math.cos(ATTACK_ARC / 2);
+    let hits = 0;
+
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const dx = e.x - player.position.x;
+        const dz = e.z - player.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d > ATTACK_RANGE || d < 0.001) continue;
+        if (Math.abs(e.y - player.position.y) > 2.6) continue;
+        if ((dx / d) * fx + (dz / d) * fz < minDot) continue;
+        damageEnemy(e, ATTACK_DAMAGE, dx / d, dz / d);
+        hits++;
+    }
+
+    if (hits > 0) camShake = Math.min(camShake + 0.13, 0.3);
+}
+
+function damagePlayer(amount, nx, nz) {
+    if (P.dead || P.invuln > 0) return;
+    P.health = Math.max(0, P.health - amount);
+    P.invuln = PLAYER_INVULN;
+    P.hitFlash = 1;
+    P.combatTimer = 7;
+    camShake = Math.min(camShake + 0.34, 0.55);
+    P.vel.x += nx * 4.5;
+    P.vel.z += nz * 4.5;
+    if (P.health <= 0) killPlayer();
+    else sfxPlayerHurt();
+}
+
+function killPlayer() {
+    P.dead = true;
+    P.deadTimer = RESPAWN_DELAY;
+    P.vel.set(0, 0, 0);
+    P.swingTimer = 0;
+    deathEl.classList.add('on');
+    sfxDeath();
+    writeSave();
+}
+
+function respawnPlayer() {
+    P.dead = false;
+    P.health = PLAYER_MAX_HEALTH;
+    P.stamina = 100;
+    P.invuln = 2;
+    P.hitFlash = 0;
+    P.vel.set(0, 0, 0);
+    player.position.set(0, groundHeight(0, 4) + 0.1, 4);
+    deathEl.classList.remove('on');
+    for (const e of enemies) {
+        if (e.state !== 'dead') e.state = 'idle';
+    }
+    updateGrass(true);
+    toast('Recovered at camp');
+}
+
+function updateSwing(dt) {
+    if (!swingMesh) return;
+    if (P.swingTimer > 0) {
+        P.swingTimer -= dt;
+        const t = clamp01(P.swingTimer / 0.3);
+        swingMesh.visible = true;
+        swingMesh.material.opacity = t * 0.45;
+        swingMesh.position.set(player.position.x, player.position.y + 1.05, player.position.z);
+        swingMesh.rotation.y = P.yaw - Math.PI / 2;
+        swingMesh.scale.setScalar(1.18 - t * 0.18);
+    } else if (swingMesh.visible) {
+        swingMesh.visible = false;
     }
 }
 
@@ -2098,6 +2825,7 @@ function setupInput() {
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
         if (e.code === 'KeyT') { timeOfDay = (timeOfDay + 0.12) % 1; }
+        if (e.code === 'KeyE') { playerAttack(); }
     });
 
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -2108,6 +2836,8 @@ function setupInput() {
 
     canvas.addEventListener('click', () => {
         if (!started || paused || isTouch) return;
+        // Once the mouse is captured, a click is a swing
+        if (pointerLocked) { playerAttack(); return; }
         const p = canvas.requestPointerLock();
         if (p && p.catch) p.catch(() => {});
     });
@@ -2187,6 +2917,13 @@ function setupInput() {
     window.addEventListener('pointerup', endLook);
     window.addEventListener('pointercancel', endLook);
 
+    const attackBtn = document.getElementById('btn-attack');
+    attackBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        initAudio();
+        playerAttack();
+    });
+
     const jumpBtn = document.getElementById('btn-jump');
     jumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); P.jumpBuffer = 0.16; initAudio(); });
 
@@ -2257,8 +2994,26 @@ const _move = new THREE.Vector3();
 const _flat = new THREE.Vector3();
 
 function updatePlayer(dt) {
-    const input = readMovementInput();
-    const wantsRun = keys.ShiftLeft || keys.ShiftRight || touchState.run;
+    // Combat timers
+    P.attackCd -= dt;
+    P.invuln -= dt;
+    P.combatTimer -= dt;
+    if (P.hitFlash > 0) P.hitFlash = Math.max(0, P.hitFlash - dt * 2.2);
+
+    if (P.dead) {
+        P.deadTimer -= dt;
+        if (P.deadTimer <= 0) respawnPlayer();
+    }
+
+    // Out of combat you mend slowly; the campfire patches you up properly
+    if (!P.dead) {
+        const atCamp = Math.hypot(player.position.x, player.position.z) < 7.5;
+        if (atCamp) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 14 * dt);
+        else if (P.combatTimer <= 0) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 1.6 * dt);
+    }
+
+    const input = P.dead ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
+    const wantsRun = !P.dead && (keys.ShiftLeft || keys.ShiftRight || touchState.run);
 
     const forwardX = -Math.sin(camYaw);
     const forwardZ = -Math.cos(camYaw);
@@ -2404,7 +3159,9 @@ function updatePlayer(dt) {
 
     // HUD state line
     let state = 'Exploring';
-    if (P.swimming) state = 'Swimming';
+    if (P.dead) state = 'Down';
+    else if (P.combatTimer > 0) state = 'In combat';
+    else if (P.swimming) state = 'Swimming';
     else if (!P.grounded) state = P.vel.y > 0 ? 'Jumping' : 'Falling';
     else if (horizontalSpeed > RUN_SPEED * 0.55) state = 'Sprinting';
     else if (horizontalSpeed > 0.4) state = 'Walking';
@@ -2478,6 +3235,13 @@ function updateCamera(dt, horizontalSpeed) {
 
         camera.position.lerp(_camDesired, 1 - Math.exp(-11 * dt));
         camera.lookAt(_focus);
+    }
+
+    if (camShake > 0.001) {
+        camShake = Math.max(0, camShake - dt * 1.9);
+        camera.position.x += (Math.random() - 0.5) * camShake;
+        camera.position.y += (Math.random() - 0.5) * camShake;
+        camera.position.z += (Math.random() - 0.5) * camShake;
     }
 
     // Speed FOV
@@ -2698,6 +3462,7 @@ function updateRelics(dt) {
             r.taken = true;
             r.group.visible = false;
             collected++;
+            P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 25);
             sfxRelic();
             updateRelicHud();
             writeSave();
@@ -2722,6 +3487,7 @@ function updateRelics(dt) {
 
 function updateRelicHud() {
     relicCountEl.textContent = collected;
+    killLineEl.innerHTML = P.kills > 0 ? ' &nbsp;·&nbsp; <b>' + P.kills + '</b> felled' : '';
 }
 
 /* ============================================================
@@ -2735,6 +3501,11 @@ const coordsEl = document.getElementById('coords');
 const relicCountEl = document.getElementById('relic-count');
 const staminaEl = document.getElementById('stamina');
 const staminaFill = staminaEl.querySelector('i');
+const healthEl = document.getElementById('health');
+const healthFill = healthEl.querySelector('i');
+const killLineEl = document.getElementById('kill-line');
+const hurtEl = document.getElementById('hurt');
+const deathEl = document.getElementById('death');
 const toastEl = document.getElementById('toast');
 const underwaterEl = document.getElementById('underwater');
 
@@ -2829,6 +3600,19 @@ function drawMinimap() {
         minimapCtx.beginPath();
         minimapCtx.arc(dx, dz, r.taken ? 2.5 : 4.5, 0, Math.PI * 2);
         minimapCtx.fillStyle = r.taken ? 'rgba(255,255,255,0.3)' : '#ffd166';
+        minimapCtx.fill();
+    }
+
+    // enemies
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const dx = (e.x - player.position.x) * scale;
+        const dz = (e.z - player.position.z) * scale;
+        if (Math.hypot(dx, dz) > w / 2 - 6) continue;
+        const hunting = e.state === 'chase' || e.state === 'attack';
+        minimapCtx.beginPath();
+        minimapCtx.arc(dx, dz, hunting ? 4.5 : 3.2, 0, Math.PI * 2);
+        minimapCtx.fillStyle = hunting ? '#ff5a3c' : 'rgba(210, 90, 70, 0.78)';
         minimapCtx.fill();
     }
 
@@ -2956,6 +3740,7 @@ function syncMenu() {
     document.getElementById('tg-invert').classList.toggle('on', settings.invert);
     document.getElementById('tg-freeze').classList.toggle('on', settings.freeze);
     document.getElementById('tg-flip').classList.toggle('on', settings.flip);
+    document.getElementById('tg-peaceful').classList.toggle('on', settings.peaceful);
 
     document.getElementById('rg-fov').value = settings.fov;
     document.getElementById('v-fov').textContent = settings.fov;
@@ -3000,6 +3785,14 @@ function setupMenu() {
     toggle('tg-invert', 'invert');
     toggle('tg-freeze', 'freeze');
     toggle('tg-flip', 'flip');
+    toggle('tg-peaceful', 'peaceful', () => {
+        toast(settings.peaceful ? 'Peaceful mode on' : 'The hostiles return');
+        if (!settings.peaceful) {
+            for (const e of enemies) {
+                if (e.state !== 'dead') relocateNearPlayer(e);
+            }
+        }
+    });
 
     const bind = (id, key, label, transform) => {
         document.getElementById(id).addEventListener('input', (e) => {
@@ -3059,6 +3852,8 @@ function animate() {
         if (mixer) mixer.update(dt);
         updateCamera(dt, result.horizontalSpeed);
         updateSky(dt);
+        updateEnemies(dt);
+        updateSwing(dt);
         updateWildlife(dt);
         updateGrass(false);
         const nearestRelic = updateRelics(dt);
@@ -3097,8 +3892,13 @@ function animate() {
             coordsEl.textContent = 'x ' + Math.round(player.position.x) + ' · z ' + Math.round(player.position.z);
             staminaFill.style.width = P.stamina + '%';
             staminaEl.classList.toggle('low', P.stamina < 30);
+            healthFill.style.width = (P.health / PLAYER_MAX_HEALTH * 100) + '%';
+            healthEl.classList.toggle('hurt', P.health < PLAYER_MAX_HEALTH * 0.35);
             drawMinimap();
         }
+
+        hurtEl.style.opacity = (P.hitFlash * 0.75 +
+            (P.health < PLAYER_MAX_HEALTH * 0.3 ? 0.18 + Math.sin(elapsed * 3.4) * 0.05 : 0)).toFixed(3);
         drawCompass(nearestRelic);
 
         underwaterEl.classList.toggle('on', camera.position.y < WATER_LEVEL - 0.1);
@@ -3165,10 +3965,16 @@ async function boot() {
         await progress(82, 'Drawing the map');
         bakeMinimap();
 
-        await progress(90, 'Waking the explorer');
+        await progress(88, 'Waking the explorer');
         const usedModel = await loadPlayerModel();
         setupPlayer();
         updateGrass(true);
+
+        await progress(95, 'Rousing the hostiles');
+        await loadEnemyModel();
+        buildEnemies();
+        buildSwingArc();
+        P.kills = save.kills || 0;
 
         await progress(100, 'Ready');
 
@@ -3178,11 +3984,18 @@ async function boot() {
         document.getElementById('relic-total').textContent = RELIC_TOTAL;
 
         loaderEl.classList.add('ready');
-        loaderText.textContent = usedModel ? 'Ready' : 'Model not found — using the built-in explorer';
-        if (!usedModel) {
+
+        const missing = [];
+        if (!usedModel) missing.push(MODEL_PATH + ' (player)');
+        if (!enemyModelLoaded) missing.push(ENEMY_PATH + ' (enemy)');
+
+        if (missing.length === 0) {
+            loaderText.textContent = 'Ready';
+        } else {
+            loaderText.textContent = 'Some models missing — using built-in stand-ins';
             document.getElementById('loader-keys').innerHTML =
-                'Could not load <b>' + MODEL_PATH + '</b> — playing with the built-in character.<br>' +
-                'Put your .glb next to this file, or add <b>?model=yourfile.glb</b> to the URL.';
+                'Could not load <b>' + missing.join('</b> and <b>') + '</b>.<br>' +
+                'Put the .glb files next to this page, or pass <b>?model=you.glb&amp;enemy=them.glb</b> in the URL.';
         }
 
         document.getElementById('start').addEventListener('click', () => {
