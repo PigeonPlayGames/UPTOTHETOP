@@ -1,144 +1,143 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>UPTOTHETOP - 3D Prototype</title>
+<title>Open World Explorer</title>
 
 <style>
 * { box-sizing: border-box; }
-
 body {
-  margin: 0;
-  overflow: hidden;
-  background: #87bce0;
-  font-family: Arial, sans-serif;
-  touch-action: none;
-  user-select: none;
+    margin: 0;
+    overflow: hidden;
+    background: #91b9c6;
+    font-family: Arial, sans-serif;
+    color: white;
 }
-
-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+canvas { display: block; }
 
 #hud {
-  position: fixed;
-  top: 18px;
-  left: 18px;
-  color: white;
-  z-index: 5;
-  text-shadow: 0 2px 5px #000;
-  pointer-events: none;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
 }
-
-#hud h2 {
-  margin: 0 0 6px;
-  letter-spacing: 2px;
+#title {
+    position: absolute;
+    top: 24px;
+    left: 28px;
+    font-size: 13px;
+    letter-spacing: 5px;
+    font-weight: bold;
+    text-shadow: 0 2px 8px #0008;
 }
-
 #status {
-  font-size: 12px;
-  opacity: .85;
+    position: absolute;
+    top: 52px;
+    left: 28px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #e3eee7;
+    text-shadow: 0 2px 5px #0008;
 }
-
 #instructions {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  color: white;
-  font-size: 12px;
-  line-height: 1.7;
-  text-align: right;
-  text-shadow: 0 2px 5px black;
-  pointer-events: none;
+    position: absolute;
+    bottom: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: white;
+    text-shadow: 0 2px 5px #000;
+    text-align: center;
+    white-space: nowrap;
 }
-
-#message {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  background: rgba(0,0,0,.75);
-  padding: 18px 24px;
-  border-radius: 12px;
-  text-align: center;
-  z-index: 20;
-  max-width: 85%;
+#sound-status {
+    position: absolute;
+    top: 24px;
+    right: 25px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #fff;
+    text-shadow: 0 2px 5px #000;
 }
-
-#mobileControls {
-  display: none;
+#loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #263b38;
+    z-index: 20;
+    transition: opacity 1s;
 }
+#loading h1 {
+    font-size: 22px;
+    letter-spacing: 7px;
+    font-weight: 400;
+}
+#loading p {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #b8c9bd;
+}
+#loading.error { background: #382b2b; }
 
+#mobile-controls {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+}
 #joystick {
-  position: fixed;
-  bottom: 35px;
-  left: 30px;
-  width: 125px;
-  height: 125px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.17);
-  border: 2px solid rgba(255,255,255,.45);
-  z-index: 10;
-  touch-action: none;
+    position: absolute;
+    left: 25px;
+    bottom: 35px;
+    width: 125px;
+    height: 125px;
+    border-radius: 50%;
+    background: #ffffff20;
+    border: 2px solid #ffffff55;
+    pointer-events: auto;
+    touch-action: none;
 }
-
 #stick {
-  position: absolute;
-  left: 37px;
-  top: 37px;
-  width: 47px;
-  height: 47px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.8);
-  box-shadow: 0 2px 8px #333;
-  pointer-events: none;
+    position: absolute;
+    width: 49px;
+    height: 49px;
+    left: 36px;
+    top: 36px;
+    border-radius: 50%;
+    background: #ffffffbb;
+    box-shadow: 0 2px 10px #0005;
 }
-
-.mobileButton {
-  position: fixed;
-  right: 28px;
-  width: 75px;
-  height: 75px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,.7);
-  color: white;
-  background: rgba(20,30,40,.55);
-  font-weight: bold;
-  z-index: 10;
-  touch-action: none;
+.action-button {
+    position: absolute;
+    right: 28px;
+    bottom: 42px;
+    width: 65px;
+    height: 65px;
+    border-radius: 50%;
+    border: 2px solid #ffffff99;
+    background: #ffffff30;
+    color: white;
+    font-weight: bold;
+    font-size: 11px;
+    pointer-events: auto;
+    touch-action: none;
 }
-
-#jumpButton { bottom: 38px; }
-#runButton { bottom: 125px; width: 62px; height: 62px; right: 105px; font-size: 11px; }
-
-.mobileButton.active {
-  background: rgba(40,150,70,.85);
-}
-
-#lookHint {
-  position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: white;
-  font-size: 11px;
-  text-shadow: 0 2px 5px black;
-  pointer-events: none;
-  display: none;
-}
+#jump { bottom: 120px; right: 35px; }
+#run { bottom: 45px; right: 115px; width: 58px; height: 58px; }
 
 @media (pointer: coarse) {
-  #mobileControls { display: block; }
-  #instructions { display: none; }
-  #lookHint { display: block; }
+    #mobile-controls { display: block; }
+    #instructions { bottom: 12px; font-size: 9px; }
 }
 </style>
 
-<!-- Three.js -->
 <script type="importmap">
 {
   "imports": {
@@ -151,770 +150,820 @@ canvas {
 
 <body>
 
+<div id="loading">
+    <h1>EXPLORATION</h1>
+    <p>PREPARING THE WORLD...</p>
+</div>
+
 <div id="hud">
-  <h2>UPTOTHETOP</h2>
-  <div id="status">Loading character...</div>
+    <div id="title">OPEN WORLD</div>
+    <div id="status">EXPLORATION MODE</div>
+    <div id="sound-status">SOUND: WAITING</div>
+    <div id="instructions">
+        WASD / ARROWS TO MOVE &nbsp; · &nbsp; SHIFT TO RUN &nbsp; · &nbsp; SPACE TO JUMP
+    </div>
 </div>
 
-<div id="instructions">
-  WASD / ARROWS – MOVE<br>
-  SHIFT – RUN<br>
-  SPACE – JUMP<br>
-  DRAG MOUSE – ROTATE CAMERA
+<div id="mobile-controls">
+    <div id="joystick"><div id="stick"></div></div>
+    <button class="action-button" id="jump">JUMP</button>
+    <button class="action-button" id="run">RUN</button>
 </div>
-
-<div id="message">Loading your character...</div>
-
-<div id="mobileControls">
-  <div id="joystick">
-    <div id="stick"></div>
-  </div>
-
-  <button class="mobileButton" id="jumpButton">JUMP</button>
-  <button class="mobileButton" id="runButton">RUN</button>
-</div>
-
-<div id="lookHint">Drag the screen to look around</div>
 
 <script type="module">
-
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// =====================================
-// 1. GAME SETTINGS
-// =====================================
-
 const MODEL_PATH = './playerdelete.glb';
 
-const WALK_SPEED = 3.2;
-const RUN_SPEED = 6.0;
-const JUMP_FORCE = 6.5;
-const GRAVITY = 17;
-
-const CAMERA_DISTANCE = 6;
-const CAMERA_HEIGHT = 2.5;
-
-// =====================================
-// 2. SCENE
-// =====================================
-
-const scene = new THREE.Scene();
-
-scene.background = new THREE.Color(0x8bc2e8);
-scene.fog = new THREE.Fog(0x8bc2e8, 35, 110);
-
-const camera = new THREE.PerspectiveCamera(
-  65,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  300
-);
-
-const renderer = new THREE.WebGLRenderer({
-  antialias: true
-});
-
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-document.body.appendChild(renderer.domElement);
-
-// =====================================
-// 3. LIGHTING
-// =====================================
-
-const ambient = new THREE.HemisphereLight(
-  0xffffff,
-  0x526b38,
-  2
-);
-
-scene.add(ambient);
-
-const sun = new THREE.DirectionalLight(0xffffff, 2.5);
-
-sun.position.set(-20, 35, 15);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -40;
-sun.shadow.camera.right = 40;
-sun.shadow.camera.top = 40;
-sun.shadow.camera.bottom = -40;
-
-scene.add(sun);
-
-// =====================================
-// 4. WORLD
-// =====================================
-
-// Ground
-
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(200, 200),
-  new THREE.MeshStandardMaterial({
-    color: 0x477d36,
-    roughness: 1
-  })
-);
-
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-// A simple dirt path
-
-const path = new THREE.Mesh(
-  new THREE.PlaneGeometry(5, 100),
-  new THREE.MeshStandardMaterial({
-    color: 0x9b825e,
-    roughness: 1
-  })
-);
-
-path.rotation.x = -Math.PI / 2;
-path.position.y = 0.015;
-path.receiveShadow = true;
-scene.add(path);
-
-// Trees
-
-function createTree(x, z, scale = 1) {
-
-  const tree = new THREE.Group();
-
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.2, 0.3, 2, 8),
-    new THREE.MeshStandardMaterial({ color: 0x654321 })
-  );
-
-  trunk.position.y = 1;
-  trunk.castShadow = true;
-  tree.add(trunk);
-
-  const leaves = new THREE.Mesh(
-    new THREE.ConeGeometry(1.5, 4, 8),
-    new THREE.MeshStandardMaterial({ color: 0x285c29 })
-  );
-
-  leaves.position.y = 3.3;
-  leaves.castShadow = true;
-  tree.add(leaves);
-
-  tree.position.set(x, 0, z);
-  tree.scale.setScalar(scale);
-
-  scene.add(tree);
-}
-
-// Generate trees away from the central path
-
-for (let i = 0; i < 75; i++) {
-
-  const side = Math.random() < 0.5 ? -1 : 1;
-
-  const x = side * (7 + Math.random() * 35);
-  const z = (Math.random() - 0.5) * 100;
-
-  createTree(
-    x,
-    z,
-    0.7 + Math.random() * 0.8
-  );
-}
-
-// Distant hills
-
-for (let i = 0; i < 14; i++) {
-
-  const hill = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 12),
-    new THREE.MeshStandardMaterial({
-      color: i % 2 ? 0x557b43 : 0x648d4d
-    })
-  );
-
-  hill.scale.set(
-    12 + Math.random() * 10,
-    5 + Math.random() * 7,
-    12 + Math.random() * 10
-  );
-
-  hill.position.set(
-    (Math.random() - 0.5) * 100,
-    -4,
-    -55 - Math.random() * 35
-  );
-
-  scene.add(hill);
-}
-
-// =====================================
-// 5. PLAYER
-// =====================================
-
-const player = new THREE.Group();
-scene.add(player);
-
-let character = null;
-let mixer = null;
-
-let actions = {};
-let currentAction = null;
-
-let characterReady = false;
-
-const loader = new GLTFLoader();
-
-loader.load(
-  MODEL_PATH,
-
-  (gltf) => {
-
-    character = gltf.scene;
-
-    // Scale model to approximately human height
-
-    const initialBox = new THREE.Box3().setFromObject(character);
-    const size = new THREE.Vector3();
-
-    initialBox.getSize(size);
-
-    const targetHeight = 1.75;
-
-    if (size.y > 0) {
-      character.scale.setScalar(targetHeight / size.y);
-    }
-
-    // Put the feet on the ground
-
-    const scaledBox = new THREE.Box3().setFromObject(character);
-
-    character.position.y = -scaledBox.min.y;
-
-    character.traverse((object) => {
-
-      if (object.isMesh) {
-        object.castShadow = true;
-        object.receiveShadow = true;
-      }
-
-    });
-
-    player.add(character);
-
-    // Set up animation system
-
-    mixer = new THREE.AnimationMixer(character);
-
-    const clips = gltf.animations;
-
-    console.log(
-      'Animations found:',
-      clips.map(clip => clip.name)
-    );
-
-    // Find animations by their names
-
-    const findClip = (words) => {
-
-      return clips.find(clip =>
-        words.some(word =>
-          clip.name.toLowerCase().includes(word)
-        )
-      );
-
-    };
-
-    const idleClip = findClip([
-      'idle', 'stand', 'rest'
-    ]);
-
-    const walkClip = findClip([
-      'walk', 'walking'
-    ]);
-
-    const runClip = findClip([
-      'run', 'running', 'sprint'
-    ]);
-
-    // Use first available clip if no walk clip is found
-
-    const fallbackClip = clips[0];
-
-    if (idleClip) {
-      actions.idle = mixer.clipAction(idleClip);
-    }
-
-    if (walkClip || fallbackClip) {
-      actions.walk = mixer.clipAction(
-        walkClip || fallbackClip
-      );
-    }
-
-    if (runClip) {
-      actions.run = mixer.clipAction(runClip);
-    }
-
-    characterReady = true;
-
-    if (actions.idle) {
-      playAnimation('idle');
-    }
-
-    document.getElementById('message').style.display = 'none';
-
-    document.getElementById('status').innerText =
-      'Character ready – explore the world!';
-
-  },
-
-  undefined,
-
-  (error) => {
-
-    console.error(error);
-
-    document.getElementById('message').innerHTML =
-      'Could not load playerdelete.glb.<br><br>' +
-      'Check that the file is in the same folder as game.html.';
-
-    document.getElementById('status').innerText =
-      'Character loading error';
-
-  }
-);
-
-// =====================================
-// 6. ANIMATION SWITCHING
-// =====================================
-
-function playAnimation(name) {
-
-  const nextAction = actions[name];
-
-  if (!nextAction || currentAction === nextAction) return;
-
-  if (currentAction) {
-    currentAction.fadeOut(0.2);
-  }
-
-  nextAction.reset();
-  nextAction.fadeIn(0.2);
-  nextAction.play();
-
-  currentAction = nextAction;
-}
-
-// =====================================
-// 7. PLAYER MOVEMENT
-// =====================================
-
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
-
-let verticalVelocity = 0;
+let scene, camera, renderer, clock;
+let player, mixer, modelRoot;
+let animations = {};
+let activeAnimation = null;
+
+let velocityY = 0;
 let grounded = true;
-
-let isRunning = false;
-
-// Keyboard
+let jumping = false;
+let moveSpeed = 0;
+let playerYaw = 0;
+let stepTimer = 0;
+let previousGroundHeight = 0;
 
 const keys = {};
-
-window.addEventListener('keydown', (event) => {
-
-  keys[event.key.toLowerCase()] = true;
-
-  if (
-    [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
-    .includes(event.key.toLowerCase())
-  ) {
-    event.preventDefault();
-  }
-
-});
-
-window.addEventListener('keyup', (event) => {
-  keys[event.key.toLowerCase()] = false;
-});
-
-// Mobile movement
-
-let joystickX = 0;
-let joystickY = 0;
-
+const joystick = { x: 0, y: 0 };
 let mobileRunning = false;
+let jumpRequested = false;
 
-const joystick = document.getElementById('joystick');
+const WALK_SPEED = 4.2;
+const RUN_SPEED = 7.8;
+const GRAVITY = 19;
+const JUMP_FORCE = 7.5;
+
+const clockVector = new THREE.Vector3();
+const desiredCamera = new THREE.Vector3();
+const cameraLook = new THREE.Vector3();
+
+const loadingScreen = document.getElementById('loading');
+const statusText = document.getElementById('status');
+const soundStatus = document.getElementById('sound-status');
+
+// --------------------------------------------------
+// AUDIO - PROCEDURAL FOOTSTEPS
+// --------------------------------------------------
+
+let audioContext = null;
+let audioReady = false;
+let masterVolume = null;
+
+function initialiseAudio() {
+    if (audioReady) {
+        if (audioContext.state === 'suspended') audioContext.resume();
+        return;
+    }
+
+    try {
+        audioContext = new (
+            window.AudioContext || window.webkitAudioContext
+        )();
+
+        masterVolume = audioContext.createGain();
+        masterVolume.gain.value = 0.38;
+        masterVolume.connect(audioContext.destination);
+
+        audioReady = true;
+        soundStatus.textContent = 'SOUND: ON';
+    } catch (error) {
+        console.warn('Audio unavailable:', error);
+    }
+}
+
+window.addEventListener('pointerdown', initialiseAudio, { once: true });
+window.addEventListener('keydown', initialiseAudio, { once: true });
+
+function makeFootstep(running = false) {
+    if (!audioReady || !audioContext) return;
+
+    const now = audioContext.currentTime;
+
+    // Soft ground noise
+    const length = Math.floor(audioContext.sampleRate * 0.12);
+    const buffer = audioContext.createBuffer(
+        1, length, audioContext.sampleRate
+    );
+
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+        const fade = 1 - i / length;
+        data[i] = (Math.random() * 2 - 1) * fade * fade;
+    }
+
+    const noise = audioContext.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = audioContext.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = running ? 650 : 850;
+
+    const noiseGain = audioContext.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.exponentialRampToValueAtTime(
+        running ? 0.32 : 0.21, now + 0.012
+    );
+    noiseGain.gain.exponentialRampToValueAtTime(
+        0.0001, now + 0.12
+    );
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(masterVolume);
+    noise.start(now);
+
+    // Low thump underneath the footstep
+    const osc = audioContext.createOscillator();
+    const thumpGain = audioContext.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(running ? 105 : 85, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
+
+    thumpGain.gain.setValueAtTime(0.0001, now);
+    thumpGain.gain.exponentialRampToValueAtTime(
+        running ? 0.25 : 0.16, now + 0.008
+    );
+    thumpGain.gain.exponentialRampToValueAtTime(
+        0.0001, now + 0.1
+    );
+
+    osc.connect(thumpGain);
+    thumpGain.connect(masterVolume);
+    osc.start(now);
+    osc.stop(now + 0.12);
+}
+
+function makeJumpSound() {
+    if (!audioReady) return;
+
+    const now = audioContext.currentTime;
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(320, now + 0.12);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.15, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+
+    osc.connect(gain);
+    gain.connect(masterVolume);
+    osc.start(now);
+    osc.stop(now + 0.21);
+}
+
+function makeLandingSound() {
+    if (!audioReady) return;
+    makeFootstep(true);
+}
+
+// --------------------------------------------------
+// WORLD
+// --------------------------------------------------
+
+function terrainHeight(x, z) {
+    return (
+        Math.sin(x * 0.035) * 1.5 +
+        Math.cos(z * 0.04) * 1.4 +
+        Math.sin((x + z) * 0.025) * 1.8 +
+        Math.cos((x - z) * 0.018) * 1.1
+    );
+}
+
+function createTerrain() {
+    const size = 600;
+    const segments = 160;
+    const geometry = new THREE.PlaneGeometry(
+        size, size, segments, segments
+    );
+
+    const positions = geometry.attributes.position;
+
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i);
+        const z = -positions.getY(i);
+        positions.setZ(i, terrainHeight(x, z));
+    }
+
+    geometry.computeVertexNormals();
+    geometry.rotateX(-Math.PI / 2);
+
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x668a51,
+        roughness: 1
+    });
+
+    const ground = new THREE.Mesh(geometry, material);
+    ground.receiveShadow = true;
+    scene.add(ground);
+}
+
+function createTree(x, z, scale = 1) {
+    const y = terrainHeight(x, z);
+    const group = new THREE.Group();
+    group.position.set(x, y, z);
+    group.scale.setScalar(scale);
+
+    const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.32, 3, 7),
+        new THREE.MeshStandardMaterial({ color: 0x63432e })
+    );
+    trunk.position.y = 1.5;
+    trunk.castShadow = true;
+    group.add(trunk);
+
+    const greens = [0x315c39, 0x426d42, 0x527c48];
+
+    for (let i = 0; i < 3; i++) {
+        const leaves = new THREE.Mesh(
+            new THREE.ConeGeometry(1.5 - i * 0.18, 2.6, 8),
+            new THREE.MeshStandardMaterial({
+                color: greens[Math.floor(Math.random() * greens.length)],
+                roughness: 1
+            })
+        );
+        leaves.position.y = 3.1 + i * 1.05;
+        leaves.castShadow = true;
+        group.add(leaves);
+    }
+
+    scene.add(group);
+}
+
+function createRock(x, z, scale = 1) {
+    const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(1, 1),
+        new THREE.MeshStandardMaterial({
+            color: 0x777d75,
+            roughness: 1
+        })
+    );
+
+    rock.position.set(
+        x,
+        terrainHeight(x, z) + scale * 0.35,
+        z
+    );
+    rock.scale.set(
+        scale * 1.2,
+        scale * 0.65,
+        scale
+    );
+    rock.rotation.set(
+        Math.random(), Math.random(), Math.random()
+    );
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    scene.add(rock);
+}
+
+function createWorld() {
+    createTerrain();
+
+    // Trees scattered around the landscape
+    for (let i = 0; i < 180; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 15 + Math.random() * 230;
+        const x = Math.cos(angle) * distance;
+        const z = Math.sin(angle) * distance;
+
+        // Leave a clear starting area
+        if (Math.hypot(x, z) < 13) continue;
+
+        createTree(
+            x, z,
+            0.7 + Math.random() * 0.8
+        );
+    }
+
+    // Rocks
+    for (let i = 0; i < 100; i++) {
+        const x = (Math.random() - 0.5) * 450;
+        const z = (Math.random() - 0.5) * 450;
+        if (Math.hypot(x, z) < 12) continue;
+
+        createRock(x, z, 0.3 + Math.random() * 1.2);
+    }
+
+    // Distant mountain silhouettes
+    const mountainMaterial = new THREE.MeshStandardMaterial({
+        color: 0x62766b,
+        roughness: 1,
+        flatShading: true
+    });
+
+    for (let i = 0; i < 24; i++) {
+        const angle = i / 24 * Math.PI * 2;
+        const radius = 250 + Math.random() * 45;
+        const height = 25 + Math.random() * 45;
+
+        const mountain = new THREE.Mesh(
+            new THREE.ConeGeometry(height * 0.75, height, 5),
+            mountainMaterial
+        );
+
+        mountain.position.set(
+            Math.cos(angle) * radius,
+            height / 2 - 3,
+            Math.sin(angle) * radius
+        );
+
+        mountain.rotation.y = Math.random() * Math.PI;
+        scene.add(mountain);
+    }
+}
+
+// --------------------------------------------------
+// LIGHTING AND SCENE
+// --------------------------------------------------
+
+function initScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x9fc4d1);
+    scene.fog = new THREE.Fog(0x9fc4d1, 100, 340);
+
+    camera = new THREE.PerspectiveCamera(
+        65,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        700
+    );
+
+    camera.position.set(0, 6, 10);
+
+    renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance'
+    });
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(
+        Math.min(window.devicePixelRatio, 1.75)
+    );
+
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    document.body.appendChild(renderer.domElement);
+
+    const ambient = new THREE.HemisphereLight(
+        0xd9edff, 0x52633d, 2
+    );
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xffe4b5, 3);
+    sun.position.set(-80, 130, 65);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -90;
+    sun.shadow.camera.right = 90;
+    sun.shadow.camera.top = 90;
+    sun.shadow.camera.bottom = -90;
+    sun.shadow.bias = -0.0002;
+    scene.add(sun);
+
+    clock = new THREE.Clock();
+}
+
+// --------------------------------------------------
+// PLAYER AND ANIMATIONS
+// --------------------------------------------------
+
+function selectAnimation(type) {
+    if (!animations[type] || activeAnimation === type) return;
+
+    const next = animations[type];
+
+    if (activeAnimation && animations[activeAnimation]) {
+        animations[activeAnimation].fadeOut(0.2);
+    }
+
+    next.reset().fadeIn(0.2).play();
+    activeAnimation = type;
+}
+
+function loadPlayer() {
+    return new Promise((resolve, reject) => {
+        const loader = new GLTFLoader();
+
+        loader.load(
+            MODEL_PATH,
+            (gltf) => {
+                modelRoot = gltf.scene;
+                player = new THREE.Group();
+
+                const box = new THREE.Box3().setFromObject(modelRoot);
+                const height = box.max.y - box.min.y;
+
+                if (height > 0) {
+                    const scale = 2.1 / height;
+                    modelRoot.scale.setScalar(scale);
+                }
+
+                const scaledBox = new THREE.Box3().setFromObject(modelRoot);
+                modelRoot.position.y -= scaledBox.min.y;
+
+                modelRoot.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                player.add(modelRoot);
+                player.position.set(0, terrainHeight(0, 0), 0);
+                scene.add(player);
+
+                if (gltf.animations && gltf.animations.length) {
+                    mixer = new THREE.AnimationMixer(modelRoot);
+
+                    gltf.animations.forEach((clip) => {
+                        const name = clip.name.toLowerCase();
+                        const action = mixer.clipAction(clip);
+
+                        if (
+                            name.includes('idle') ||
+                            name.includes('stand')
+                        ) {
+                            animations.idle = action;
+                        } else if (
+                            name.includes('run') ||
+                            name.includes('sprint')
+                        ) {
+                            animations.run = action;
+                        } else if (
+                            name.includes('walk')
+                        ) {
+                            animations.walk = action;
+                        } else if (!animations.other) {
+                            animations.other = action;
+                        }
+                    });
+
+                    if (!animations.idle && animations.other) {
+                        animations.idle = animations.other;
+                    }
+                }
+
+                selectAnimation('idle');
+                resolve();
+            },
+            undefined,
+            reject
+        );
+    });
+}
+
+// --------------------------------------------------
+// INPUT
+// --------------------------------------------------
+
+window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+
+    if (
+        ['Space', 'ArrowUp', 'ArrowDown',
+         'ArrowLeft', 'ArrowRight'].includes(e.code)
+    ) {
+        e.preventDefault();
+    }
+
+    if (e.code === 'Space') jumpRequested = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+});
+
+function getMovementInput() {
+    let x = 0;
+    let z = 0;
+
+    if (keys.KeyA || keys.ArrowLeft) x -= 1;
+    if (keys.KeyD || keys.ArrowRight) x += 1;
+    if (keys.KeyW || keys.ArrowUp) z -= 1;
+    if (keys.KeyS || keys.ArrowDown) z += 1;
+
+    x += joystick.x;
+    z += joystick.y;
+
+    const length = Math.hypot(x, z);
+
+    if (length > 1) {
+        x /= length;
+        z /= length;
+    }
+
+    return { x, z, moving: length > 0.12 };
+}
+
+// Mobile joystick
+const joystickElement = document.getElementById('joystick');
 const stick = document.getElementById('stick');
 
 let joystickPointer = null;
 
-joystick.addEventListener('pointerdown', (event) => {
-
-  joystickPointer = event.pointerId;
-  joystick.setPointerCapture(event.pointerId);
-
-  updateJoystick(event);
-
+joystickElement.addEventListener('pointerdown', (e) => {
+    joystickPointer = e.pointerId;
+    joystickElement.setPointerCapture(e.pointerId);
+    updateJoystick(e);
+    initialiseAudio();
 });
 
-joystick.addEventListener('pointermove', (event) => {
-
-  if (event.pointerId === joystickPointer) {
-    updateJoystick(event);
-  }
-
+joystickElement.addEventListener('pointermove', (e) => {
+    if (e.pointerId === joystickPointer) updateJoystick(e);
 });
 
-function updateJoystick(event) {
+function updateJoystick(e) {
+    const rect = joystickElement.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
 
-  const rect = joystick.getBoundingClientRect();
+    let dx = e.clientX - cx;
+    let dy = e.clientY - cy;
 
-  const centerX = rect.width / 2;
-  const centerY = rect.height / 2;
+    const max = 40;
+    const length = Math.hypot(dx, dy);
 
-  let dx = event.clientX - rect.left - centerX;
-  let dy = event.clientY - rect.top - centerY;
+    if (length > max) {
+        dx = dx / length * max;
+        dy = dy / length * max;
+    }
 
-  const maxDistance = 40;
+    joystick.x = dx / max;
+    joystick.y = dy / max;
 
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
-  if (distance > maxDistance) {
-    dx = dx / distance * maxDistance;
-    dy = dy / distance * maxDistance;
-  }
-
-  joystickX = dx / maxDistance;
-  joystickY = -dy / maxDistance;
-
-  stick.style.transform =
-    `translate(${dx}px, ${dy}px)`;
-
+    stick.style.transform = `translate(${dx}px, ${dy}px)`;
 }
 
 function resetJoystick() {
-
-  joystickPointer = null;
-
-  joystickX = 0;
-  joystickY = 0;
-
-  stick.style.transform = 'translate(0px, 0px)';
+    joystickPointer = null;
+    joystick.x = 0;
+    joystick.y = 0;
+    stick.style.transform = 'translate(0px, 0px)';
 }
 
-joystick.addEventListener('pointerup', resetJoystick);
-joystick.addEventListener('pointercancel', resetJoystick);
+joystickElement.addEventListener('pointerup', resetJoystick);
+joystickElement.addEventListener('pointercancel', resetJoystick);
 
-// Mobile run button
-
-const runButton = document.getElementById('runButton');
-
-runButton.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  mobileRunning = true;
-  runButton.classList.add('active');
+const jumpButton = document.getElementById('jump');
+jumpButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    jumpRequested = true;
+    initialiseAudio();
 });
 
-function stopMobileRun() {
-  mobileRunning = false;
-  runButton.classList.remove('active');
-}
-
-runButton.addEventListener('pointerup', stopMobileRun);
-runButton.addEventListener('pointercancel', stopMobileRun);
-runButton.addEventListener('lostpointercapture', stopMobileRun);
-
-// Jump
-
-function jump() {
-
-  if (grounded && characterReady) {
-    verticalVelocity = JUMP_FORCE;
-    grounded = false;
-  }
-
-}
-
-window.addEventListener('keydown', (event) => {
-
-  if (event.code === 'Space') {
-    jump();
-  }
-
+const runButton = document.getElementById('run');
+runButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    mobileRunning = true;
 });
+runButton.addEventListener('pointerup', () => mobileRunning = false);
+runButton.addEventListener('pointerleave', () => mobileRunning = false);
+runButton.addEventListener('pointercancel', () => mobileRunning = false);
 
-const jumpButton = document.getElementById('jumpButton');
+// --------------------------------------------------
+// CAMERA DRAG ON MOBILE
+// --------------------------------------------------
 
-jumpButton.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  jump();
-  jumpButton.classList.add('active');
-});
-
-jumpButton.addEventListener('pointerup', () => {
-  jumpButton.classList.remove('active');
-});
-
-jumpButton.addEventListener('pointercancel', () => {
-  jumpButton.classList.remove('active');
-});
-
-// =====================================
-// 8. CAMERA CONTROL
-// =====================================
-
-let cameraYaw = 0;
-let cameraPitch = 0.28;
-
-let cameraDragging = false;
-
+let cameraDrag = false;
 let lastPointerX = 0;
 let lastPointerY = 0;
+let cameraYaw = 0;
+let cameraPitch = 0.2;
 
-renderer.domElement.addEventListener('pointerdown', (event) => {
-
-  // Ignore left-side mobile joystick area
-
-  if (
-    event.pointerType === 'touch' &&
-    event.clientX < window.innerWidth * 0.38
-  ) {
-    return;
-  }
-
-  cameraDragging = true;
-
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-
-  renderer.domElement.setPointerCapture(event.pointerId);
-
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+        cameraDrag = true;
+        lastPointerX = e.clientX;
+        lastPointerY = e.clientY;
+    }
 });
 
-renderer.domElement.addEventListener('pointermove', (event) => {
+window.addEventListener('pointermove', (e) => {
+    if (!cameraDrag) return;
 
-  if (!cameraDragging) return;
+    const dx = e.clientX - lastPointerX;
+    const dy = e.clientY - lastPointerY;
 
-  const dx = event.clientX - lastPointerX;
-  const dy = event.clientY - lastPointerY;
-
-  cameraYaw -= dx * 0.006;
-  cameraPitch += dy * 0.004;
-
-  cameraPitch = THREE.MathUtils.clamp(
-    cameraPitch,
-    -0.1,
-    0.85
-  );
-
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-
-});
-
-renderer.domElement.addEventListener('pointerup', () => {
-  cameraDragging = false;
-});
-
-renderer.domElement.addEventListener('pointercancel', () => {
-  cameraDragging = false;
-});
-
-// =====================================
-// 9. GAME LOOP
-// =====================================
-
-const clock = new THREE.Clock();
-
-function animate() {
-
-  requestAnimationFrame(animate);
-
-  const delta = Math.min(clock.getDelta(), 0.05);
-
-  // Read controls
-
-  const forward =
-    (keys['w'] || keys['arrowup'] ? 1 : 0) -
-    (keys['s'] || keys['arrowdown'] ? 1 : 0);
-
-  const sideways =
-    (keys['d'] || keys['arrowright'] ? 1 : 0) -
-    (keys['a'] || keys['arrowleft'] ? 1 : 0);
-
-  let inputForward = forward + joystickY;
-  let inputSideways = sideways + joystickX;
-
-  // Prevent faster diagonal movement
-
-  const inputLength = Math.sqrt(
-    inputForward * inputForward +
-    inputSideways * inputSideways
-  );
-
-  if (inputLength > 1) {
-    inputForward /= inputLength;
-    inputSideways /= inputLength;
-  }
-
-  const moving = inputLength > 0.08;
-
-  isRunning =
-    keys['shift'] || mobileRunning;
-
-  // Movement relative to camera direction
-
-  const forwardX = Math.sin(cameraYaw);
-  const forwardZ = -Math.cos(cameraYaw);
-
-  const rightX = Math.cos(cameraYaw);
-  const rightZ = Math.sin(cameraYaw);
-
-  direction.set(
-    forwardX * inputForward + rightX * inputSideways,
-    0,
-    forwardZ * inputForward + rightZ * inputSideways
-  );
-
-  const speed = isRunning ? RUN_SPEED : WALK_SPEED;
-
-  if (moving) {
-
-    player.position.x += direction.x * speed * delta;
-    player.position.z += direction.z * speed * delta;
-
-    // Face direction of movement
-    // This assumes the model faces +Z by default.
-
-    const targetRotation = Math.atan2(
-      direction.x,
-      direction.z
+    cameraYaw -= dx * 0.006;
+    cameraPitch = THREE.MathUtils.clamp(
+        cameraPitch + dy * 0.003, -0.15, 0.85
     );
 
-    const rotationDifference = Math.atan2(
-      Math.sin(targetRotation - player.rotation.y),
-      Math.cos(targetRotation - player.rotation.y)
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+});
+
+window.addEventListener('pointerup', () => cameraDrag = false);
+window.addEventListener('pointercancel', () => cameraDrag = false);
+
+// --------------------------------------------------
+// GAME UPDATE
+// --------------------------------------------------
+
+function updatePlayer(delta) {
+    const input = getMovementInput();
+    const running =
+        keys.ShiftLeft || keys.ShiftRight || mobileRunning;
+
+    const targetSpeed = input.moving
+        ? (running ? RUN_SPEED : WALK_SPEED)
+        : 0;
+
+    moveSpeed = THREE.MathUtils.damp(
+        moveSpeed, targetSpeed,
+        input.moving ? 7 : 9, delta
     );
 
-    player.rotation.y += rotationDifference *
-      Math.min(1, delta * 10);
+    if (input.moving) {
+        // Camera-relative movement
+        const sin = Math.sin(cameraYaw);
+        const cos = Math.cos(cameraYaw);
 
-  }
+        const worldX = input.x * cos + input.z * sin;
+        const worldZ = -input.x * sin + input.z * cos;
 
-  // Keep player inside the playable area
+        const length = Math.hypot(worldX, worldZ) || 1;
+        const dx = worldX / length;
+        const dz = worldZ / length;
 
-  player.position.x = THREE.MathUtils.clamp(
-    player.position.x,
-    -90,
-    90
-  );
+        player.position.x += dx * moveSpeed * delta;
+        player.position.z += dz * moveSpeed * delta;
 
-  player.position.z = THREE.MathUtils.clamp(
-    player.position.z,
-    -90,
-    90
-  );
+        playerYaw = Math.atan2(-dx, -dz);
 
-  // Jump physics
-
-  if (!grounded) {
-
-    verticalVelocity -= GRAVITY * delta;
-
-    player.position.y += verticalVelocity * delta;
-
-    if (player.position.y <= 0) {
-      player.position.y = 0;
-      verticalVelocity = 0;
-      grounded = true;
+        player.rotation.y = THREE.MathUtils.damp(
+            player.rotation.y, playerYaw, 12, delta
+        );
     }
 
-  }
+    // Ground height
+    const groundY = terrainHeight(
+        player.position.x,
+        player.position.z
+    );
 
-  // Choose animation
+    previousGroundHeight = groundY;
 
-  if (characterReady) {
-
-    if (moving) {
-
-      if (isRunning && actions.run) {
-        playAnimation('run');
-      } else {
-        playAnimation('walk');
-      }
-
-    } else if (actions.idle) {
-
-      playAnimation('idle');
-
-    } else if (currentAction) {
-
-      currentAction.fadeOut(0.2);
-      currentAction = null;
-
+    if (jumpRequested && grounded) {
+        velocityY = JUMP_FORCE;
+        grounded = false;
+        jumping = true;
+        makeJumpSound();
     }
 
-    if (mixer) {
-      mixer.update(delta);
+    jumpRequested = false;
+
+    if (!grounded) {
+        velocityY -= GRAVITY * delta;
+        player.position.y += velocityY * delta;
+
+        if (player.position.y <= groundY) {
+            player.position.y = groundY;
+            velocityY = 0;
+            grounded = true;
+            jumping = false;
+            makeLandingSound();
+        }
+    } else {
+        player.position.y = THREE.MathUtils.damp(
+            player.position.y, groundY, 12, delta
+        );
     }
 
-  }
+    // Animation choice
+    if (jumping) {
+        // Keep the current animation while airborne.
+    } else if (moveSpeed > 0.25) {
+        if (running && animations.run) {
+            selectAnimation('run');
+        } else {
+            selectAnimation('walk');
+        }
+    } else {
+        selectAnimation('idle');
+    }
 
-  // Camera follows player
+    // Footstep timing follows movement speed
+    if (grounded && moveSpeed > 0.8) {
+        stepTimer -= delta;
 
-  const cameraTarget = new THREE.Vector3(
-    player.position.x,
-    player.position.y + CAMERA_HEIGHT,
-    player.position.z
-  );
+        const interval = running ? 0.31 : 0.49;
 
-  const horizontalDistance =
-    CAMERA_DISTANCE * Math.cos(cameraPitch);
+        if (stepTimer <= 0) {
+            makeFootstep(running);
+            stepTimer = interval;
+        }
+    } else {
+        stepTimer = 0;
+    }
 
-  const cameraPosition = new THREE.Vector3(
-    player.position.x +
-      Math.sin(cameraYaw) * horizontalDistance,
-
-    player.position.y +
-      CAMERA_HEIGHT +
-      CAMERA_DISTANCE * Math.sin(cameraPitch),
-
-    player.position.z +
-      Math.cos(cameraYaw) * horizontalDistance
-  );
-
-  camera.position.lerp(cameraPosition, 1 - Math.pow(0.001, delta));
-  camera.lookAt(cameraTarget);
-
-  renderer.render(scene, camera);
-
+    statusText.textContent =
+        moveSpeed > 0.8
+            ? (running ? 'RUNNING' : 'WALKING')
+            : 'EXPLORATION MODE';
 }
 
-animate();
+// --------------------------------------------------
+// CAMERA
+// --------------------------------------------------
 
-// =====================================
-// 10. RESIZE
-// =====================================
+function updateCamera(delta) {
+    if (!player) return;
+
+    const yaw = cameraYaw + player.rotation.y;
+
+    const distance = 7.5;
+    const height = 3.2;
+
+    desiredCamera.set(
+        player.position.x + Math.sin(yaw) * distance,
+        player.position.y + height + cameraPitch * 2,
+        player.position.z + Math.cos(yaw) * distance
+    );
+
+    camera.position.lerp(
+        desiredCamera,
+        1 - Math.exp(-5 * delta)
+    );
+
+    cameraLook.set(
+        player.position.x,
+        player.position.y + 1.45,
+        player.position.z
+    );
+
+    camera.lookAt(cameraLook);
+}
+
+// --------------------------------------------------
+// MAIN LOOP
+// --------------------------------------------------
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = Math.min(clock.getDelta(), 0.04);
+
+    if (mixer) mixer.update(delta);
+
+    if (player) {
+        updatePlayer(delta);
+        updateCamera(delta);
+    }
+
+    renderer.render(scene, camera);
+}
+
+// --------------------------------------------------
+// STARTUP
+// --------------------------------------------------
+
+async function startGame() {
+    initScene();
+    createWorld();
+
+    try {
+        await loadPlayer();
+
+        loadingScreen.style.opacity = '0';
+        setTimeout(() => loadingScreen.remove(), 1000);
+
+        animate();
+    } catch (error) {
+        console.error('Could not load player model:', error);
+
+        loadingScreen.classList.add('error');
+        loadingScreen.innerHTML = `
+            <h1>PLAYER MODEL NOT FOUND</h1>
+            <p>CHECK THAT playerdelete.glb IS NEXT TO game.html</p>
+            <p>OPEN THE BROWSER CONSOLE FOR MORE DETAILS</p>
+        `;
+    }
+}
 
 window.addEventListener('resize', () => {
+    if (!camera || !renderer) return;
 
-  camera.aspect =
-    window.innerWidth / window.innerHeight;
-
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(
-    window.innerWidth,
-    window.innerHeight
-  );
-
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+startGame();
 
 </script>
 </body>
