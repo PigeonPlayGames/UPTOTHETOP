@@ -51,6 +51,8 @@ canvas { display: block; touch-action: none; }
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 #hud.hidden { opacity: 0; }
+/* Nothing from the playing HUD should show behind the main menu */
+#hud.menu-hidden { display: none; }
 
 .corner { position: absolute; }
 #tl { top: 18px; left: 20px; }
@@ -259,9 +261,6 @@ button.primary {
     transition: background 0.25s, color 0.25s;
 }
 button.primary:hover { background: rgba(240, 198, 116, 0.9); color: #10191a; }
-#start { display: none; }
-#loader.ready #bar, #loader.ready .tag { display: none; }
-#loader.ready #start { display: block; }
 #loader.failed h1 { font-size: 18px; letter-spacing: 0.3em; }
 
 /* ---------- Pause / settings ---------- */
@@ -353,6 +352,110 @@ button.ghost {
     border-radius: 2px;
 }
 button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
+
+/* ---------- Main menu ---------- */
+
+#main-menu {
+    position: fixed;
+    inset: 0;
+    z-index: 26;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    /* The living world renders behind, so only a soft wash over it */
+    background: linear-gradient(90deg, rgba(6,12,14,.92) 0%, rgba(6,12,14,.78) 42%, rgba(6,12,14,.18) 100%);
+}
+#main-menu.on { display: flex; }
+
+.mm-inner {
+    width: min(460px, 86vw);
+    margin-right: auto;
+    margin-left: clamp(24px, 9vw, 130px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+#main-menu h1 {
+    margin: 0;
+    font-size: clamp(30px, 6.2vw, 52px);
+    letter-spacing: 0.28em;
+    font-weight: 200;
+    text-indent: 0.28em;
+    color: #f2f6f4;
+    text-shadow: 0 6px 40px rgba(0,0,0,.8);
+}
+#main-menu .tagline {
+    margin: 6px 0 0;
+    font-size: 10px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--gold);
+}
+#mm-progress {
+    margin: 20px 0 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+#mm-progress b { color: var(--ink); font-size: 14px; letter-spacing: 0.04em; }
+
+.mm-buttons {
+    margin-top: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    width: min(300px, 100%);
+}
+.mm-buttons button { width: 100%; text-align: center; }
+
+.mm-note {
+    margin: 18px 0 0;
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: #6f8481;
+    transition: opacity 0.6s;
+}
+.mm-note.gone { opacity: 0; }
+
+.mm-hub {
+    margin-top: 10px;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #6f8481;
+    text-decoration: none;
+}
+.mm-hub:hover { color: var(--ink); }
+
+#controls-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 27;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 12, 13, 0.86);
+    backdrop-filter: blur(10px);
+}
+#controls-screen.on { display: flex; }
+#controls-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+#controls-list div { display: flex; justify-content: space-between; gap: 18px; }
+#controls-list b { color: var(--ink); font-weight: 600; }
 
 /* ---------- Map and completion screens ---------- */
 
@@ -524,7 +627,6 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <h1>EON EXPANSE</h1>
     <p class="tag" id="loader-text">Waking the world</p>
     <div id="bar"><i></i></div>
-    <button class="primary" id="start">Enter the world</button>
     <p class="keys" id="loader-keys">
         WASD move &nbsp;·&nbsp; Shift sprint &nbsp;·&nbsp; Space jump &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Scroll zoom<br>
         Click or E to strike &nbsp;·&nbsp; M map &nbsp;·&nbsp; V first person &nbsp;·&nbsp; F hide HUD &nbsp;·&nbsp; B flip model &nbsp;·&nbsp; Esc settings
@@ -568,6 +670,30 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button class="tbtn" id="btn-run">RUN</button>
     <button class="tbtn" id="btn-map">MAP</button>
     <button class="tbtn" id="btn-menu">≡</button>
+</div>
+
+<div id="main-menu">
+    <div class="mm-inner">
+        <h1>EON EXPANSE</h1>
+        <p class="tagline">A survey of the far country</p>
+        <div id="mm-progress"></div>
+        <div class="mm-buttons">
+            <button class="primary" id="mm-continue">Enter the world</button>
+            <button class="ghost" id="mm-new">New expedition</button>
+            <button class="ghost" id="mm-controls">Controls</button>
+            <button class="ghost" id="mm-settings">Settings</button>
+        </div>
+        <p class="mm-note" id="mm-audio-hint">Click anywhere to enable sound</p>
+        <a class="mm-hub" id="mm-hub" href="#">← Back to Eon Games</a>
+    </div>
+</div>
+
+<div id="controls-screen">
+    <div class="sheet narrow">
+        <h2>Controls</h2>
+        <div id="controls-list"></div>
+        <button class="primary" id="controls-close">Back</button>
+    </div>
 </div>
 
 <div id="map-screen">
@@ -616,6 +742,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <div class="row"><label>Freeze time</label><div class="toggle" id="tg-freeze"></div></div>
         <div class="row"><label>Model faces backwards</label><div class="toggle" id="tg-flip"></div></div>
         <div class="row"><label>Peaceful mode (no enemies)</label><div class="toggle" id="tg-peaceful"></div></div>
+        <div class="row"><label>Menu music</label><div class="toggle" id="tg-music"></div></div>
 
         <div class="menu-actions">
             <button class="primary" id="btn-resume">Resume</button>
@@ -623,6 +750,9 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <div class="menu-actions">
             <button class="ghost" id="btn-respawn">Return to camp</button>
             <button class="ghost" id="btn-reset">Reset relics</button>
+        </div>
+        <div class="menu-actions">
+            <button class="ghost" id="btn-mainmenu">Main menu</button>
         </div>
     </div>
 </div>
@@ -641,6 +771,10 @@ const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3D2.glb';
 const ENEMY_PATH = params.get('enemy') || './playerdelete.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
+const MUSIC_PATH = params.get('music') || './Expanse1.mp3';
+// Link back to the games hub. This page is expected to sit in its own folder
+// (Expanse/Expanse.html) like the other games; change if you put it elsewhere.
+const HUB_URL = '../index.html';
 const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 
 const PLAYER_HEIGHT = 1.85;
@@ -732,7 +866,8 @@ const settings = {
     dayMinutes: 8,
     freeze: false,
     flip: false,
-    peaceful: false
+    peaceful: false,
+    music: true
 };
 
 let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false };
@@ -1991,7 +2126,12 @@ const Audio = {
 
 function initAudio() {
     if (Audio.ready) {
-        if (Audio.ctx.state === 'suspended') Audio.ctx.resume();
+        if (Audio.ctx.state === 'suspended') {
+            // Resuming needs a gesture; once it lands, music can begin
+            Audio.ctx.resume().then(syncMusic).catch(() => {});
+        } else {
+            syncMusic();
+        }
         return;
     }
     try {
@@ -2035,6 +2175,8 @@ function initAudio() {
 
         Audio.ready = true;
         loadEnemySounds();
+        // Decode the music early so it can begin the instant audio unlocks
+        loadSample(MUSIC_PATH).then(syncMusic);
     } catch (e) {
         console.warn('Audio unavailable', e);
     }
@@ -2242,6 +2384,57 @@ function stopSample(handle) {
         handle.gain.gain.setTargetAtTime(0, now, 0.04);
         handle.src.stop(now + 0.2);
     } catch (e) { /* already stopped */ }
+}
+
+/* ---- Menu music ---- */
+
+const Music = { gain: null, src: null, playing: false };
+let musicWanted = false;
+
+function startMusic() {
+    if (Music.playing || !Audio.ready || !hasSample(MUSIC_PATH)) return;
+    const ctx = Audio.ctx;
+    if (!Music.gain) {
+        Music.gain = ctx.createGain();
+        Music.gain.connect(Audio.master);
+    }
+    const now = ctx.currentTime;
+    Music.gain.gain.cancelScheduledValues(now);
+    Music.gain.gain.setValueAtTime(0.0001, now);
+    Music.gain.gain.linearRampToValueAtTime(0.6, now + 1.6);
+
+    const src = ctx.createBufferSource();
+    src.buffer = Sounds.buffers[MUSIC_PATH];
+    src.loop = true;
+    src.connect(Music.gain);
+    try { src.start(); } catch (e) { return; }
+    Music.src = src;
+    Music.playing = true;
+}
+
+function stopMusic(fade) {
+    if (!Music.playing || !Music.src) return;
+    const ctx = Audio.ctx;
+    const f = fade === undefined ? 1.8 : fade;
+    try {
+        const now = ctx.currentTime;
+        Music.gain.gain.cancelScheduledValues(now);
+        Music.gain.gain.setValueAtTime(Music.gain.gain.value, now);
+        Music.gain.gain.linearRampToValueAtTime(0.0001, now + f);
+        Music.src.stop(now + f + 0.1);
+    } catch (e) { /* already stopped */ }
+    Music.src = null;
+    Music.playing = false;
+}
+
+// Single place that decides whether music should be sounding right now.
+// Audio can only actually start after a gesture, so this is safe to call
+// repeatedly — it simply does nothing until the context is running.
+function syncMusic() {
+    if (musicWanted && settings.music && Audio.ready && Audio.ctx.state === 'running') startMusic();
+    else stopMusic(musicWanted ? 0.3 : 1.8);
+    const hint = document.getElementById('mm-audio-hint');
+    if (hint) hint.classList.toggle('gone', !!(Audio.ready && Audio.ctx.state === 'running'));
 }
 
 function sfxSwing(strength) {
@@ -3182,7 +3375,14 @@ function setupInput() {
 
         if (e.code === 'Space') P.jumpBuffer = 0.16;
 
-        if (!started) return;
+        if (!started) {
+            // On the menu, Escape just backs out of whatever is on top
+            if (e.code === 'Escape') {
+                if (controlsEl.classList.contains('on')) controlsEl.classList.remove('on');
+                else if (paused) togglePause();
+            }
+            return;
+        }
 
         if (e.code === 'Escape') { if (overlay) closeOverlay(); else togglePause(); }
         if (e.code === 'KeyM') { if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map'); }
@@ -3359,8 +3559,8 @@ function setupInput() {
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    window.addEventListener('pointerdown', initAudio, { once: true });
-    window.addEventListener('keydown', initAudio, { once: true });
+    window.addEventListener('pointerdown', initAudio);   // not once: a resume can fail and needs retrying
+    window.addEventListener('keydown', initAudio);
 }
 
 function applyLook(dx, dy) {
@@ -4268,6 +4468,161 @@ function finishExpedition() {
 }
 
 /* ============================================================
+   MAIN MENU + INTRO
+   ============================================================ */
+
+const mainMenuEl = document.getElementById('main-menu');
+const controlsEl = document.getElementById('controls-screen');
+let introAngle = 0.4;
+const _introLook = new THREE.Vector3();
+
+// Slow orbit over the camp while the menu is up, so the world is alive
+// behind it rather than a frozen still.
+function updateIntroCamera(dt) {
+    introAngle += dt * 0.05;
+    const r = 52 + Math.sin(introAngle * 0.6) * 8;
+    const cx = Math.cos(introAngle) * r;
+    const cz = Math.sin(introAngle) * r;
+    const cy = groundHeight(cx, cz) + 15 + Math.sin(introAngle * 0.8) * 4;
+    camera.position.set(cx, cy, cz);
+    _introLook.set(0, groundHeight(0, 0) + 4, 0);
+    camera.lookAt(_introLook);
+}
+
+function updateMenuProgress() {
+    const woken = waystones.filter(w => w.awake).length;
+    const anyProgress = collected > 0 || P.kills > 0 || woken > 0;
+    document.getElementById('mm-progress').innerHTML = anyProgress
+        ? '<span><b>' + collected + '</b> / ' + RELIC_TOTAL + ' relics</span>' +
+          '<span><b>' + woken + '</b> / ' + waystones.length + ' waystones</span>' +
+          '<span><b>' + P.kills + '</b> felled</span>'
+        : '<span>A fresh expedition awaits</span>';
+    document.getElementById('mm-continue').textContent =
+        anyProgress ? 'Continue expedition' : 'Enter the world';
+    document.getElementById('mm-new').style.display = anyProgress ? '' : 'none';
+    document.getElementById('mm-new').textContent = 'New expedition';
+    newExpeditionArmed = false;
+}
+
+let newExpeditionArmed = false;
+
+function showMainMenu() {
+    started = false;
+    paused = false;
+    menuEl.classList.remove('open');
+    closeOverlay();
+    mainMenuEl.classList.add('on');
+    document.getElementById('hud').classList.add('menu-hidden');
+    if (document.pointerLockElement) document.exitPointerLock();
+    updateMenuProgress();
+    musicWanted = true;
+    syncMusic();
+}
+
+function enterWorld() {
+    mainMenuEl.classList.remove('on');
+    controlsEl.classList.remove('on');
+    document.getElementById('hud').classList.remove('menu-hidden');
+    started = true;
+    musicWanted = false;
+    syncMusic();
+    clock.getDelta();
+    fpsSince = performance.now();
+    if (!isTouch) {
+        const p = renderer.domElement.requestPointerLock();
+        if (p && p.catch) p.catch(() => {});
+    }
+    if (collected > 0) toast('Welcome back · ' + collected + ' of ' + RELIC_TOTAL + ' relics');
+    else toast('Find the ' + RELIC_TOTAL + ' relics', 4000);
+}
+
+function resetProgress() {
+    relics.forEach(r => { r.taken = false; r.surveyed = false; r.group.visible = true; });
+    waystones.forEach(w => {
+        w.awake = false;
+        w.flame.visible = false;
+        if (w.light) w.light.intensity = 0;
+    });
+    enemies.forEach(e => { if (e.state !== 'dead') e.state = 'idle'; });
+    collected = 0;
+    P.kills = 0;
+    P.completed = false;
+    P.health = PLAYER_MAX_HEALTH;
+    P.stamina = 100;
+    P.dead = false;
+    P.vel.set(0, 0, 0);
+    deathEl.classList.remove('on');
+    timeOfDay = 0.3;
+    player.position.set(0, groundHeight(0, 4) + 0.1, 4);
+    P.yaw = Math.PI;
+    player.rotation.y = P.yaw;
+    camYaw = Math.PI;
+    camPitch = 0.22;
+    updateRelicHud();
+    updateGrass(true);
+    writeSave();
+}
+
+function buildControlsList() {
+    const rows = isTouch
+        ? [['Move', 'Left stick'], ['Look', 'Drag the view'], ['Zoom', 'Pinch'],
+           ['Strike', 'HIT button'], ['Jump', 'JUMP button'], ['Sprint', 'RUN button (toggle)'],
+           ['Map', 'MAP button'], ['Settings', '≡ button']]
+        : [['Move', 'WASD / arrows'], ['Look', 'Mouse'], ['Zoom', 'Scroll wheel'],
+           ['Strike', 'Click or E'], ['Jump', 'Space'], ['Sprint', 'Shift'],
+           ['Map', 'M'], ['First person', 'V'], ['Hide HUD', 'F'],
+           ['Flip model facing', 'B'], ['Skip time', 'T'], ['Settings', 'Esc']];
+    document.getElementById('controls-list').innerHTML =
+        rows.map(r => '<div><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('') +
+        '<div><span>Heal</span><b>Rest at the campfire</b></div>' +
+        '<div><span>Respawn point</span><b>Nearest waystone you woke</b></div>';
+}
+
+function setupMainMenu() {
+    buildControlsList();
+    document.getElementById('mm-hub').href = HUB_URL;
+
+    document.getElementById('mm-continue').addEventListener('click', () => {
+        initAudio();
+        enterWorld();
+    });
+
+    document.getElementById('mm-new').addEventListener('click', (e) => {
+        initAudio();
+        const btn = e.currentTarget;
+        if (!newExpeditionArmed) {
+            // One confirmation step — this wipes a real save
+            newExpeditionArmed = true;
+            btn.textContent = 'Erase progress — tap again';
+            setTimeout(() => {
+                if (newExpeditionArmed) { newExpeditionArmed = false; btn.textContent = 'New expedition'; }
+            }, 4000);
+            return;
+        }
+        newExpeditionArmed = false;
+        resetProgress();
+        updateMenuProgress();
+        enterWorld();
+    });
+
+    document.getElementById('mm-controls').addEventListener('click', () => {
+        initAudio();
+        controlsEl.classList.add('on');
+    });
+    document.getElementById('controls-close').addEventListener('click', () => controlsEl.classList.remove('on'));
+    controlsEl.addEventListener('pointerdown', (e) => {
+        if (e.target.id === 'controls-screen') controlsEl.classList.remove('on');
+    });
+
+    document.getElementById('mm-settings').addEventListener('click', () => {
+        initAudio();
+        paused = true;
+        menuEl.classList.add('open');
+        document.getElementById('menu-note').textContent = 'Settings';
+    });
+}
+
+/* ============================================================
    MENU
    ============================================================ */
 
@@ -4285,7 +4640,9 @@ function togglePause(forceOpen) {
     if (paused && pointerLocked) document.exitPointerLock();
     if (!paused) {
         writeSave();
-        if (!isTouch) {
+        // Settings can also be opened from the main menu, where there is no
+        // world to grab the mouse back for.
+        if (!isTouch && started) {
             const p = renderer.domElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
         }
@@ -4301,6 +4658,7 @@ function syncMenu() {
     document.getElementById('tg-freeze').classList.toggle('on', settings.freeze);
     document.getElementById('tg-flip').classList.toggle('on', settings.flip);
     document.getElementById('tg-peaceful').classList.toggle('on', settings.peaceful);
+    document.getElementById('tg-music').classList.toggle('on', settings.music);
 
     document.getElementById('rg-fov').value = settings.fov;
     document.getElementById('v-fov').textContent = settings.fov;
@@ -4345,6 +4703,7 @@ function setupMenu() {
     toggle('tg-invert', 'invert');
     toggle('tg-freeze', 'freeze');
     toggle('tg-flip', 'flip');
+    toggle('tg-music', 'music', syncMusic);
     toggle('tg-peaceful', 'peaceful', () => {
         toast(settings.peaceful ? 'Peaceful mode on' : 'The hostiles return');
         if (!settings.peaceful) {
@@ -4370,6 +4729,11 @@ function setupMenu() {
     bind('rg-day', 'dayMinutes', 'v-day');
 
     document.getElementById('btn-resume').addEventListener('click', () => togglePause());
+
+    document.getElementById('btn-mainmenu').addEventListener('click', () => {
+        writeSave();
+        showMainMenu();
+    });
 
     document.getElementById('btn-respawn').addEventListener('click', () => {
         player.position.set(0, groundHeight(0, 4) + 0.2, 4);
@@ -4408,7 +4772,16 @@ function animate() {
 
     const dt = Math.min(clock.getDelta(), 0.05);
 
-    if (!paused && !overlay && started) {
+    if (!started) {
+        // Intro: the world keeps breathing behind the menu
+        elapsed += dt;
+        windUniform.value = elapsed;
+        waterUniforms.uTime.value = elapsed;
+        updateSky(dt);
+        updateIntroCamera(dt);
+        sky.position.copy(camera.position);
+        stars.position.copy(camera.position);
+    } else if (!paused && !overlay) {
         elapsed += dt;
         windUniform.value = elapsed;
         waterUniforms.uTime.value = elapsed;
@@ -4562,8 +4935,6 @@ async function boot() {
         updateRelicHud();
         document.getElementById('relic-total').textContent = RELIC_TOTAL;
 
-        loaderEl.classList.add('ready');
-
         const missing = [];
         if (!usedModel) missing.push(MODEL_PATH + ' (player)');
         for (const type of ENEMY_TYPES) {
@@ -4580,20 +4951,15 @@ async function boot() {
                 '<b>?model=&hellip;&amp;enemy=&hellip;&amp;chris=&hellip;</b> in the URL.';
         }
 
-        document.getElementById('start').addEventListener('click', () => {
-            started = true;
-            initAudio();
-            loaderEl.style.opacity = '0';
-            setTimeout(() => loaderEl.remove(), 900);
-            if (!isTouch) {
-                const p = renderer.domElement.requestPointerLock();
-                if (p && p.catch) p.catch(() => {});
-            }
-            clock.getDelta();
-            fpsSince = performance.now();
-            if (collected > 0) toast('Welcome back · ' + collected + ' of ' + RELIC_TOTAL + ' relics');
-            else toast('Find the ' + RELIC_TOTAL + ' relics', 4000);
-        });
+        setupMainMenu();
+
+        // Create the audio context now so the music is decoded and ready;
+        // it stays suspended until the first click unlocks it.
+        initAudio();
+
+        loaderEl.style.opacity = '0';
+        setTimeout(() => loaderEl.remove(), 900);
+        showMainMenu();
 
         animate();
     } catch (err) {
