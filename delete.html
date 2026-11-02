@@ -879,8 +879,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
    ============================================================ */
 
 const params = new URLSearchParams(location.search);
-const MODEL_PATH = params.get('model') || './Tom3D2.glb';
-const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle.glb';
+const MODEL_PATH = params.get('model') || './Tom3.glb';
+const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const MUSIC_PATH = params.get('music') || './Expanse1.mp3';        // menu / intro
 const GAME_MUSIC_PATH = params.get('music2') || './Expanse2.mp3';  // quiet bed while playing
@@ -893,8 +893,13 @@ const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 // If Tom3D2.glb's clips aren't picked up correctly, name them here exactly as
 // they appear in the file — these win over any guessing by name.
 const PLAYER_CLIP_NAMES = {
-    // idle: 'Idle', walk: 'Walking', run: 'Running',
-    // attack: 'Punch', jump: 'Jump', death: 'Dead'
+    idle:     'Idle 5',
+    walk:     'Walking',
+    run:      'Running',
+    attack:   'Right Jab from Guard',
+    jump:     'Jump with Arms Open',
+    swim:     'Swim Forward',
+    swimIdle: 'Swim Idle'
 };
 
 const PLAYER_HEIGHT = 1.85;
@@ -2671,7 +2676,10 @@ const P = {
     deadTimer: 0,
     combatTimer: 0,
     kills: 0,
-    completed: false
+    completed: false,
+    faceTarget: 0,
+    faceTimer: 0,
+    swingYaw: 0
 };
 
 // Used for the player when the .glb is missing, and for every enemy when the
@@ -2817,6 +2825,7 @@ function buildActions(mixer, clips, names, opts) {
     if (!map.fall) map.fall = map.jump || map.idle;
     if (!map.jump) map.jump = map.fall || map.idle;
     if (!map.swim) map.swim = map.walk;
+    if (!map.swimIdle) map.swimIdle = map.swim;
 
     if (map.jump) { map.jump.setLoop(THREE.LoopOnce, 1); map.jump.clampWhenFinished = true; }
     if (map.attack) { map.attack.setLoop(THREE.LoopOnce, 1); map.attack.clampWhenFinished = true; }
@@ -2924,7 +2933,8 @@ function updateAnimation(dt, horizontalSpeed, running) {
         } else if (P.swingTimer > 0 && actions.attack) {
             playAction('attack', 0.07);
         } else if (P.swimming) {
-            playAction('swim');
+            // Treading water looks wrong while drifting still
+            playAction(horizontalSpeed > 0.5 ? 'swim' : 'swimIdle');
             if (actions.swim) actions.swim.setEffectiveTimeScale(1);
         } else if (!P.grounded) {
             playAction(P.vel.y > 0.5 ? 'jump' : 'fall');
@@ -3015,8 +3025,11 @@ function loadEnemyType(type) {
                 // mid-swing by the next decision.
                 const atk = findClip(type.clips, type.clipNames && type.clipNames.attack);
                 if (atk && atk.duration > 0.1) {
-                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.3, 1.1);
-                    type.cooldown = THREE.MathUtils.clamp(atk.duration + 0.35, 1.2, 3.0);
+                    type.attackDur = atk.duration;
+                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.3, 1.4);
+                    // Long enough that the whole swing can finish before the
+                    // next one is considered
+                    type.cooldown = THREE.MathUtils.clamp(atk.duration + 0.5, 1.2, 5.0);
                 }
                 resolve(true);
             },
@@ -3122,7 +3135,7 @@ function createEnemy(id, type, rnd) {
         hp: type.health, x: 0, z: 0, y: 0, yaw: rnd() * 6.283,
         vx: 0, vz: 0, state: 'idle', think: rnd() * 5,
         targetX: 0, targetZ: 0, attackCd: 0, windup: -1,
-        hurt: 0, deadTimer: 0, phase: rnd() * 6.283,
+        hurt: 0, deadTimer: 0, phase: rnd() * 6.283, attackAnim: 0,
         flash: 0, flashOn: false, runSound: null,
         bar: makeHealthBar()
     };
@@ -3277,6 +3290,7 @@ function respawnEnemy(e) {
     e.root.position.y = 0;
     if (e.mixer) e.mixer.stopAllAction();   // clear a clamped death clip
     e.current = null;
+    e.attackAnim = 0;
     e.attackCd = 0;
     e.windup = -1;
     e.think = 1 + rnd() * 4;
@@ -3315,6 +3329,7 @@ function updateEnemies(dt) {
         e.attackCd -= dt;
         e.hurt -= dt;
         e.flash -= dt;
+        if (e.attackAnim > 0) e.attackAnim -= dt;
         setEnemyFlash(e, e.flash > 0);
 
         const dx = px - e.x;
@@ -3348,6 +3363,10 @@ function updateEnemies(dt) {
                 e.windup = e.type.windup || ENEMY_WINDUP;
                 e.attackCd = e.type.cooldown || ENEMY_ATTACK_COOLDOWN;
                 enemyPlay(e, 'attack', 0.08, true);
+                // Hold the swing for the whole clip. Without this the state
+                // returns to 'chase' the instant the blow lands and the
+                // locomotion clip cuts the animation off part-way through.
+                e.attackAnim = e.type.attackDur || 0.7;
                 stopRunSound(e);
                 if (!playOneShotOnce(e, 'fightSound', enemySound(e, 'fight'), 1)) sfxSwing(0.55);
             }
@@ -3386,6 +3405,8 @@ function updateEnemies(dt) {
         }
 
         if (e.hurt > 0) moveSpeed *= 0.3;
+        // A committed swing shouldn't slide across the ground
+        if (e.attackAnim > 0) moveSpeed *= 0.15;
 
         const tx = targetX - e.x;
         const tz = targetZ - e.z;
@@ -3440,15 +3461,16 @@ function updateEnemies(dt) {
         e.holder.rotation.y = e.yaw + (settings.flip ? Math.PI : 0);
 
         e.phase += moving * dt * 3.1;
+        const swinging = e.state === 'attack' || e.attackAnim > 0;
         if (e.mixer) {
-            if (e.state !== 'attack') {
+            if (!swinging) {
                 if (moving > RUN_SPEED * 0.4) enemyPlay(e, 'run');
                 else if (moving > 0.3) enemyPlay(e, 'walk');
                 else enemyPlay(e, 'idle');
             }
             e.mixer.update(dt);
         } else if (e.rig) {
-            poseFallbackRig(e.rig, e.root, dt, moving, e.phase, e.state === 'attack' ? 'attack' : 'move');
+            poseFallbackRig(e.rig, e.root, dt, moving, e.phase, swinging ? 'attack' : 'move');
         }
 
         // Looping run audio, if this kind of foe has one
@@ -3482,15 +3504,17 @@ function playerAttack() {
     P.swingTimer = 0.3;
     P.combatTimer = 6;
 
-    // Start from where the camera is looking, not where you last walked
-    let aim = camYaw + Math.PI;
+    // Swing in whatever direction the character is actually facing. While
+    // moving that is the way you are running; standing still it is wherever
+    // you last turned. The camera only decides the aim if you are standing
+    // still and have not turned yet.
+    let aim = P.speed > 0.35 ? P.yaw : (P.faceTimer > 0 ? P.faceTarget : camYaw + Math.PI);
 
-    // Aim assist. Without it you have to line the camera up almost exactly,
-    // which makes a circling foe very hard to land a hit on. Pick whichever
-    // reachable enemy is closest to the current aim and swing at them.
+    // Aim assist on top: pick up any reachable foe, all the way around, and
+    // swing at whoever is nearest to that facing. Without this you had to
+    // line up almost exactly, which is what made it feel stiff.
     const px = player.position.x;
     const pz = player.position.z;
-    const assistDot = Math.cos(ASSIST_ARC / 2);
     let best = null;
     let bestScore = Infinity;
 
@@ -3506,17 +3530,20 @@ function playerAttack() {
         let off = toward - aim;
         while (off > Math.PI) off -= Math.PI * 2;
         while (off < -Math.PI) off += Math.PI * 2;
-        if (Math.cos(off) < assistDot) continue;         // behind you
 
-        // Favour whoever is nearest the crosshair, then whoever is closest
+        // Favour whoever is nearest the way you face, then whoever is closest.
+        // Nothing is excluded for being behind you — if a foe is in reach and
+        // you swing, you connect.
         const score = Math.abs(off) + d * 0.12;
         if (score < bestScore) { bestScore = score; best = { e, toward }; }
     }
 
     if (best) aim = best.toward;
 
-    P.yaw = aim;
-    player.rotation.y = P.yaw;
+    // Turn into the blow rather than snapping to it
+    P.faceTarget = aim;
+    P.faceTimer = 0.45;
+    P.swingYaw = aim;
 
     if (hasClips && actions.attack) {
         actions.attack.reset();
@@ -3595,7 +3622,9 @@ function updateSwing(dt) {
         swingMesh.visible = true;
         swingMesh.material.opacity = t * 0.45;
         swingMesh.position.set(player.position.x, player.position.y + 1.05, player.position.z);
-        swingMesh.rotation.y = P.yaw - Math.PI / 2;
+        // The arc shows where the blow actually landed, not where the body
+        // has turned to by now
+        swingMesh.rotation.y = P.swingYaw - Math.PI / 2;
         swingMesh.scale.setScalar(1.18 - t * 0.18);
     } else if (swingMesh.visible) {
         swingMesh.visible = false;
@@ -3976,12 +4005,19 @@ function updatePlayer(dt) {
     // Facing
     const horizontalSpeed = Math.hypot(P.vel.x, P.vel.z);
     P.speed = horizontalSpeed;
-    if (horizontalSpeed > 0.35) {
-        const targetYaw = Math.atan2(P.vel.x, P.vel.z);
+    // Face the way you are running; when standing still, turn toward the last
+    // swing instead of snapping to it, which is what read as stiff.
+    P.faceTimer -= dt;
+    let targetYaw = null;
+    let turnRate = 14;
+    if (horizontalSpeed > 0.35) targetYaw = Math.atan2(P.vel.x, P.vel.z);
+    else if (P.faceTimer > 0) { targetYaw = P.faceTarget; turnRate = 18; }
+
+    if (targetYaw !== null) {
         let diff = targetYaw - P.yaw;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        P.yaw += diff * (1 - Math.exp(-14 * dt));
+        P.yaw += diff * (1 - Math.exp(-turnRate * dt));
         player.rotation.y = P.yaw;
     }
 
