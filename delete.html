@@ -611,6 +611,7 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 .sw.camp { background: #ff8a3c; }
 .sw.way { background: #7fd8ff; }
 .sw.relic { background: #ffd166; }
+.sw.temple { background: #e4dcc6; border-radius: 1px; }
 .sw.hint { background: rgba(255, 209, 102, 0.28); border: 1px solid rgba(255,209,102,.5); }
 
 #finish-stats {
@@ -814,6 +815,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
             <span><i class="sw camp"></i>Camp</span>
             <span><i class="sw way"></i>Waystone</span>
             <span><i class="sw relic"></i>Relic</span>
+            <span><i class="sw temple"></i>Temple</span>
             <span><i class="sw hint"></i>Unsurveyed</span>
             <span id="map-scale">—</span>
         </div>
@@ -882,6 +884,8 @@ const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3.glb';
 const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
+const TEMPLE_PATH = params.get('temple') || './Temple1.glb';
+const TEMPLE_SIZE = 8;              // the ruin is about 8m across
 const SILAS_PATH = params.get('silas') || './Silas1.glb';
 const WILLOW_PATH = params.get('willow') || './Willow1.glb';
 const MUSIC_PATH = params.get('music') || './Expanse1.mp3';        // menu / intro
@@ -1023,11 +1027,12 @@ const ENEMY_TYPES = [
         sight: 25,
         fallback: { cloth: 0x16181f, dark: 0x101218, skin: 0xe6c0a6, hair: 0x3a2a20, eyes: 0xa8f0d0, pack: false },
         clipNames: {
-            // She has no plain idle, so the looking-around clip stands in
+            // She has no plain idle, so the looking-around clip stands in, and
+            // she charges rather than runs when she has seen you.
             idle:   'Look Around Dumbfounded',
             attack: 'Step-in High Kick',
             death:  'Dead',
-            run:    'Running',
+            run:    'Female Head-down Charge',
             walk:   'Walking'
         },
         sounds: { run: './Willowrunning.mp3', fight: './Willowfighting.mp3', die: './Willowdead.mp3' }
@@ -2143,6 +2148,136 @@ function updateWaystones(dt) {
     }
 }
 
+/* ---- The ancient temple ---- */
+
+let temple = null;          // { x, z, y } once placed
+
+// Hunt for a flat, dry, open shelf at a walkable distance from camp. Worked
+// out from the terrain rather than written down, so it still lands somewhere
+// sensible if the seed changes.
+//
+// The search reads terrainHeight, not groundHeight. groundHeight samples the
+// rendered mesh, whose resolution changes with the quality setting — searching
+// with it put the ruin at x192 on medium and x-204 on low, so switching
+// quality physically moved the temple, and the relic and map marker with it.
+function findTempleSite() {
+    const half = TEMPLE_SIZE * 0.58;
+    const probes = [[-half,-half],[half,-half],[-half,half],[half,half],
+                    [0,0],[half,0],[-half,0],[0,half],[0,-half]];
+    let best = null;
+
+    for (let x = -300; x <= 300; x += 6) {
+        for (let z = -300; z <= 300; z += 6) {
+            const d = Math.hypot(x, z);
+            if (d < 120 || d > 260) continue;          // a journey, but findable
+            const h = terrainHeight(x, z);
+            if (h < 4 || h > 42) continue;
+
+            let min = Infinity, max = -Infinity, ok = true;
+            for (const [ox, oz] of probes) {
+                const g = terrainHeight(x + ox, z + oz);
+                if (g < 2.5) { ok = false; break; }    // keep it out of the water
+                if (g < min) min = g;
+                if (g > max) max = g;
+            }
+            if (!ok || max - min > 1.1) continue;      // must be genuinely flat
+            if (slopeAt(x, z) > 0.14) continue;
+
+            // Prefer a spot that stands clear of what surrounds it
+            let open = 0;
+            for (let a = 0; a < 6.283; a += 0.5) {
+                if (terrainHeight(x + Math.cos(a) * 26, z + Math.sin(a) * 26) < h + 6) open++;
+            }
+            const score = open * 2 + h * 0.25 - (max - min) * 6;
+            if (!best || score > best.score) best = { x, z, score };
+        }
+    }
+
+    const site = best || { x: 192, z: 6 };
+
+    // Seat it on the mesh that is actually drawn, at the middle of its
+    // footprint rather than the lowest corner, or the stepped base ends up
+    // buried in the hillside.
+    let lo = Infinity, hi = -Infinity;
+    for (const [ox, oz] of probes) {
+        const g = groundHeight(site.x + ox, site.z + oz);
+        if (g < lo) lo = g;
+        if (g > hi) hi = g;
+    }
+    site.h = (lo + hi) / 2;
+    return site;
+}
+
+function loadTemple() {
+    return new Promise((resolve) => {
+        const site = findTempleSite();
+
+        new GLTFLoader().load(
+            TEMPLE_PATH,
+            (gltf) => {
+                const root = gltf.scene;
+
+                // Scale so its longest horizontal side is TEMPLE_SIZE
+                const box = new THREE.Box3().setFromObject(root);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                const span = Math.max(size.x, size.z);
+                if (span > 0.01) root.scale.setScalar(TEMPLE_SIZE / span);
+
+                // Centre it on the site and settle it onto the lowest point of
+                // its footprint, so no corner is left hanging in the air
+                const s = new THREE.Box3().setFromObject(root);
+                root.position.set(
+                    site.x - (s.min.x + s.max.x) / 2,
+                    site.h - s.min.y - 0.2,
+                    site.z - (s.min.z + s.max.z) / 2
+                );
+
+                root.traverse(o => {
+                    if (o.isMesh) {
+                        o.castShadow = settings.shadows;
+                        o.receiveShadow = true;
+                    }
+                });
+                scene.add(root);
+
+                const sized = new THREE.Box3().setFromObject(root);
+                const footprint = Math.max(sized.max.x - sized.min.x, sized.max.z - sized.min.z);
+                temple = { x: site.x, z: site.z, y: site.h, radius: footprint / 2 };
+
+                // Columns around the edge are solid; the gaps between them stay
+                // walkable so you can wander inside the ruin.
+                const ring = footprint * 0.36;
+                for (let i = 0; i < 8; i++) {
+                    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+                    addCollider(site.x + Math.cos(a) * ring, site.z + Math.sin(a) * ring, 0.5);
+                }
+
+                // Make it worth the walk: bring the nearest relic to the ruin
+                let near = null;
+                let nearD = Infinity;
+                for (const r of relics) {
+                    const d = Math.hypot(r.x - site.x, r.z - site.z);
+                    if (d < nearD) { nearD = d; near = r; }
+                }
+                if (near && nearD > 12) {
+                    near.x = site.x + 2.4;
+                    near.z = site.z + 2.4;
+                    near.base = groundHeight(near.x, near.z) + 1.25;
+                    near.group.position.set(near.x, near.base, near.z);
+                }
+
+                resolve(true);
+            },
+            undefined,
+            (err) => {
+                console.warn('Temple GLB not loaded (' + TEMPLE_PATH + ').', err);
+                resolve(false);
+            }
+        );
+    });
+}
+
 function buildRelics() {
     const rnd = mulberry32(SEED ^ 0x9a9a);
     const taken = new Set(save.relics);
@@ -2836,15 +2971,36 @@ function buildFallbackCharacter() {
 // animations the same way.
 // Find a clip by an exact name the caller supplied. Handles the common
 // "Armature|Some Clip" prefixes, and falls back to a loose contains.
+// Exporters rename clips in small ways — different separators, extra
+// prefixes, changed spacing or capitalisation. Comparing on a normalised
+// form means "Step-in High Kick", "Step In High Kick" and
+// "Armature|step_in_high_kick" all still find each other.
+function normName(s) {
+    return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 function findClip(clips, wanted) {
-    if (!wanted) return null;
-    const w = String(wanted).toLowerCase().trim();
+    if (!wanted || !clips || !clips.length) return null;
+    const w = normName(wanted);
+    if (!w) return null;
+
+    const full = c => normName(c.name);
+    const tail = c => normName(String(c.name).split('|').pop());
+
+    for (const c of clips) if (full(c) === w || tail(c) === w) return c;
+    for (const c of clips) if (full(c).includes(w) || (tail(c) && w.includes(tail(c)))) return c;
+
+    // Last resort: whichever clip shares the most distinctive words
+    const words = w.split(' ').filter(x => x.length > 2);
+    let best = null;
+    let bestScore = 0;
     for (const c of clips) {
-        const n = c.name.toLowerCase().trim();
-        if (n === w || n.split('|').pop().trim() === w) return c;
+        const have = new Set(full(c).split(' '));
+        let score = 0;
+        for (const x of words) if (have.has(x)) score++;
+        if (score > bestScore) { bestScore = score; best = c; }
     }
-    for (const c of clips) if (c.name.toLowerCase().includes(w)) return c;
-    return null;
+    return bestScore > 0 ? best : null;
 }
 
 // `names` maps a game state to an exact clip name and always wins over
@@ -2855,6 +3011,7 @@ function buildActions(mixer, clips, names, opts) {
     const map = {};
     const options = opts || {};
     const used = new Set();
+    const missing = [];
     const put = (key, action) => { if (!map[key]) map[key] = action; };
 
     const actionFor = (clip) => {
@@ -2865,7 +3022,7 @@ function buildActions(mixer, clips, names, opts) {
         }
         const a = mixer.clipAction(c);
         a.enabled = true;
-        a.userData = { duration: c.duration };
+        a.userData = { duration: c.duration, name: c.name };
         return a;
     };
 
@@ -2876,6 +3033,8 @@ function buildActions(mixer, clips, names, opts) {
             if (clip && !used.has(clip)) {
                 used.add(clip);
                 map[key] = actionFor(clip);
+            } else if (!clip) {
+                missing.push(key + ' ("' + names[key] + '")');
             }
         }
     }
@@ -2908,6 +3067,21 @@ function buildActions(mixer, clips, names, opts) {
     if (!map.jump) map.jump = map.fall || map.idle;
     if (!map.swim) map.swim = map.walk;
     if (!map.swimIdle) map.swimIdle = map.swim;
+
+    // Say plainly what was found. A silent mismatch between the names here and
+    // the names inside the .glb is otherwise invisible — the character simply
+    // stands still and there is nothing to go on.
+    const label = options.label || 'model';
+    if (!clips.length) {
+        console.warn('[' + label + '] this .glb contains no animation clips at all — ' +
+            'it will not animate. Re-export it with the animations included.');
+    } else if (missing.length) {
+        console.warn('[' + label + '] could not find ' + missing.join(', ') +
+            '. Clips actually in this file: ' + clips.map(c => '"' + c.name + '"').join(', '));
+    } else {
+        console.info('[' + label + '] ' + clips.length + ' clips: ' +
+            Object.keys(map).filter(k => map[k]).map(k => k + '=' + (map[k].userData && map[k].userData.name || '')).join(' '));
+    }
 
     if (map.jump) { map.jump.setLoop(THREE.LoopOnce, 1); map.jump.clampWhenFinished = true; }
     if (map.attack) { map.attack.setLoop(THREE.LoopOnce, 1); map.attack.clampWhenFinished = true; }
@@ -2966,7 +3140,7 @@ function loadPlayerModel() {
                 if (gltf.animations && gltf.animations.length) {
                     hasClips = true;
                     mixer = new THREE.AnimationMixer(modelRoot);
-                    Object.assign(actions, buildActions(mixer, gltf.animations, PLAYER_CLIP_NAMES));
+                    Object.assign(actions, buildActions(mixer, gltf.animations, PLAYER_CLIP_NAMES, { label: 'player' }));
                 }
 
                 resolve(true);
@@ -3200,7 +3374,7 @@ function createEnemy(id, type, rnd) {
         });
         if (type.clips && type.clips.length) {
             mixer = new THREE.AnimationMixer(root);
-            acts = buildActions(mixer, type.clips, type.clipNames, { enemy: true });
+            acts = buildActions(mixer, type.clips, type.clipNames, { enemy: true, label: type.name });
         }
     } else {
         const built = buildFallbackHumanoid(type.fallback);
@@ -4610,6 +4784,21 @@ function drawMinimap() {
         minimapCtx.fill();
     }
 
+    // the temple ruin
+    if (temple) {
+        const tdx = (temple.x - player.position.x) * scale;
+        const tdz = (temple.z - player.position.z) * scale;
+        if (Math.hypot(tdx, tdz) < w / 2 - 6) {
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(tdx, tdz - 5);
+            minimapCtx.lineTo(tdx + 4.5, tdz + 3);
+            minimapCtx.lineTo(tdx - 4.5, tdz + 3);
+            minimapCtx.closePath();
+            minimapCtx.fillStyle = '#e4dcc6';
+            minimapCtx.fill();
+        }
+    }
+
     // camp
     const cdx = (0 - player.position.x) * scale;
     const cdz = (0 - player.position.z) * scale;
@@ -4788,6 +4977,23 @@ function drawBigMap() {
         ctx.lineWidth = 2;
         ctx.fillRect(-5, -5, 10, 10);
         ctx.strokeRect(-5, -5, 10, 10);
+        ctx.restore();
+    }
+
+    // the temple ruin
+    if (temple) {
+        ctx.save();
+        ctx.translate(toPx(temple.x), toPx(temple.z));
+        ctx.fillStyle = '#e4dcc6';
+        ctx.strokeStyle = 'rgba(0,0,0,.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -9);
+        ctx.lineTo(8, 5);
+        ctx.lineTo(-8, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
         ctx.restore();
     }
 
@@ -5540,7 +5746,8 @@ async function boot() {
         await progress(66, 'Scattering relics');
         buildCamp();
         buildRelics();
-        buildLandmarks();   // after relics: waking a waystone surveys those near it
+        await loadTemple();  // may move a relic, so before the waystones survey them
+        buildLandmarks();    // after relics: waking a waystone surveys those near it
         collected = relics.filter(r => r.taken).length;
 
         await progress(74, 'Releasing wildlife');
