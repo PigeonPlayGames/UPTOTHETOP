@@ -882,6 +882,8 @@ const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3.glb';
 const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
+const SILAS_PATH = params.get('silas') || './Silas1.glb';
+const WILLOW_PATH = params.get('willow') || './Willow1.glb';
 const MUSIC_PATH = params.get('music') || './Expanse1.mp3';        // menu / intro
 const GAME_MUSIC_PATH = params.get('music2') || './Expanse2.mp3';  // quiet bed while playing
 const INTRO_VIDEO = params.get('intro') || './Intro.mp4';
@@ -988,6 +990,47 @@ const ENEMY_TYPES = [
             walk: 'walking'
         },
         sounds: { run: './ChrisRunning.mp3', fight: './ChrisFighting.mp3', die: './ChrisDying.mp3' }
+    },
+    {
+        key: 'silas',
+        name: 'Silas',
+        path: SILAS_PATH,
+        height: 1.5,           // a boy — smaller, quicker, hits lighter
+        radius: 0.42,
+        health: 50,
+        damage: 9,
+        chaseSpeed: 5.2,
+        sight: 23,
+        fallback: { cloth: 0x23262b, dark: 0x2b3550, skin: 0xe0b89a, hair: 0x6b4a2f, eyes: 0xffc14d, pack: false },
+        clipNames: {
+            idle:   'Idle 2',
+            attack: 'Punch Combo 1',
+            death:  'Dead',
+            run:    'Running',
+            walk:   'Walking'
+        },
+        sounds: { run: './Silasrunning.mp3', fight: './Silasfighting.mp3', die: './Silasdead.mp3' }
+    },
+    {
+        key: 'willow',
+        name: 'Willow',
+        path: WILLOW_PATH,
+        height: 1.3,           // the smallest and fastest of the four
+        radius: 0.38,
+        health: 40,
+        damage: 7,
+        chaseSpeed: 5.9,
+        sight: 25,
+        fallback: { cloth: 0x16181f, dark: 0x101218, skin: 0xe6c0a6, hair: 0x3a2a20, eyes: 0xa8f0d0, pack: false },
+        clipNames: {
+            // She has no plain idle, so the looking-around clip stands in
+            idle:   'Look Around Dumbfounded',
+            attack: 'Step-in High Kick',
+            death:  'Dead',
+            run:    'Running',
+            walk:   'Walking'
+        },
+        sounds: { run: './Willowrunning.mp3', fight: './Willowfighting.mp3', die: './Willowdead.mp3' }
     }
 ];
 
@@ -3183,6 +3226,8 @@ function createEnemy(id, type, rnd) {
         bar: makeHealthBar()
     };
     e.barFill = e.bar.userData.fill;
+    // A full-size bar over a 1.3m child is nearly as wide as she is tall
+    e.bar.scale.setScalar(THREE.MathUtils.clamp(type.height / 1.95, 0.7, 1.1));
 
     placeEnemy(e, rnd, 0);
     e.holder.position.set(e.x, e.y, e.z);
@@ -3486,12 +3531,13 @@ function updateEnemies(dt) {
         }
 
         _enemyPos.set(e.x, 0, e.z);
-        resolveCollisions(_enemyPos, ENEMY_RADIUS);
+        const eRadius = e.type.radius || ENEMY_RADIUS;
+        resolveCollisions(_enemyPos, eRadius);
         e.x = _enemyPos.x;
         e.z = _enemyPos.z;
 
         // Don't let foes stand inside the player
-        const overlap = ENEMY_RADIUS + PLAYER_RADIUS;
+        const overlap = eRadius + PLAYER_RADIUS;
         if (dist < overlap && dist > 0.001) {
             e.x -= nx * (overlap - dist);
             e.z -= nz * (overlap - dist);
