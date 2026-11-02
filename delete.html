@@ -696,7 +696,7 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     font-size: 9px;
 }
 
-body.touch #touch { display: block; }
+body.touch.playing #touch { display: block; }
 body.touch #minimap { width: 118px; height: 118px; bottom: calc(176px + env(safe-area-inset-bottom)); right: 16px; }
 body.touch #hint { display: none; }
 body.touch #tr { top: 58px; }
@@ -880,11 +880,11 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom3D2.glb';
-const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
+const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const MUSIC_PATH = params.get('music') || './Expanse1.mp3';        // menu / intro
 const GAME_MUSIC_PATH = params.get('music2') || './Expanse2.mp3';  // quiet bed while playing
-const INTRO_VIDEO = params.get('intro') || './Expanse1.mp3';
+const INTRO_VIDEO = params.get('intro') || './Intro.mp4';
 // Link back to the games hub. This page is expected to sit in its own folder
 // (Expanse/Expanse.html) like the other games; change if you put it elsewhere.
 const HUB_URL = '../index.html';
@@ -916,9 +916,14 @@ const PLAYER_RADIUS = 0.45;
 // --- Combat ---
 const PLAYER_MAX_HEALTH = 100;
 const ATTACK_COOLDOWN = 0.45;
-const ATTACK_RANGE = 3.0;
-const ATTACK_ARC = Math.PI * 0.62;     // total swing width
+const ATTACK_RANGE = 3.6;
+const ATTACK_ARC = Math.PI * 0.85;     // total swing width (~153°)
 const ATTACK_DAMAGE = 30;
+// Aim assist: a foe anywhere in this wider cone is close enough to count as
+// "the one you meant", and the swing turns to face them.
+const ASSIST_ARC = Math.PI * 1.25;     // ~225°, i.e. anything not behind you
+const ASSIST_RANGE = ATTACK_RANGE + 0.9;
+const ATTACK_VERTICAL = 3.4;           // height difference still reachable
 const PLAYER_INVULN = 0.65;
 const RESPAWN_DELAY = 2.4;
 
@@ -939,10 +944,10 @@ const ENEMY_TYPES = [
         key: 'kyle',
         name: 'Kyle',
         path: KYLE_PATH,
-        height: 2.4,
-        health: 200,
-        damage: 18,
-        chaseSpeed: 4.8,
+        height: 1.95,
+        health: 60,
+        damage: 12,
+        chaseSpeed: 4.6,
         sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
         // Exact clip names inside Kyle.glb. Edit these if you re-export with
@@ -3010,7 +3015,7 @@ function loadEnemyType(type) {
                 // mid-swing by the next decision.
                 const atk = findClip(type.clips, type.clipNames && type.clipNames.attack);
                 if (atk && atk.duration > 0.1) {
-                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.8, 1.1);
+                    type.windup = THREE.MathUtils.clamp(atk.duration * 0.45, 0.3, 1.1);
                     type.cooldown = THREE.MathUtils.clamp(atk.duration + 0.35, 1.2, 3.0);
                 }
                 resolve(true);
@@ -3477,8 +3482,40 @@ function playerAttack() {
     P.swingTimer = 0.3;
     P.combatTimer = 6;
 
-    // Strike where the camera is looking, not where you last walked
-    P.yaw = camYaw + Math.PI;
+    // Start from where the camera is looking, not where you last walked
+    let aim = camYaw + Math.PI;
+
+    // Aim assist. Without it you have to line the camera up almost exactly,
+    // which makes a circling foe very hard to land a hit on. Pick whichever
+    // reachable enemy is closest to the current aim and swing at them.
+    const px = player.position.x;
+    const pz = player.position.z;
+    const assistDot = Math.cos(ASSIST_ARC / 2);
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const dx = e.x - px;
+        const dz = e.z - pz;
+        const d = Math.hypot(dx, dz);
+        if (d > ASSIST_RANGE || d < 0.001) continue;
+        if (Math.abs(e.y - player.position.y) > ATTACK_VERTICAL) continue;
+
+        const toward = Math.atan2(dx, dz);
+        let off = toward - aim;
+        while (off > Math.PI) off -= Math.PI * 2;
+        while (off < -Math.PI) off += Math.PI * 2;
+        if (Math.cos(off) < assistDot) continue;         // behind you
+
+        // Favour whoever is nearest the crosshair, then whoever is closest
+        const score = Math.abs(off) + d * 0.12;
+        if (score < bestScore) { bestScore = score; best = { e, toward }; }
+    }
+
+    if (best) aim = best.toward;
+
+    P.yaw = aim;
     player.rotation.y = P.yaw;
 
     if (hasClips && actions.attack) {
@@ -3487,19 +3524,21 @@ function playerAttack() {
     }
     sfxSwing(1);
 
-    const fx = Math.sin(P.yaw);
-    const fz = Math.cos(P.yaw);
+    const fx = Math.sin(aim);
+    const fz = Math.cos(aim);
     const minDot = Math.cos(ATTACK_ARC / 2);
     let hits = 0;
 
     for (const e of enemies) {
         if (e.state === 'dead') continue;
-        const dx = e.x - player.position.x;
-        const dz = e.z - player.position.z;
+        const dx = e.x - px;
+        const dz = e.z - pz;
         const d = Math.hypot(dx, dz);
         if (d > ATTACK_RANGE || d < 0.001) continue;
-        if (Math.abs(e.y - player.position.y) > 2.6) continue;
-        if ((dx / d) * fx + (dz / d) * fz < minDot) continue;
+        if (Math.abs(e.y - player.position.y) > ATTACK_VERTICAL) continue;
+        // The assisted target always connects; others need to be in the arc
+        const inArc = (dx / d) * fx + (dz / d) * fz >= minDot;
+        if (!inArc && !(best && best.e === e)) continue;
         damageEnemy(e, ATTACK_DAMAGE, dx / d, dz / d);
         hits++;
     }
@@ -3844,10 +3883,10 @@ function updatePlayer(dt) {
     // Stamina
     const sprinting = wantsRun && input.magnitude > 0.1 && P.stamina > 1 && !P.swimming;
     if (sprinting) {
-        P.stamina = Math.max(0, P.stamina - 17 * dt);
+        P.stamina = Math.max(0, P.stamina - 10.5 * dt);
         P.staminaDelay = 0.9;
     } else if (P.swimming && input.magnitude > 0.1) {
-        P.stamina = Math.max(0, P.stamina - 6 * dt);
+        P.stamina = Math.max(0, P.stamina - 4.5 * dt);
         P.staminaDelay = 0.9;
     } else {
         P.staminaDelay -= dt;
@@ -4698,14 +4737,101 @@ let cineShot = -1;
 
 // A title sequence flown through the real world. Used when there is no
 // Intro.mp4 to play, so there is always a visual intro.
-const CINE_SHOTS = [
-    { from: [-250, 34, 250], to: [-150, 20, 150], look: [0, 8, 0], dur: 6,
-      title: 'EON EXPANSE', sub: '' },
-    { from: [120, 58, -150], to: [60, 26, -60], look: [0, 10, 0], dur: 5,
-      title: '', sub: 'Twelve relics lie scattered' },
-    { from: [40, 14, 40], to: [13, 7, 13], look: [0, 3.5, 0], dur: 4.5,
-      title: '', sub: 'And the far country is not empty' }
-];
+//
+// The shots are worked out from the terrain that actually generated rather
+// than written down as fixed coordinates — fixed ones had the camera flying
+// through the inside of a mountain and framing nothing in particular.
+let CINE_SHOTS = [];
+
+function findCineSubjects() {
+    let peak = { x: 60, z: 60, h: -999 };
+    let lake = null;
+    let bestLakeScore = -1;
+
+    // Coarse sweep of the island for its highest ground and its widest water
+    for (let x = -WORLD_RADIUS + 30; x <= WORLD_RADIUS - 30; x += 18) {
+        for (let z = -WORLD_RADIUS + 30; z <= WORLD_RADIUS - 30; z += 18) {
+            if (Math.hypot(x, z) > WORLD_RADIUS - 30) continue;
+            const h = terrainHeight(x, z);
+            if (h > peak.h) peak = { x, z, h };
+
+            if (h < WATER_LEVEL - 2.5) {
+                // Prefer broad water that still has land nearby to frame it
+                let open = 0;
+                let shore = 0;
+                for (let a = 0; a < 6.283; a += 0.9) {
+                    const sx = x + Math.cos(a) * 30;
+                    const sz = z + Math.sin(a) * 30;
+                    if (terrainHeight(sx, sz) < WATER_LEVEL) open++; else shore++;
+                }
+                const score = open * 2 + shore - Math.hypot(x, z) / 120;
+                if (shore > 0 && score > bestLakeScore) { bestLakeScore = score; lake = { x, z }; }
+            }
+        }
+    }
+
+    if (!lake) lake = { x: peak.x * 0.5, z: peak.z * 0.5 };
+    return { peak, lake };
+}
+
+// Keep the camera above the ground (and above the sea) no matter where a shot
+// puts it. This is what stops the fly-through from burrowing into a hillside.
+function cineClampY(x, y, z, clearance) {
+    const floor = Math.max(terrainHeight(x, z), WATER_LEVEL) + clearance;
+    return Math.max(y, floor);
+}
+
+function buildCineShots() {
+    const { peak, lake } = findCineSubjects();
+
+    // Approach the highest peak from out over open ground, looking at it
+    const pd = Math.hypot(peak.x, peak.z) || 1;
+    const pdx = peak.x / pd;
+    const pdz = peak.z / pd;
+
+    const lakeAngle = Math.atan2(lake.z, lake.x);
+
+    CINE_SHOTS = [
+        {
+            // Wide approach onto the mountains
+            from: [peak.x - pdx * 185, peak.h * 0.55 + 30, peak.z - pdz * 185],
+            to:   [peak.x - pdx * 78,  peak.h * 0.75 + 16, peak.z - pdz * 78],
+            look: [peak.x, peak.h * 0.92, peak.z],
+            clearance: 22, dur: 6.5,
+            title: 'EON EXPANSE', sub: ''
+        },
+        {
+            // Low pass across the water toward the shore
+            from: [lake.x + Math.cos(lakeAngle) * 95, 26, lake.z + Math.sin(lakeAngle) * 95],
+            to:   [lake.x + Math.cos(lakeAngle) * 30, 14, lake.z + Math.sin(lakeAngle) * 30],
+            look: [lake.x, 1, lake.z],
+            clearance: 9, dur: 5.5,
+            title: '', sub: 'Twelve relics lie scattered'
+        },
+        {
+            // Settle toward the camp fire you will start beside
+            from: [52, 40, 52],
+            to:   [15, 11, 15],
+            look: [0, 3.5, 0],
+            clearance: 7, dur: 5,
+            title: '', sub: 'And the far country is not empty'
+        }
+    ];
+
+    // A tall phone screen sees a narrow slice of the world, so the same shot
+    // framed for a laptop is mostly empty sky. Move in closer and sit lower,
+    // which fills the frame with land instead.
+    if (window.innerHeight > window.innerWidth) {
+        for (const s of CINE_SHOTS) {
+            for (const key of ['from', 'to']) {
+                const p = s[key];
+                p[0] = s.look[0] + (p[0] - s.look[0]) * 0.66;
+                p[2] = s.look[2] + (p[2] - s.look[2]) * 0.66;
+                p[1] = s.look[1] + (p[1] - s.look[1]) * 0.72;
+            }
+        }
+    }
+}
 
 function maybeShowMenu() {
     if (bootDone && introDone && !started) showMainMenu();
@@ -4722,9 +4848,12 @@ function setCineText(title, sub) {
 
 function startCinematic() {
     if (introDone || cineActive) return;
+    buildCineShots();
     cineActive = true;
     cineTime = 0;
     cineShot = -1;
+    camera.fov = 68;
+    camera.updateProjectionMatrix();
     document.getElementById('cinematic').classList.add('on');
     introPlaying = false;     // the cinematic is silent, so let the theme play
     syncMusic();
@@ -4752,11 +4881,11 @@ function updateCinematic(dt) {
     // Ease so each shot drifts rather than tracks at a constant rate
     const k = t / shot.dur;
     const e = k * k * (3 - 2 * k);
-    camera.position.set(
-        shot.from[0] + (shot.to[0] - shot.from[0]) * e,
-        shot.from[1] + (shot.to[1] - shot.from[1]) * e,
-        shot.from[2] + (shot.to[2] - shot.from[2]) * e
-    );
+    const cx = shot.from[0] + (shot.to[0] - shot.from[0]) * e;
+    const cy = shot.from[1] + (shot.to[1] - shot.from[1]) * e;
+    const cz = shot.from[2] + (shot.to[2] - shot.from[2]) * e;
+    camera.position.set(cx, cineClampY(cx, cy, cz, shot.clearance || 12), cz);
+
     _cineLook.set(shot.look[0], shot.look[1], shot.look[2]);
     camera.lookAt(_cineLook);
 
@@ -4781,6 +4910,8 @@ function finishIntro() {
     wrap.classList.remove('on');
     document.getElementById('cinematic').classList.remove('on');
     setCineText('', '');
+    camera.fov = settings.fov;
+    camera.updateProjectionMatrix();
     syncMusic();
     maybeShowMenu();
 }
@@ -4820,6 +4951,13 @@ function startIntro() {
     // If it never actually starts playing, use the in-engine sequence instead
     introWatchdog = setTimeout(() => { if (!vid.currentTime) videoUnavailable(); }, 6000);
     vid.addEventListener('playing', () => clearTimeout(introWatchdog), { once: true });
+
+    // Check the file is actually there first. Waiting on a <video> element to
+    // give up on a missing file leaves a black screen for seconds, which is
+    // what made the intro look broken on mobile.
+    fetch(INTRO_VIDEO, { method: 'HEAD' })
+        .then(res => { if (!res.ok) videoUnavailable(); })
+        .catch(() => videoUnavailable());
 
     vid.src = INTRO_VIDEO;
     // Try with sound; browsers only allow that in some cases, so fall back to
@@ -4875,6 +5013,7 @@ function showMainMenu() {
     closeOverlay();
     mainMenuEl.classList.add('on');
     document.getElementById('hud').classList.add('menu-hidden');
+    document.body.classList.remove('playing');
     if (document.pointerLockElement) document.exitPointerLock();
     updateMenuProgress();
     syncMusic();
@@ -4884,6 +5023,7 @@ function enterWorld() {
     mainMenuEl.classList.remove('on');
     controlsEl.classList.remove('on');
     document.getElementById('hud').classList.remove('menu-hidden');
+    document.body.classList.add('playing');
     started = true;
     syncMusic();
     clock.getDelta();
