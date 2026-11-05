@@ -917,7 +917,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
    ============================================================ */
 
 const params = new URLSearchParams(location.search);
-const MODEL_PATH = params.get('model') || './Tom5.glb';
+const MODEL_PATH = params.get('model') || './Tom6.glb';
 const PICKAXE_PATH = params.get('pickaxe') || './Pickaxe.glb';
 const AXE_PATH = params.get('axe') || './Axe.glb';
 const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
@@ -945,9 +945,30 @@ const PLAYER_CLIP_NAMES = {
     swim:     'Swim Forward',
     swimIdle: 'Swim Idle',
     mine:     'Heavy Hammer Swing',
-    // Tom5.glb exports this one without a readable name, so if "Chop2" is not
+    // The model exports this one without a readable name, so if "Chop2" is not
     // found the leftover unmatched clip is used instead (see buildActions).
     chop:     'Chop2'
+};
+
+// "Right Jab from Guard" runs for two seconds, but the hand only moves between
+// 0.40s and 1.02s and the punch peaks at 0.50s — everything either side is the
+// character standing in a guard. Holding the pose for the old third of a second
+// meant the jab was never reached, so fighting looked as though it used some
+// other animation entirely. Come in just before the punch and hold until it has
+// landed and started to pull back.
+const ATTACK_CLIP_IN = 0.30;
+const ATTACK_CLIP_OUT = 1.35;
+
+// Neither work animation is authored facing straight ahead. Measured against
+// the walk cycle — which is what the game's own sense of "forward" is built on
+// — the chop turns the body about 35 degrees to its left across the swing and
+// the pickaxe swing about 50 degrees to its right. The game aims the player at
+// the rock or the tree, so without cancelling that out the work lands off to
+// one side. These are added to the aim; set either to 0 to leave a clip as its
+// animator authored it.
+const WORK_FACING = {
+    rock: 1.02,     // +59 degrees, undoing the swing's lean to the right
+    tree: -0.58     // -33 degrees, undoing the chop's lean to the left
 };
 
 // The tools hang off this bone. Mixamo rigs name it mixamorigRightHand; the
@@ -3043,29 +3064,93 @@ function syncMusic() {
     if (hint) hint.classList.toggle('gone', !!(Audio.ready && Audio.ctx.state === 'running'));
 }
 
-function sfxPickStrike() {
-    noiseBurst(0.12, 0.2, 'bandpass', 2600, 1.4, 0.03);
-    blip('square', 420, 150, 0.09, 0.07, 'lowpass', 1800);
-    blip('sine', 130, 70, 0.14, 0.09, 'lowpass', 500);
+// A struck object does not make one noise. It makes a transient — the instant
+// of contact — and then the thing itself ringing that energy off at whatever
+// frequencies its shape favours. `ring` is that second half: a two-millisecond
+// impulse fed through a sharp resonant filter, which keeps sounding after the
+// impulse has gone. Stacking two or three of these is what separates stone
+// from wood; a single filtered hiss only ever sounds like a click.
+function ring(freq, q, dur, vol, delay) {
+    if (!Audio.ready) return;
+    const ctx = Audio.ctx;
+    const t = ctx.currentTime + (delay || 0);
+    const len = Math.max(32, Math.floor(ctx.sampleRate * 0.002));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f);
+    f.connect(g);
+    g.connect(Audio.master);
+    src.start(t);
+    src.stop(t + dur + 0.05);
 }
 
+// Steel point into stone: a bright chip, the tool ringing, the rock answering
+// an octave and a half below, and the weight of the swing under all of it.
+// Every blow is detuned a little so a long dig never sounds like a loop.
+function sfxPickStrike() {
+    const v = 0.88 + Math.random() * 0.26;
+    noiseBurst(0.035, 0.13, 'highpass', 3600, 0.7, 0.004);
+    ring(1880 * v, 24, 0.15, 0.075);
+    ring(2840 * v, 31, 0.09, 0.042);
+    ring(610 * v, 8, 0.2, 0.055);
+    blip('sine', 124 * v, 56, 0.17, 0.08, 'lowpass', 420);
+    // grit skittering off a moment later
+    setTimeout(() => noiseBurst(0.1, 0.045, 'bandpass', 2300 + Math.random() * 1400, 2.6, 0.02),
+        45 + Math.random() * 45);
+}
+
+// Wood is the same shape of sound an octave down and far more damped — low Q,
+// so the partials die almost as soon as they start. That dullness is the whole
+// difference between an axe in a trunk and a pick on a boulder.
 function sfxAxeStrike() {
-    noiseBurst(0.18, 0.17, 'lowpass', 1600, 0, 0.05);
-    blip('triangle', 260, 90, 0.16, 0.09, 'lowpass', 900);
+    const v = 0.9 + Math.random() * 0.22;
+    noiseBurst(0.028, 0.15, 'bandpass', 2000, 1.1, 0.004);
+    ring(340 * v, 10, 0.18, 0.15);
+    ring(186 * v, 7, 0.26, 0.13);
+    ring(820 * v, 6, 0.07, 0.05);
+    blip('triangle', 148 * v, 68, 0.2, 0.12, 'lowpass', 700);
+    // splinters
+    setTimeout(() => noiseBurst(0.14, 0.04, 'bandpass', 850 + Math.random() * 600, 1.7, 0.06), 55);
 }
 
 function sfxRockBreak() {
-    noiseBurst(0.5, 0.3, 'lowpass', 1500, 0, 0.02);
-    for (let i = 0; i < 4; i++) {
-        setTimeout(() => noiseBurst(0.16, 0.1, 'bandpass', 900 + Math.random() * 1600, 1.2, 0.05), i * 70);
+    noiseBurst(0.07, 0.28, 'highpass', 2000, 0.7, 0.003);
+    ring(440, 6, 0.42, 0.12);
+    ring(255, 5, 0.58, 0.11);
+    blip('sine', 92, 40, 0.55, 0.11, 'lowpass', 300);
+    // the pieces coming to rest
+    for (let i = 0; i < 6; i++) {
+        setTimeout(() => {
+            ring(680 + Math.random() * 1700, 13, 0.08, 0.045);
+            noiseBurst(0.08, 0.05, 'bandpass', 1100 + Math.random() * 1700, 1.9, 0.03);
+        }, 95 + i * 80 + Math.random() * 70);
     }
-    blip('sine', 96, 48, 0.4, 0.1, 'lowpass', 380);
 }
 
 function sfxTreeFall() {
-    noiseBurst(0.9, 0.22, 'lowpass', 1100, 0, 0.25);
-    setTimeout(() => { noiseBurst(0.5, 0.26, 'lowpass', 600, 0, 0.05);
-                       blip('sine', 80, 40, 0.5, 0.12, 'lowpass', 300); }, 520);
+    // fibres letting go, one at a time, before the whole thing goes over
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => ring(150 + Math.random() * 250, 15, 0.13, 0.05),
+            i * 90 + Math.random() * 55);
+    }
+    setTimeout(() => noiseBurst(0.8, 0.19, 'lowpass', 1500, 0, 0.34), 270);   // branches through air
+    setTimeout(() => {
+        noiseBurst(0.45, 0.26, 'lowpass', 520, 0, 0.02);                      // and down
+        ring(88, 4, 0.6, 0.15);
+        blip('sine', 70, 34, 0.6, 0.13, 'lowpass', 240);
+    }, 830);
 }
 
 function sfxSwing(strength) {
@@ -3136,6 +3221,7 @@ const P = {
     hitFlash: 0,
     attackCd: 0,
     swingTimer: 0,
+    attackAnim: 0,      // how long the jab still has to run
     dead: false,
     deadTimer: 0,
     combatTimer: 0,
@@ -3438,8 +3524,11 @@ function updateAnimation(dt, horizontalSpeed, running) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
         } else if (H.active) {
-            playAction(H.active.kind === 'rock' ? 'mine' : 'chop', 0.15);
-        } else if (P.swingTimer > 0 && actions.attack) {
+            const work = H.active.kind === 'rock' ? 'mine' : 'chop';
+            playAction(work, 0.15);
+            // walk and run leave a time scale behind on a shared action
+            if (actions[work]) actions[work].setEffectiveTimeScale(1);
+        } else if (P.attackAnim > 0 && actions.attack) {
             playAction('attack', 0.07);
         } else if (P.swimming) {
             // Tread water unless actually making headway. The old threshold
@@ -3516,8 +3605,18 @@ const harvestables = [];      // every tree and boulder that can be worked
 const harvestMeshes = [];     // the instanced meshes they live in, for picking
 
 const HARVEST_RANGE = 4.2;    // how close you must be to start
-const HARVEST_TIME = { rock: 2.8, tree: 2.6 };
 const HARVEST_RESPAWN = 60;   // seconds before it grows back
+
+// Work runs for two complete swings rather than a flat number of seconds, so
+// the rock never vanishes halfway through the animation. If a clip is missing
+// these stand in for its length.
+const HARVEST_SWINGS = 2;
+const HARVEST_FALLBACK = { rock: 1.85, tree: 1.95 };
+
+// Where in each swing the blow actually lands, as a fraction of the clip:
+// measured from the lowest point the right hand reaches. The pickaxe comes
+// down right at the end of its cycle, the axe a little under halfway.
+const HARVEST_IMPACT = { rock: 0.945, tree: 0.437 };
 
 const harvestGone = [];       // only the ones currently cleared, for the respawn clock
 
@@ -3531,9 +3630,16 @@ const H = {
     total: 0,
     stone: 0,
     wood: 0,
-    nextHit: 0,
+    hits: [],          // elapsed times at which each blow lands
     pickClock: 0
 };
+
+// How long one swing of the right tool takes, read from the animation itself
+function harvestSwing(kind) {
+    const a = actions && actions[kind === 'rock' ? 'mine' : 'chop'];
+    const d = a && a.userData && a.userData.duration;
+    return (d && d > 0.4) ? d : HARVEST_FALLBACK[kind];
+}
 
 const _zeroMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
 const _partMatrix = new THREE.Matrix4();
@@ -3626,13 +3732,23 @@ function pickHarvestable(ndcX, ndcY) {
 function startHarvest(h) {
     if (!h || H.active || P.dead || P.swimming) return false;
     H.active = h;
-    H.total = HARVEST_TIME[h.kind] || 2.6;
+
+    // Two whole swings, so the last blow is seen to land before it gives
+    const swing = harvestSwing(h.kind);
+    H.total = swing * HARVEST_SWINGS;
     H.timer = H.total;
-    H.nextHit = 0;
+
+    // One sound per blow, at the point in the swing where the tool arrives
+    H.hits.length = 0;
+    for (let i = 0; i < HARVEST_SWINGS; i++) {
+        H.hits.push(swing * (i + HARVEST_IMPACT[h.kind]));
+    }
+
     showTool(h.kind === 'rock' ? 'pickaxe' : 'axe');
 
-    // Face the work
-    P.faceTarget = Math.atan2(h.x - player.position.x, h.z - player.position.z);
+    // Face the work, allowing for the lean the animation itself carries
+    P.faceTarget = Math.atan2(h.x - player.position.x, h.z - player.position.z) +
+        (WORK_FACING[h.kind] || 0);
     P.faceTimer = H.total + 0.3;
     P.vel.x = 0;
     P.vel.z = 0;
@@ -3643,6 +3759,7 @@ function cancelHarvest() {
     if (!H.active) return;
     H.active = null;
     H.timer = 0;
+    H.hits.length = 0;
     showTool(null);
 }
 
@@ -3660,6 +3777,7 @@ function finishHarvest() {
     updateRelicHud();
     H.active = null;
     H.timer = 0;
+    H.hits.length = 0;
     showTool(null);
 }
 
@@ -3699,11 +3817,11 @@ function updateHarvest(dt) {
             cancelHarvest();
         } else {
             H.timer -= dt;
-            H.nextHit -= dt;
-            if (H.nextHit <= 0) {
-                H.nextHit = 0.62;
+            const elapsed = H.total - H.timer;
+            while (H.hits.length && elapsed >= H.hits[0]) {
+                H.hits.shift();
                 if (h.kind === 'rock') sfxPickStrike(); else sfxAxeStrike();
-                camShake = Math.min(camShake + 0.05, 0.14);
+                camShake = Math.min(camShake + 0.07, 0.16);
             }
             if (H.timer <= 0) finishHarvest();
         }
@@ -4299,8 +4417,16 @@ function playerAttack() {
     P.swingYaw = aim;
 
     if (hasClips && actions.attack) {
-        actions.attack.reset();
-        playAction('attack', 0.07);
+        const a = actions.attack;
+        const clipLen = (a.userData && a.userData.duration) || ATTACK_CLIP_OUT;
+        const from = Math.min(ATTACK_CLIP_IN, clipLen * 0.2);
+        const to = Math.min(ATTACK_CLIP_OUT, clipLen);
+        // A second jab inside the first restarts it rather than being ignored
+        if (currentAction === a) { a.reset(); a.play(); }
+        else playAction('attack', 0.07);
+        a.setEffectiveTimeScale(1);
+        a.time = from;                       // skip the guard stance
+        P.attackAnim = Math.max(0.3, to - from);
     }
     sfxSwing(1);
 
@@ -4344,6 +4470,7 @@ function killPlayer() {
     P.deadTimer = RESPAWN_DELAY;
     P.vel.set(0, 0, 0);
     P.swingTimer = 0;
+    P.attackAnim = 0;
     deathEl.classList.add('on');
     sfxDeath();
     writeSave();
@@ -4661,6 +4788,7 @@ const _flat = new THREE.Vector3();
 function updatePlayer(dt) {
     // Combat timers
     P.attackCd -= dt;
+    P.attackAnim -= dt;
     P.invuln -= dt;
     P.combatTimer -= dt;
     if (P.hitFlash > 0) P.hitFlash = Math.max(0, P.hitFlash - dt * 2.2);
