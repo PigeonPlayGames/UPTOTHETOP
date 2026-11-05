@@ -590,6 +590,85 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 
 /* ---------- Map and completion screens ---------- */
 
+/* ---------- Contextual nudges along the bottom ---------- */
+
+#cues {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    z-index: 14;
+    display: flex;
+    gap: 8px;
+    pointer-events: none;
+}
+#cues button {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    pointer-events: auto;
+    font: inherit;
+    color: var(--dim);
+    background: rgba(13, 22, 24, 0.72);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    padding: 6px 11px 6px 7px;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+}
+#cues button.on { display: flex; }
+#cues button:hover { color: var(--ink); border-color: rgba(159, 227, 211, 0.5); }
+#cues kbd {
+    font: inherit;
+    font-size: 9px;
+    min-width: 17px;
+    text-align: center;
+    padding: 3px 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: var(--ink);
+}
+#cues button.alert {
+    color: var(--ink);
+    border-color: rgba(159, 227, 211, 0.75);
+    animation: cuePulse 2s ease-in-out infinite;
+}
+@keyframes cuePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(159, 227, 211, 0); }
+    50% { box-shadow: 0 0 14px 1px rgba(159, 227, 211, 0.38); }
+}
+
+/* The touch PACK button wears the same news as a dot in its corner */
+#btn-pack.alert {
+    border-color: #9fe3d3;
+    animation: cuePulse 2s ease-in-out infinite;
+}
+#btn-pack.alert::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #e8a07a;
+    border: 1px solid rgba(8, 14, 15, 0.8);
+}
+
+#sleep-fade {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: #05090a;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s linear;
+}
+
 #map-screen, #finish, #pack-screen {
     position: fixed;
     inset: 0;
@@ -638,6 +717,32 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     margin: 4px 0 -2px;
 }
 #pack-recipes { display: flex; flex-direction: column; gap: 6px; }
+.art {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.art svg { display: block; width: 100%; height: 100%; }
+.art .haft {
+    stroke: #c89a6a;
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    fill: none;
+}
+.art .head {
+    stroke: #9fe3d3;
+    stroke-width: 2.6;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    fill: rgba(159, 227, 211, 0.14);
+}
+.art .head.thin { stroke-width: 1.4; fill: none; opacity: 0.75; }
+.art .head.wood { stroke: #c89a6a; fill: rgba(200, 154, 106, 0.18); }
+.art .spark { stroke: #e8a07a; stroke-width: 1.8; stroke-linecap: round; fill: none; }
+.recipe.made .art { filter: grayscale(0.7); }
 .recipe {
     display: flex;
     align-items: center;
@@ -886,6 +991,13 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <div id="hint">Click to look around</div>
 </div>
 
+<div id="cues">
+    <button id="pack-cue" type="button"><kbd>I</kbd><span id="pack-cue-key">Pack</span></button>
+    <button id="sleep-cue" type="button"><kbd id="sleep-key">K</kbd><span>Sleep until dawn</span></button>
+</div>
+
+<div id="sleep-fade"></div>
+
 <div id="touch">
     <div id="stick-base"><div id="stick-knob"></div></div>
     <button class="tbtn" id="btn-attack">HIT</button>
@@ -1028,6 +1140,7 @@ const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom6.glb';
 const PICKAXE_PATH = params.get('pickaxe') || './Pickaxe.glb';
 const AXE_PATH = params.get('axe') || './Axe.glb';
+const WOODPICK_PATH = params.get('woodpick') || './Wooden_Pickaxe.glb';
 const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const TEMPLE_PATH = params.get('temple') || './Temple1.glb';
@@ -1053,6 +1166,7 @@ const PLAYER_CLIP_NAMES = {
     swim:     'Swim Forward',
     swimIdle: 'Swim Idle',
     mine:     'Heavy Hammer Swing',
+    sleep:    'Sleep Normally',
     // The model exports this one without a readable name, so if "Chop2" is not
     // found the leftover unmatched clip is used instead (see buildActions).
     chop:     'Chop2'
@@ -1091,8 +1205,9 @@ const TOOL_BONE = 'RightHand';
 // palm, and the offset is worked out from the two so the grip lands in the
 // hand. Nudge `grip` up or down the handle if a tool sits oddly.
 const TOOL_FIT = {
-    pickaxe: { scale: 1.0, grip: [0.143, 0.20, 0], rot: [0, 0, Math.PI / 2] },
-    axe:     { scale: 1.0, grip: [0.005, 0.12, 0], rot: [0, 0, Math.PI / 2] }
+    pickaxe:  { scale: 1.0, grip: [0.143, 0.20, 0], rot: [0, 0, Math.PI / 2] },
+    axe:      { scale: 1.0, grip: [0.005, 0.12, 0], rot: [0, 0, Math.PI / 2] },
+    woodpick: { scale: 1.0, grip: [-0.047, 0.18, 0], rot: [0, 0, Math.PI / 2] }
 };
 
 const PLAYER_HEIGHT = 1.85;
@@ -1266,6 +1381,7 @@ let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kill
 const INV = {
     stone: 0,
     wood: 0,
+    woodpick: false,
     axe: false,
     pickaxe: false,
     whetstone: false,   // attacks hit harder
@@ -1275,15 +1391,42 @@ const INV = {
 // Cost is what it takes; `gives` is what owning it changes. Order is the order
 // they appear on the panel.
 const RECIPES = [
+    { id: 'woodpick', name: 'Wooden pickaxe', wood: 4, stone: 0,
+      note: 'All wood, so you can make it with nothing else. It will not break a boulder, but it will chip stone off one.' },
     { id: 'axe', name: 'Stone axe', wood: 3, stone: 2,
       note: 'Fell a whole tree for three wood instead of pulling off one branch.' },
     { id: 'pickaxe', name: 'Stone pickaxe', wood: 3, stone: 3,
-      note: 'Break open boulders for three stone instead of scavenging pebbles.' },
+      note: 'Break open boulders for three stone at a time.' },
     { id: 'whetstone', name: 'Whetstone', wood: 1, stone: 4,
       note: 'A keener edge. Every blow you land does half again as much.' },
     { id: 'honed', name: 'Honed edges', wood: 6, stone: 6,
-      note: 'Rework both heads. Gathering takes one swing where it took two.' }
+      note: 'Rework the heads. Gathering takes one swing where it took two.' }
 ];
+
+// Drawn here rather than shipped as images: they are a few hundred bytes each,
+// they stay sharp at any size, and they pick up the panel's own colours.
+const RECIPE_ART = {
+    // Wood-coloured head, so it does not read as the stone pickaxe at a glance
+    woodpick:
+        '<path d="M20 34 L30 10" class="haft"/>' +
+        '<path d="M12 14 C20 7, 32 7, 40 14" class="head wood"/>' +
+        '<path d="M12 14 C20 11, 32 11, 40 14" class="head wood thin"/>',
+    axe:
+        '<path d="M19 36 L27 9" class="haft"/>' +
+        '<path d="M25 11 L36 13 C41 17, 40 22, 36 25 L24 20 Z" class="head"/>',
+    pickaxe:
+        '<path d="M20 34 L30 10" class="haft"/>' +
+        '<path d="M11 17 L30 9 L41 17" class="head"/>' +
+        '<path d="M11 17 L30 14 L41 17" class="head thin"/>',
+    whetstone:
+        '<path d="M9 30 L33 22 L41 27 L17 35 Z" class="head"/>' +
+        '<path d="M15 19 L36 12" class="haft"/>' +
+        '<path d="M31 9 L38 11 L36 16" class="head thin"/>',
+    honed:
+        '<path d="M10 31 L28 24 L34 28 L16 35 Z" class="head"/>' +
+        '<path d="M20 17 L34 12" class="haft"/>' +
+        '<path d="M37 9 L40 13 M34 18 L39 19 M39 6 L41 6" class="spark"/>'
+};
 
 function loadSave() {
     try {
@@ -1301,6 +1444,7 @@ function loadSave() {
         if (data.inv && typeof data.inv === 'object') {
             INV.stone = Math.max(0, data.inv.stone | 0);
             INV.wood = Math.max(0, data.inv.wood | 0);
+            INV.woodpick = !!data.inv.woodpick;
             INV.axe = !!data.inv.axe;
             INV.pickaxe = !!data.inv.pickaxe;
             INV.whetstone = !!data.inv.whetstone;
@@ -1322,7 +1466,7 @@ function writeSave() {
             pos: player ? [player.position.x, player.position.y, player.position.z] : null,
             inv: {
                 stone: INV.stone, wood: INV.wood,
-                axe: INV.axe, pickaxe: INV.pickaxe,
+                woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
                 whetstone: INV.whetstone, honed: INV.honed
             }
         }));
@@ -3686,6 +3830,9 @@ function updateAnimation(dt, horizontalSpeed, running) {
     if (hasClips) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
+        } else if (SLEEP.phase && actions.sleep) {
+            playAction('sleep', 0.4);
+            if (actions.sleep) actions.sleep.setEffectiveTimeScale(1);
         } else if (H.active && H.job) {
             const work = H.job.anim;
             playAction(work, 0.15);
@@ -3792,6 +3939,10 @@ const BRANCH_COOLDOWN = 30;   // a tree you have stripped needs a while
 const JOBS = {
     mine:     { anim: 'mine', tool: 'pickaxe', swings: 2, stone: 3, clears: true,
                 verb: 'Mine the boulder' },
+    // A wooden head cannot break a boulder open. It can chip a piece off one,
+    // which is enough to earn the stone head that can.
+    chip:     { anim: 'mine', tool: 'woodpick', swings: 2, stone: 1, clears: false,
+                verb: 'Chip at the boulder' },
     pebble:   { anim: 'mine', tool: null, swings: 1, stone: 1, clears: true,
                 verb: 'Prise out the stone' },
     fell:     { anim: 'chop', tool: 'axe', swings: 2, wood: 3, clears: true,
@@ -3804,20 +3955,20 @@ const JOBS = {
 function jobFor(h) {
     if (!h) return null;
     if (h.kind === 'pebble') return JOBS.pebble;
-    if (h.kind === 'rock') return INV.pickaxe ? JOBS.mine : null;
+    if (h.kind === 'rock') return INV.pickaxe ? JOBS.mine : (INV.woodpick ? JOBS.chip : null);
     if (h.kind === 'tree') return INV.axe ? JOBS.fell : JOBS.branches;
     return null;
 }
 
 function blockedBy(h) {
-    if (h && h.kind === 'rock' && !INV.pickaxe) return 'Need a pickaxe';
+    if (h && h.kind === 'rock' && !INV.pickaxe && !INV.woodpick) return 'Need a pickaxe';
     return null;
 }
 
 const harvestGone = [];       // cleared from the world, waiting to grow back
 const harvestCooling = [];    // still standing, but worked too recently
 
-const tools = { pickaxe: null, axe: null };
+const tools = { pickaxe: null, axe: null, woodpick: null };
 let toolBone = null;
 
 const H = {
@@ -3912,6 +4063,31 @@ function setHarvestablePartsVisible(h, visible) {
 // What the player is pointing at, if it is close enough to work on.
 // ndc is the point on screen to shoot through — the middle when the mouse is
 // captured, or wherever a finger landed.
+// Whatever is nearest and roughly in front, ignoring the crosshair entirely.
+// A loose stone sits at your feet, well below the middle of the screen, so a
+// ray through the crosshair sails over the top of it and the thing you are
+// standing on top of reads as unreachable. That is a miserable way to lose the
+// only resource an empty-handed player can get at, so a miss falls back to this.
+function nearestInFront() {
+    const px = player.position.x;
+    const pz = player.position.z;
+    const fx = -Math.sin(camYaw);
+    const fz = -Math.cos(camYaw);
+    let best = null;
+    let bestD = Infinity;
+    for (const h of harvestables) {
+        if (h.gone > 0 || h.cool > 0) continue;
+        const dx = h.x - px;
+        const dz = h.z - pz;
+        const d = Math.hypot(dx, dz);
+        if (d > HARVEST_RANGE || d < 0.0001) continue;
+        // a wide cone, because this is already the forgiving path
+        if ((dx / d) * fx + (dz / d) * fz < 0.35) continue;
+        if (d < bestD) { bestD = d; best = h; }
+    }
+    return best;
+}
+
 function pickHarvestable(ndcX, ndcY) {
     if (!harvestMeshes.length) return null;
     _pickPoint.set(ndcX, ndcY);
@@ -3925,10 +4101,10 @@ function pickHarvestable(ndcX, ndcY) {
             q.gone <= 0 && !(q.cool > 0) &&
             q.parts.some(p => p.mesh === hit.object && p.index === hit.instanceId));
         if (!h) continue;
-        if (Math.hypot(h.x - player.position.x, h.z - player.position.z) > HARVEST_RANGE) return null;
+        if (Math.hypot(h.x - player.position.x, h.z - player.position.z) > HARVEST_RANGE) break;
         return h;
     }
-    return null;
+    return nearestInFront();
 }
 
 function startHarvest(h) {
@@ -4791,6 +4967,7 @@ function setupInput() {
             e.preventDefault();
             if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
         }
+        if (e.code === 'KeyK') beginSleep();
         if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
@@ -4957,10 +5134,15 @@ function setupInput() {
         e.preventDefault();
         if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map');
     });
-    document.getElementById('btn-pack').addEventListener('pointerdown', (e) => {
+    packBtn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
     });
+    packCueEl.addEventListener('click', () => {
+        if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
+    });
+    sleepCueEl.addEventListener('click', beginSleep);
+    sleepCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginSleep(); });
     // Several independent ways out of a full-screen panel: the button (by
     // click or touch), a tap on the backdrop, or Escape. No single quirk of
     // one input path can trap someone on these screens.
@@ -5055,7 +5237,7 @@ function updatePlayer(dt) {
         else if (P.combatTimer <= 0) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 1.6 * dt);
     }
 
-    const input = (P.dead || H.active) ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
+    const input = (P.dead || H.active || SLEEP.phase) ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
     const wantsRun = !P.dead && (keys.ShiftLeft || keys.ShiftRight || touchState.run);
 
     const forwardX = -Math.sin(camYaw);
@@ -5211,7 +5393,8 @@ function updatePlayer(dt) {
     // HUD state line
     let state = 'Exploring';
     if (P.dead) state = 'Down';
-    else if (H.active) state = H.active.kind === 'rock' ? 'Mining' : 'Chopping';
+    else if (SLEEP.phase) state = 'Sleeping';
+    else if (H.active && H.job) state = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
     else if (P.combatTimer > 0) state = 'In combat';
     else if (P.swimming) state = 'Swimming';
     else if (!P.grounded) state = P.vel.y > 0 ? 'Jumping' : 'Falling';
@@ -5811,7 +5994,7 @@ function openOverlay(name) {
     document.getElementById(overlayEls[name]).classList.add('on');
     if (pointerLocked) document.exitPointerLock();
     if (name === 'map') drawBigMap();
-    if (name === 'pack') drawPack();
+    if (name === 'pack') { drawPack(); markCraftSeen(); }
 }
 
 function closeOverlay() {
@@ -5824,7 +6007,88 @@ function closeOverlay() {
     }
 }
 
+/* ============================================================
+   SLEEPING THROUGH THE NIGHT
+   ============================================================ */
+
+// Night is simply the sun being below the horizon, with a little margin so
+// the prompt does not flicker on at the exact moment of sunset.
+function isNight() {
+    return Math.sin((timeOfDay - 0.25) * Math.PI * 2) < -0.06;
+}
+
+const DAWN = 0.265;           // just past sunrise, with the light coming up
+
+const SLEEP = { phase: null, t: 0 };
+const SLEEP_DOWN = 2.2;       // lying down and the screen going dark
+const SLEEP_UP = 1.8;         // and coming back
+
+function canSleep() {
+    return started && !paused && !overlay && !SLEEP.phase &&
+        !P.dead && !P.swimming && P.grounded && !H.active &&
+        P.combatTimer <= 0 && !foeWithinSwing() && isNight();
+}
+
+function beginSleep() {
+    if (!canSleep()) return;
+    SLEEP.phase = 'down';
+    SLEEP.t = 0;
+    cancelHarvest();
+    P.vel.x = 0;
+    P.vel.z = 0;
+    // Deliberately keeps the mouse captured. Releasing it trips the "pointer
+    // lock lost" handler, which pauses the game and puts the settings menu up
+    // over the top of a player who only wanted to go to sleep.
+}
+
+function updateSleep(dt) {
+    if (!SLEEP.phase) {
+        sleepFadeEl.style.opacity = '0';
+        return;
+    }
+    SLEEP.t += dt;
+
+    if (SLEEP.phase === 'down') {
+        // Being set upon wakes you; something merely wandering past does not.
+        // Proximity alone is the wrong test — it is what the check before you
+        // lie down is for, and applying it every frame cancelled the sleep on
+        // the very next one whenever anything was in the neighbourhood.
+        if (P.dead || P.combatTimer > 0) {
+            SLEEP.phase = null;
+            SLEEP.t = 0;
+            sleepFadeEl.style.opacity = '0';
+            toast('Woken — something is on you', 2600);
+            return;
+        }
+        sleepFadeEl.style.opacity = Math.min(1, SLEEP.t / SLEEP_DOWN).toFixed(3);
+        if (SLEEP.t >= SLEEP_DOWN) {
+            timeOfDay = DAWN;
+            P.health = PLAYER_MAX_HEALTH;
+            P.stamina = 100;
+            SLEEP.phase = 'up';
+            SLEEP.t = 0;
+            writeSave();
+        }
+        return;
+    }
+
+    sleepFadeEl.style.opacity = Math.max(0, 1 - SLEEP.t / SLEEP_UP).toFixed(3);
+    if (SLEEP.t >= SLEEP_UP) {
+        SLEEP.phase = null;
+        SLEEP.t = 0;
+        toast('Dawn. Rested.', 2800);
+    }
+}
+
 /* ---- the pack: what is carried, and what it can be made into ---- */
+
+const sleepFadeEl = document.getElementById('sleep-fade');
+// A key cap means nothing to a thumb
+if (isTouch) document.getElementById('sleep-key').remove();
+const packBtn = document.getElementById('btn-pack');
+const packCueEl = document.getElementById('pack-cue');
+const packCueKeyEl = document.getElementById('pack-cue-key');
+const sleepCueEl = document.getElementById('sleep-cue');
 
 const packWoodEl = document.getElementById('pack-wood');
 const packStoneEl = document.getElementById('pack-stone');
@@ -5834,6 +6098,29 @@ const packHintEl = document.getElementById('pack-hint');
 
 function canCraft(r) {
     return !INV[r.id] && INV.wood >= r.wood && INV.stone >= r.stone;
+}
+
+// Anything you can afford that you have not already been shown counts as news.
+// Opening the pack is what marks it seen, so the nudge goes away by being
+// acted on rather than by timing out.
+const craftSeen = new Set();
+
+function craftableNews() {
+    for (const r of RECIPES) if (canCraft(r) && !craftSeen.has(r.id)) return true;
+    return false;
+}
+
+function markCraftSeen() {
+    for (const r of RECIPES) if (canCraft(r)) craftSeen.add(r.id);
+    refreshCraftCue();
+}
+
+function refreshCraftCue() {
+    const news = craftableNews();
+    packBtn.classList.toggle('alert', news);
+    packCueEl.classList.toggle('alert', news);
+    packCueEl.classList.toggle('on', started && !isTouch);
+    packCueKeyEl.textContent = news ? 'Something new to make' : 'Pack';
 }
 
 function craft(id) {
@@ -5846,6 +6133,7 @@ function craft(id) {
     toast(r.name + ' made', 2600);
     updateRelicHud();
     drawPack();
+    markCraftSeen();
     writeSave();
 }
 
@@ -5859,6 +6147,12 @@ function drawPack() {
         const made = !!INV[r.id];
         const row = document.createElement('div');
         row.className = 'recipe' + (made ? ' made' : '');
+
+        const art = document.createElement('div');
+        art.className = 'art';
+        art.innerHTML = '<svg viewBox="0 0 50 44" aria-hidden="true">' +
+            (RECIPE_ART[r.id] || '') + '</svg>';
+        row.appendChild(art);
 
         const txt = document.createElement('div');
         txt.className = 'txt';
@@ -6374,6 +6668,7 @@ function resetProgress() {
     // Back to empty hands, which means making the first axe again
     INV.stone = 0;
     INV.wood = 0;
+    INV.woodpick = false;
     INV.axe = false;
     INV.pickaxe = false;
     INV.whetstone = false;
@@ -6408,17 +6703,20 @@ function buildControlsList() {
            ['Strike', 'HIT button'], ['Gather', 'Tap a rock or tree'],
            ['Jump', 'JUMP button'], ['Sprint', 'RUN button (toggle)'],
            ['Map', 'MAP button'], ['Pack and crafting', 'PACK button'],
+           ['Sleep till dawn', 'SLEEP button, at night'],
            ['Settings', '≡ button']]
         : [['Move', 'WASD / arrows'], ['Look', 'Mouse'], ['Zoom', 'Scroll wheel'],
            ['Strike', 'Click or E'], ['Gather', 'Click a rock or tree'],
            ['Jump', 'Space'], ['Sprint', 'Shift'],
            ['Map', 'M'], ['Pack and crafting', 'I or Tab'],
+           ['Sleep till dawn', 'K, at night'],
            ['First person', 'V'], ['Hide HUD', 'F'],
            ['Flip model facing', 'B'], ['Skip time', 'T'], ['Settings', 'Esc']];
     document.getElementById('controls-list').innerHTML =
         rows.map(r => '<div><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('') +
         '<div><span>Heal</span><b>Rest at the campfire</b></div>' +
         '<div><span>Tools</span><b>Made in the pack, not found</b></div>' +
+        '<div><span>First tool</span><b>A wooden pickaxe, from wood alone</b></div>' +
         '<div><span>Respawn point</span><b>Nearest waystone you woke</b></div>';
 }
 
@@ -6639,6 +6937,7 @@ function animate() {
         updateSky(dt);
         updateEnemies(dt);
         updateHarvest(dt);
+        updateSleep(dt);
         updateWaystones(dt);
         updateSwing(dt);
         updateWildlife(dt);
@@ -6683,6 +6982,9 @@ function animate() {
             healthEl.classList.toggle('hurt', P.health < PLAYER_MAX_HEALTH * 0.35);
             drawMinimap();
         }
+
+        refreshCraftCue();
+        sleepCueEl.classList.toggle('on', canSleep());
 
         if (H.active && H.job) {
             gatherEl.classList.add('on');
@@ -6789,7 +7091,8 @@ async function boot() {
         await progress(88, 'Waking the explorer');
         const usedModel = await loadPlayerModel();
         setupPlayer();
-        await Promise.all([loadTool(PICKAXE_PATH, 'pickaxe'), loadTool(AXE_PATH, 'axe')]);
+        await Promise.all([loadTool(PICKAXE_PATH, 'pickaxe'), loadTool(AXE_PATH, 'axe'),
+                           loadTool(WOODPICK_PATH, 'woodpick')]);
         attachTools();
         updateGrass(true);
 
@@ -6814,6 +7117,7 @@ async function boot() {
         }
         if (!tools.pickaxe) missing.push(PICKAXE_PATH + ' (pickaxe)');
         if (!tools.axe) missing.push(AXE_PATH + ' (axe)');
+        if (!tools.woodpick) missing.push(WOODPICK_PATH + ' (wooden pickaxe)');
 
         if (missing.length === 0) {
             loaderText.textContent = 'Ready';
