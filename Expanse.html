@@ -167,6 +167,38 @@ canvas { display: block; touch-action: none; }
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+#gather {
+    position: absolute;
+    left: 50%;
+    bottom: 27%;
+    transform: translateX(-50%);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+#gather.on { opacity: 1; }
+#gather-label {
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    text-shadow: 0 2px 10px #000;
+    margin-bottom: 7px;
+}
+#gather-bar {
+    width: 150px;
+    height: 4px;
+    background: rgba(255,255,255,.18);
+    border-radius: 3px;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+#gather-bar.on { opacity: 1; }
+#gather-bar i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, #e8c07a, #f5e3bd);
+}
+
 #hint {
     position: absolute;
     bottom: 26px;
@@ -754,6 +786,10 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
 
     <div id="minimap"><canvas id="minimap-canvas" width="344" height="344"></canvas><div class="n">N</div></div>
 
+    <div id="gather">
+        <div id="gather-label"></div>
+        <div id="gather-bar"><i></i></div>
+    </div>
     <div id="toast"></div>
     <div id="hint">Click to look around</div>
 </div>
@@ -881,7 +917,9 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
    ============================================================ */
 
 const params = new URLSearchParams(location.search);
-const MODEL_PATH = params.get('model') || './Tom3.glb';
+const MODEL_PATH = params.get('model') || './Tom5.glb';
+const PICKAXE_PATH = params.get('pickaxe') || './Pickaxe.glb';
+const AXE_PATH = params.get('axe') || './Axe.glb';
 const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const TEMPLE_PATH = params.get('temple') || './Temple1.glb';
@@ -905,7 +943,25 @@ const PLAYER_CLIP_NAMES = {
     attack:   'Right Jab from Guard',
     jump:     'Jump with Arms Open',
     swim:     'Swim Forward',
-    swimIdle: 'Swim Idle'
+    swimIdle: 'Swim Idle',
+    mine:     'Heavy Hammer Swing',
+    // Tom5.glb exports this one without a readable name, so if "Chop2" is not
+    // found the leftover unmatched clip is used instead (see buildActions).
+    chop:     'Chop2'
+};
+
+// The tools hang off this bone. Mixamo rigs name it mixamorigRightHand; the
+// search is loose so a differently named right hand still matches.
+const TOOL_BONE = 'RightHand';
+
+// Both tools are modelled standing up: the butt of the handle at the origin,
+// the head at the top. `grip` is the point on the handle the fist closes
+// around, in the tool's own space; the quarter turn lays the handle across the
+// palm, and the offset is worked out from the two so the grip lands in the
+// hand. Nudge `grip` up or down the handle if a tool sits oddly.
+const TOOL_FIT = {
+    pickaxe: { scale: 1.0, grip: [0.143, 0.20, 0], rot: [0, 0, Math.PI / 2] },
+    axe:     { scale: 1.0, grip: [0.005, 0.12, 0], rot: [0, 0, Math.PI / 2] }
 };
 
 const PLAYER_HEIGHT = 1.85;
@@ -956,10 +1012,10 @@ const ENEMY_TYPES = [
         name: 'Kyle',
         path: KYLE_PATH,
         height: 1.95,
-        health: 100,
-        damage: 24,
-        chaseSpeed: 5.1,
-        sight: 25,
+        health: 60,
+        damage: 12,
+        chaseSpeed: 4.6,
+        sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
         // Exact clip names inside Kyle.glb. Edit these if you re-export with
         // different ones — they take priority over any name guessing.
@@ -981,9 +1037,9 @@ const ENEMY_TYPES = [
         name: 'Chris',
         path: CHRIS_PATH,
         height: 2.0,
-        health: 100,            // tougher, hits harder, closes faster
-        damage: 20,
-        chaseSpeed: 5.1,
+        health: 85,            // tougher, hits harder, closes faster
+        damage: 16,
+        chaseSpeed: 5.4,
         sight: 25,
         fallback: { cloth: 0x2f3f66, dark: 0x1a2032, skin: 0x9a8070, hair: 0x14181f, eyes: 0x6fe0ff, pack: false },
         clipNames: {
@@ -1001,8 +1057,8 @@ const ENEMY_TYPES = [
         path: SILAS_PATH,
         height: 1.5,           // a boy — smaller, quicker, hits lighter
         radius: 0.42,
-        health: 60,
-        damage: 15,
+        health: 50,
+        damage: 9,
         chaseSpeed: 5.2,
         sight: 23,
         fallback: { cloth: 0x23262b, dark: 0x2b3550, skin: 0xe0b89a, hair: 0x6b4a2f, eyes: 0xffc14d, pack: false },
@@ -1023,7 +1079,7 @@ const ENEMY_TYPES = [
         radius: 0.38,
         health: 40,
         damage: 7,
-        chaseSpeed: 6.9,
+        chaseSpeed: 5.9,
         sight: 25,
         fallback: { cloth: 0x16181f, dark: 0x101218, skin: 0xe6c0a6, hair: 0x3a2a20, eyes: 0xa8f0d0, pack: false },
         clipNames: {
@@ -1668,7 +1724,9 @@ function addCollider(x, z, r) {
     const key = colliderKey(cx, cz);
     let arr = colliderGrid.get(key);
     if (!arr) { arr = []; colliderGrid.set(key, arr); }
-    arr.push({ x, z, r });
+    const c = { x, z, r, off: false };
+    arr.push(c);
+    return c;                       // kept so felled trees can be walked through
 }
 
 function resolveCollisions(position, radius) {
@@ -1684,6 +1742,7 @@ function resolveCollisions(position, radius) {
                 const dz = position.z - c.z;
                 const rr = c.r + radius;
                 const d2 = dx * dx + dz * dz;
+                if (c.off) continue;
                 if (d2 < rr * rr && d2 > 1e-8) {
                     const d = Math.sqrt(d2);
                     const push = (rr - d) / d;
@@ -1827,7 +1886,17 @@ function buildVegetation() {
         _dummy.scale.setScalar(t.s);
         _dummy.updateMatrix();
         trunks.setMatrixAt(i, _dummy.matrix);
-        addCollider(t.x, t.z, 0.42 * t.s + 0.2);
+        const col = addCollider(t.x, t.z, 0.42 * t.s + 0.2);
+        // Canopy lives in a second instanced mesh, so a felled tree has to
+        // hide both its trunk and its leaves.
+        const canopy = i < pines.length
+            ? { mesh: pineMesh, index: i }
+            : { mesh: broadMesh, index: i - pines.length };
+        harvestables.push({
+            kind: 'tree', x: t.x, z: t.z, y: t.h, height: 3.4 * t.s,
+            parts: [{ mesh: trunks, index: i }, canopy],
+            collider: col, gone: 0
+        });
     });
 
     pines.forEach((t, i) => {
@@ -1860,6 +1929,7 @@ function buildVegetation() {
     pineMesh.instanceMatrix.needsUpdate = true;
     broadMesh.instanceMatrix.needsUpdate = true;
 
+    harvestMeshes.push(trunks, pineMesh, broadMesh);
     scene.add(trunks, pineMesh, broadMesh);
 
     // Rocks
@@ -1877,11 +1947,20 @@ function buildVegetation() {
         rockMesh.setMatrixAt(i, _dummy.matrix);
         tint.setHSL(0.25, 0.04, 0.34 + r.r * 0.22);
         rockMesh.setColorAt(i, tint);
-        if (r.s > 0.7) addCollider(r.x, r.z, r.s * 0.95);
+        const col = r.s > 0.7 ? addCollider(r.x, r.z, r.s * 0.95) : null;
+        // Only boulders are worth swinging a pickaxe at
+        if (r.s > 0.55) {
+            harvestables.push({
+                kind: 'rock', x: r.x, z: r.z, y: r.h, height: r.s * 1.2,
+                parts: [{ mesh: rockMesh, index: i }],
+                collider: col, gone: 0
+            });
+        }
     });
     if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
     rockMesh.count = rocks.length;
     rockMesh.instanceMatrix.needsUpdate = true;
+    harvestMeshes.push(rockMesh);
     scene.add(rockMesh);
 
     // Grass
@@ -2964,6 +3043,31 @@ function syncMusic() {
     if (hint) hint.classList.toggle('gone', !!(Audio.ready && Audio.ctx.state === 'running'));
 }
 
+function sfxPickStrike() {
+    noiseBurst(0.12, 0.2, 'bandpass', 2600, 1.4, 0.03);
+    blip('square', 420, 150, 0.09, 0.07, 'lowpass', 1800);
+    blip('sine', 130, 70, 0.14, 0.09, 'lowpass', 500);
+}
+
+function sfxAxeStrike() {
+    noiseBurst(0.18, 0.17, 'lowpass', 1600, 0, 0.05);
+    blip('triangle', 260, 90, 0.16, 0.09, 'lowpass', 900);
+}
+
+function sfxRockBreak() {
+    noiseBurst(0.5, 0.3, 'lowpass', 1500, 0, 0.02);
+    for (let i = 0; i < 4; i++) {
+        setTimeout(() => noiseBurst(0.16, 0.1, 'bandpass', 900 + Math.random() * 1600, 1.2, 0.05), i * 70);
+    }
+    blip('sine', 96, 48, 0.4, 0.1, 'lowpass', 380);
+}
+
+function sfxTreeFall() {
+    noiseBurst(0.9, 0.22, 'lowpass', 1100, 0, 0.25);
+    setTimeout(() => { noiseBurst(0.5, 0.26, 'lowpass', 600, 0, 0.05);
+                       blip('sine', 80, 40, 0.5, 0.12, 'lowpass', 300); }, 520);
+}
+
 function sfxSwing(strength) {
     const s = strength === undefined ? 1 : strength;
     noiseBurst(0.18, 0.1 * s, 'bandpass', 1700, 1.2);
@@ -3210,6 +3314,10 @@ function buildActions(mixer, clips, names, opts) {
     if (!map.jump) map.jump = map.fall || map.idle;
     if (!map.swim) map.swim = map.walk;
     if (!map.swimIdle) map.swimIdle = map.swim;
+    // Some exports drop the readable name from a clip; if the chop was not
+    // found by name, the unmatched leftover is almost certainly it.
+    if (!map.chop) map.chop = map.misc || map.attack;
+    if (!map.mine) map.mine = map.chop;
 
     // Say plainly what was found. A silent mismatch between the names here and
     // the names inside the .glb is otherwise invisible — the character simply
@@ -3329,6 +3437,8 @@ function updateAnimation(dt, horizontalSpeed, running) {
     if (hasClips) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
+        } else if (H.active) {
+            playAction(H.active.kind === 'rock' ? 'mine' : 'chop', 0.15);
         } else if (P.swingTimer > 0 && actions.attack) {
             playAction('attack', 0.07);
         } else if (P.swimming) {
@@ -3394,6 +3504,225 @@ function updateAnimation(dt, horizontalSpeed, running) {
         if (amp < 0.02) {
             modelRoot.position.y = Math.sin(elapsed * 1.6) * 0.012;
             r.torso.rotation.z = Math.sin(elapsed * 1.2) * 0.012;
+        }
+    }
+}
+
+/* ============================================================
+   GATHERING — MINING ROCKS AND FELLING TREES
+   ============================================================ */
+
+const harvestables = [];      // every tree and boulder that can be worked
+const harvestMeshes = [];     // the instanced meshes they live in, for picking
+
+const HARVEST_RANGE = 4.2;    // how close you must be to start
+const HARVEST_TIME = { rock: 2.8, tree: 2.6 };
+const HARVEST_RESPAWN = 60;   // seconds before it grows back
+
+const harvestGone = [];       // only the ones currently cleared, for the respawn clock
+
+const tools = { pickaxe: null, axe: null };
+let toolBone = null;
+
+const H = {
+    target: null,      // what is under the crosshair right now
+    active: null,      // what is being worked
+    timer: 0,
+    total: 0,
+    stone: 0,
+    wood: 0,
+    nextHit: 0,
+    pickClock: 0
+};
+
+const _zeroMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
+const _partMatrix = new THREE.Matrix4();
+const _raycaster = new THREE.Raycaster();
+const _pickPoint = new THREE.Vector2();
+
+function loadTool(path, key) {
+    return new Promise((resolve) => {
+        new GLTFLoader().load(
+            path,
+            (gltf) => {
+                const root = gltf.scene;
+                root.traverse(o => {
+                    if (o.isMesh) { o.castShadow = settings.shadows; o.frustumCulled = false; }
+                });
+                const fit = TOOL_FIT[key];
+                root.scale.setScalar(fit.scale);
+                root.rotation.set(fit.rot[0], fit.rot[1], fit.rot[2]);
+                // Put the grip, not the model's origin, in the hand
+                const grip = new THREE.Vector3(fit.grip[0], fit.grip[1], fit.grip[2])
+                    .multiplyScalar(fit.scale).applyEuler(root.rotation);
+                root.position.set(-grip.x, -grip.y, -grip.z);
+                root.visible = false;
+                tools[key] = root;
+                resolve(true);
+            },
+            undefined,
+            (err) => {
+                console.warn('Tool not loaded (' + path + ').', err);
+                resolve(false);
+            }
+        );
+    });
+}
+
+// Hang both tools off the character's right hand so they move with the swing.
+function attachTools() {
+    if (!modelRoot) return;
+    modelRoot.traverse(o => {
+        if (!toolBone && o.isBone && normName(o.name).includes(normName(TOOL_BONE))) toolBone = o;
+    });
+    const parent = toolBone || modelRoot;
+    for (const key of Object.keys(tools)) {
+        if (tools[key]) parent.add(tools[key]);
+    }
+    console.info('[tools] attached to ' + (toolBone ? toolBone.name : 'the model root (no right-hand bone found)'));
+}
+
+function showTool(key) {
+    for (const k of Object.keys(tools)) {
+        if (tools[k]) tools[k].visible = (k === key);
+    }
+}
+
+function setHarvestablePartsVisible(h, visible) {
+    for (const p of h.parts) {
+        if (!p.mesh) continue;
+        if (visible) {
+            p.mesh.setMatrixAt(p.index, p.saved);
+        } else {
+            if (!p.saved) { p.saved = new THREE.Matrix4(); p.mesh.getMatrixAt(p.index, p.saved); }
+            p.mesh.setMatrixAt(p.index, _zeroMatrix);
+        }
+        p.mesh.instanceMatrix.needsUpdate = true;
+    }
+    if (h.collider) h.collider.off = !visible;
+}
+
+// What the player is pointing at, if it is close enough to work on.
+// ndc is the point on screen to shoot through — the middle when the mouse is
+// captured, or wherever a finger landed.
+function pickHarvestable(ndcX, ndcY) {
+    if (!harvestMeshes.length) return null;
+    _pickPoint.set(ndcX, ndcY);
+    _raycaster.setFromCamera(_pickPoint, camera);
+    _raycaster.far = HARVEST_RANGE + 14;
+
+    const hits = _raycaster.intersectObjects(harvestMeshes, false);
+    for (const hit of hits) {
+        if (hit.instanceId === undefined) continue;
+        const h = harvestables.find(q =>
+            q.gone <= 0 && q.parts.some(p => p.mesh === hit.object && p.index === hit.instanceId));
+        if (!h) continue;
+        if (Math.hypot(h.x - player.position.x, h.z - player.position.z) > HARVEST_RANGE) return null;
+        return h;
+    }
+    return null;
+}
+
+function startHarvest(h) {
+    if (!h || H.active || P.dead || P.swimming) return false;
+    H.active = h;
+    H.total = HARVEST_TIME[h.kind] || 2.6;
+    H.timer = H.total;
+    H.nextHit = 0;
+    showTool(h.kind === 'rock' ? 'pickaxe' : 'axe');
+
+    // Face the work
+    P.faceTarget = Math.atan2(h.x - player.position.x, h.z - player.position.z);
+    P.faceTimer = H.total + 0.3;
+    P.vel.x = 0;
+    P.vel.z = 0;
+    return true;
+}
+
+function cancelHarvest() {
+    if (!H.active) return;
+    H.active = null;
+    H.timer = 0;
+    showTool(null);
+}
+
+function finishHarvest() {
+    const h = H.active;
+    if (!h) return;
+    setHarvestablePartsVisible(h, false);
+    h.gone = HARVEST_RESPAWN;
+
+    harvestGone.push(h);
+
+    if (h.kind === 'rock') { H.stone++; sfxRockBreak(); toast('Stone gathered · ' + H.stone, 2000); }
+    else { H.wood++; sfxTreeFall(); toast('Timber · ' + H.wood, 2000); }
+
+    updateRelicHud();
+    H.active = null;
+    H.timer = 0;
+    showTool(null);
+}
+
+// Is there anything workable within arm's reach? This is a few thousand
+// multiplications; the raycast behind it costs about a hundred times more, so
+// it is worth asking first.
+function harvestWithinReach() {
+    const r2 = HARVEST_RANGE * HARVEST_RANGE;
+    for (const h of harvestables) {
+        if (h.gone > 0) continue;
+        const dx = h.x - player.position.x;
+        const dz = h.z - player.position.z;
+        if (dx * dx + dz * dz <= r2) return true;
+    }
+    return false;
+}
+
+function updateHarvest(dt) {
+    // things grow back
+    for (let i = harvestGone.length - 1; i >= 0; i--) {
+        const h = harvestGone[i];
+        h.gone -= dt;
+        if (h.gone <= 0) {
+            setHarvestablePartsVisible(h, true);
+            harvestGone.splice(i, 1);
+        }
+    }
+
+    if (H.active) {
+        const h = H.active;
+        // walking away, dying, or something closing on you stops it: being
+        // locked into a swing for three seconds with a foe at your back is a
+        // worse death than any the game should hand out
+        if (P.dead ||
+            Math.hypot(h.x - player.position.x, h.z - player.position.z) > HARVEST_RANGE + 1.2 ||
+            foeWithinSwing()) {
+            cancelHarvest();
+        } else {
+            H.timer -= dt;
+            H.nextHit -= dt;
+            if (H.nextHit <= 0) {
+                H.nextHit = 0.62;
+                if (h.kind === 'rock') sfxPickStrike(); else sfxAxeStrike();
+                camShake = Math.min(camShake + 0.05, 0.14);
+            }
+            if (H.timer <= 0) finishHarvest();
+        }
+    }
+
+    // What is in front of us, for the prompt. Ten looks a second is far more
+    // often than an eye can tell, and it keeps the raycast off the frame budget.
+    if (H.active || P.dead || P.swimming) {
+        H.target = null;
+        H.pickClock = 0;
+    } else {
+        H.pickClock -= dt;
+        if (H.pickClock <= 0) {
+            H.pickClock = 0.1;
+            H.target = harvestWithinReach() ? pickHarvestable(0, 0) : null;
+        } else if (H.target &&
+            (H.target.gone > 0 ||
+             Math.hypot(H.target.x - player.position.x, H.target.z - player.position.z) > HARVEST_RANGE)) {
+            H.target = null;   // it was taken or we stepped back since the last look
         }
     }
 }
@@ -3911,6 +4240,17 @@ function updateEnemies(dt) {
    COMBAT — PLAYER SIDE
    ============================================================ */
 
+// Is anything close enough to hit? Gathering and fighting share a button, and
+// a boulder under the crosshair must never stop you defending yourself.
+function foeWithinSwing() {
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        if (Math.abs(e.y - player.position.y) > ATTACK_VERTICAL) continue;
+        if (Math.hypot(e.x - player.position.x, e.z - player.position.z) <= ASSIST_RANGE) return true;
+    }
+    return false;
+}
+
 function playerAttack() {
     if (P.dead || P.attackCd > 0 || P.swimming) return;
 
@@ -4010,6 +4350,7 @@ function killPlayer() {
 }
 
 function respawnPlayer() {
+    cancelHarvest();
     P.dead = false;
     P.health = PLAYER_MAX_HEALTH;
     P.stamina = 100;
@@ -4055,7 +4396,8 @@ let paused = false;
 let started = false;
 let hudHidden = false;
 
-const touchState = { moveX: 0, moveY: 0, run: false, lookId: null, lookX: 0, lookY: 0, stickId: null };
+const touchState = { moveX: 0, moveY: 0, run: false, lookId: null, lookX: 0, lookY: 0, stickId: null,
+                     tapX: 0, tapY: 0, tapAt: 0 };
 
 function setupInput() {
     window.addEventListener('keydown', (e) => {
@@ -4080,7 +4422,11 @@ function setupInput() {
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
         if (e.code === 'KeyT') { timeOfDay = (timeOfDay + 0.12) % 1; }
-        if (e.code === 'KeyE') { playerAttack(); }
+        if (e.code === 'KeyE') {
+            if (H.active) cancelHarvest();
+            else if (foeWithinSwing()) playerAttack();
+            else if (!startHarvest(pickHarvestable(0, 0))) playerAttack();
+        }
     });
 
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -4091,8 +4437,15 @@ function setupInput() {
 
     canvas.addEventListener('click', () => {
         if (!started || paused || overlay || isTouch) return;
-        // Once the mouse is captured, a click is a swing
-        if (pointerLocked) { playerAttack(); return; }
+        // Once the mouse is captured, a click works whatever is under the
+        // crosshair — a rock or tree if one is in reach, otherwise a swing.
+        // A foe in range always comes first.
+        if (pointerLocked) {
+            if (H.active) { cancelHarvest(); return; }
+            if (!foeWithinSwing() && startHarvest(pickHarvestable(0, 0))) return;
+            playerAttack();
+            return;
+        }
         const p = canvas.requestPointerLock();
         if (p && p.catch) p.catch(() => {});
     });
@@ -4165,6 +4518,11 @@ function setupInput() {
         touchState.lookId = e.pointerId;
         touchState.lookX = e.clientX;
         touchState.lookY = e.clientY;
+        // Remembered so a quick tap that never moves can be told apart from a
+        // drag of the camera
+        touchState.tapX = e.clientX;
+        touchState.tapY = e.clientY;
+        touchState.tapAt = performance.now();
     });
 
     window.addEventListener('pointermove', (e) => {
@@ -4182,7 +4540,23 @@ function setupInput() {
         touchState.lookY = e.clientY;
     });
 
-    const endLook = (e) => { if (e.pointerId === touchState.lookId) touchState.lookId = null; };
+    const endLook = (e) => {
+        if (e.pointerId !== touchState.lookId) return;
+        touchState.lookId = null;
+
+        // A short, still tap on the view is a tap on whatever is under the
+        // finger: a rock or a tree starts work on it.
+        const held = performance.now() - touchState.tapAt;
+        const moved = Math.hypot(e.clientX - touchState.tapX, e.clientY - touchState.tapY);
+        if (held < 300 && moved < 14 && started && !paused && !overlay) {
+            if (H.active) { cancelHarvest(); return; }
+            if (foeWithinSwing()) return;   // the HIT button is for fighting
+            const r = renderer.domElement.getBoundingClientRect();
+            const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+            const ny = -((e.clientY - r.top) / r.height) * 2 + 1;
+            startHarvest(pickHarvestable(nx, ny));
+        }
+    };
     window.addEventListener('pointerup', endLook);
     window.addEventListener('pointercancel', endLook);
 
@@ -4190,7 +4564,9 @@ function setupInput() {
     attackBtn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         initAudio();
-        playerAttack();
+        if (H.active) cancelHarvest();
+        else if (foeWithinSwing()) playerAttack();
+        else if (!startHarvest(pickHarvestable(0, 0))) playerAttack();
     });
 
     const jumpBtn = document.getElementById('btn-jump');
@@ -4301,7 +4677,7 @@ function updatePlayer(dt) {
         else if (P.combatTimer <= 0) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 1.6 * dt);
     }
 
-    const input = P.dead ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
+    const input = (P.dead || H.active) ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
     const wantsRun = !P.dead && (keys.ShiftLeft || keys.ShiftRight || touchState.run);
 
     const forwardX = -Math.sin(camYaw);
@@ -4457,6 +4833,7 @@ function updatePlayer(dt) {
     // HUD state line
     let state = 'Exploring';
     if (P.dead) state = 'Down';
+    else if (H.active) state = H.active.kind === 'rock' ? 'Mining' : 'Chopping';
     else if (P.combatTimer > 0) state = 'In combat';
     else if (P.swimming) state = 'Swimming';
     else if (!P.grounded) state = P.vel.y > 0 ? 'Jumping' : 'Falling';
@@ -4786,7 +5163,10 @@ function updateRelics(dt) {
 
 function updateRelicHud() {
     relicCountEl.textContent = collected;
-    killLineEl.innerHTML = P.kills > 0 ? ' &nbsp;·&nbsp; <b>' + P.kills + '</b> felled' : '';
+    let extra = P.kills > 0 ? ' &nbsp;·&nbsp; <b>' + P.kills + '</b> felled' : '';
+    if (H.stone) extra += ' &nbsp;·&nbsp; <b>' + H.stone + '</b> stone';
+    if (H.wood) extra += ' &nbsp;·&nbsp; <b>' + H.wood + '</b> wood';
+    killLineEl.innerHTML = extra;
 }
 
 /* ============================================================
@@ -4806,6 +5186,10 @@ const killLineEl = document.getElementById('kill-line');
 const hurtEl = document.getElementById('hurt');
 const deathEl = document.getElementById('death');
 const toastEl = document.getElementById('toast');
+const gatherEl = document.getElementById('gather');
+const gatherLabel = document.getElementById('gather-label');
+const gatherBar = document.getElementById('gather-bar');
+const gatherFill = gatherBar.querySelector('i');
 const underwaterEl = document.getElementById('underwater');
 
 const compassCanvas = document.getElementById('compass');
@@ -5775,6 +6159,7 @@ function animate() {
         updateCamera(dt, result.horizontalSpeed);
         updateSky(dt);
         updateEnemies(dt);
+        updateHarvest(dt);
         updateWaystones(dt);
         updateSwing(dt);
         updateWildlife(dt);
@@ -5818,6 +6203,21 @@ function animate() {
             healthFill.style.width = (P.health / PLAYER_MAX_HEALTH * 100) + '%';
             healthEl.classList.toggle('hurt', P.health < PLAYER_MAX_HEALTH * 0.35);
             drawMinimap();
+        }
+
+        if (H.active) {
+            gatherEl.classList.add('on');
+            gatherBar.classList.add('on');
+            gatherLabel.textContent = H.active.kind === 'rock' ? 'Mining' : 'Chopping';
+            gatherFill.style.width = ((1 - H.timer / H.total) * 100).toFixed(0) + '%';
+        } else if (H.target) {
+            gatherEl.classList.add('on');
+            gatherBar.classList.remove('on');
+            gatherLabel.textContent = (isTouch ? 'Tap' : 'Click') +
+                (H.target.kind === 'rock' ? ' to mine' : ' to chop');
+        } else {
+            gatherEl.classList.remove('on');
+            gatherBar.classList.remove('on');
         }
 
         hurtEl.style.opacity = (P.hitFlash * 0.75 +
@@ -5908,6 +6308,8 @@ async function boot() {
         await progress(88, 'Waking the explorer');
         const usedModel = await loadPlayerModel();
         setupPlayer();
+        await Promise.all([loadTool(PICKAXE_PATH, 'pickaxe'), loadTool(AXE_PATH, 'axe')]);
+        attachTools();
         updateGrass(true);
 
         await progress(95, 'Rousing the hostiles');
@@ -5929,6 +6331,8 @@ async function boot() {
         for (const type of ENEMY_TYPES) {
             if (!type.loaded) missing.push(type.path + ' (' + type.name + ')');
         }
+        if (!tools.pickaxe) missing.push(PICKAXE_PATH + ' (pickaxe)');
+        if (!tools.axe) missing.push(AXE_PATH + ' (axe)');
 
         if (missing.length === 0) {
             loaderText.textContent = 'Ready';
