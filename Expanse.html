@@ -1141,6 +1141,7 @@ const MODEL_PATH = params.get('model') || './Tom6.glb';
 const PICKAXE_PATH = params.get('pickaxe') || './Pickaxe.glb';
 const AXE_PATH = params.get('axe') || './Axe.glb';
 const WOODPICK_PATH = params.get('woodpick') || './Wooden_Pickaxe.glb';
+const HUT_PATH = params.get('hut') || './Stick_House.glb';
 const KYLE_PATH = params.get('kyle') || params.get('enemy') || './Kyle2.glb';
 const CHRIS_PATH = params.get('chris') || './Chris.glb';
 const TEMPLE_PATH = params.get('temple') || './Temple1.glb';
@@ -1372,7 +1373,7 @@ const settings = {
 };
 
 let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false,
-             inv: null };
+             inv: null, hut: null };
 
 // What the player is carrying and what they have made. You start with nothing:
 // the first axe has to be cut out of branches you pull off a tree by hand, and
@@ -1384,6 +1385,7 @@ const INV = {
     woodpick: false,
     axe: false,
     pickaxe: false,
+    stickhouse: false,  // a shelter of your own, raised once
     whetstone: false,   // attacks hit harder
     honed: false        // tools bite deeper, so one swing does the work of two
 };
@@ -1400,7 +1402,9 @@ const RECIPES = [
     { id: 'whetstone', name: 'Whetstone', wood: 1, stone: 4,
       note: 'A keener edge. Every blow you land does half again as much.' },
     { id: 'honed', name: 'Honed edges', wood: 6, stone: 6,
-      note: 'Rework the heads. Gathering takes one swing where it took two.' }
+      note: 'Rework the heads. Gathering takes one swing where it took two.' },
+    { id: 'stickhouse', name: 'Stick house', wood: 10, stone: 0,
+      note: 'A shelter, raised where you stand. Lie down in it to rest; at night you sleep through till dawn.' }
 ];
 
 // Drawn here rather than shipped as images: they are a few hundred bytes each,
@@ -1425,7 +1429,10 @@ const RECIPE_ART = {
     honed:
         '<path d="M10 31 L28 24 L34 28 L16 35 Z" class="head"/>' +
         '<path d="M20 17 L34 12" class="haft"/>' +
-        '<path d="M37 9 L40 13 M34 18 L39 19 M39 6 L41 6" class="spark"/>'
+        '<path d="M37 9 L40 13 M34 18 L39 19 M39 6 L41 6" class="spark"/>',
+    stickhouse:
+        '<path d="M25 7 L10 37 M25 7 L40 37 M17 22 L33 22" class="head wood"/>' +
+        '<path d="M19 37 L22 27 L28 27 L31 37" class="haft"/>'
 };
 
 function loadSave() {
@@ -1441,12 +1448,14 @@ function loadSave() {
         if (Array.isArray(data.waystones)) save.waystones = data.waystones;
         if (data.completed) save.completed = true;
         if (Array.isArray(data.pos)) save.pos = data.pos;
+        if (Array.isArray(data.inv && data.inv.hut)) save.hut = data.inv.hut;
         if (data.inv && typeof data.inv === 'object') {
             INV.stone = Math.max(0, data.inv.stone | 0);
             INV.wood = Math.max(0, data.inv.wood | 0);
             INV.woodpick = !!data.inv.woodpick;
             INV.axe = !!data.inv.axe;
             INV.pickaxe = !!data.inv.pickaxe;
+            INV.stickhouse = !!data.inv.stickhouse;
             INV.whetstone = !!data.inv.whetstone;
             INV.honed = !!data.inv.honed;
         }
@@ -1467,7 +1476,8 @@ function writeSave() {
             inv: {
                 stone: INV.stone, wood: INV.wood,
                 woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
-                whetstone: INV.whetstone, honed: INV.honed
+                stickhouse: INV.stickhouse, whetstone: INV.whetstone, honed: INV.honed,
+                hut: hut ? [+hut.x.toFixed(2), +hut.z.toFixed(2), +hut.rot.toFixed(3)] : null
             }
         }));
     } catch (e) { /* storage blocked — fine */ }
@@ -2044,6 +2054,15 @@ function addCollider(x, z, r) {
     return c;                       // kept so felled trees can be walked through
 }
 
+function removeCollider(c) {
+    if (!c) return;
+    const arr = colliderGrid.get(colliderKey(Math.floor(c.x / COLLIDER_CELL),
+                                             Math.floor(c.z / COLLIDER_CELL)));
+    if (!arr) return;
+    const i = arr.indexOf(c);
+    if (i >= 0) arr.splice(i, 1);
+}
+
 function resolveCollisions(position, radius) {
     const cx = Math.floor(position.x / COLLIDER_CELL);
     const cz = Math.floor(position.z / COLLIDER_CELL);
@@ -2058,11 +2077,17 @@ function resolveCollisions(position, radius) {
                 const rr = c.r + radius;
                 const d2 = dx * dx + dz * dz;
                 if (c.off) continue;
-                if (d2 < rr * rr && d2 > 1e-8) {
+                if (d2 >= rr * rr) continue;
+                if (d2 > 1e-8) {
                     const d = Math.sqrt(d2);
                     const push = (rr - d) / d;
                     position.x += dx * push;
                     position.z += dz * push;
+                } else {
+                    // Dead centre, so there is no direction to push along.
+                    // Walking in can never land here, but a teleport can, and
+                    // silently doing nothing would leave them stuck inside.
+                    position.x += rr;
                 }
             }
         }
@@ -3432,6 +3457,88 @@ function sfxAxeStrike() {
     setTimeout(() => noiseBurst(0.14, 0.04, 'bandpass', 850 + Math.random() * 600, 1.7, 0.06), 55);
 }
 
+// Bare hands on a half-buried stone: no impact at all, just grit giving way
+// and the stone knocking loose. Nothing rings, because nothing here is hard
+// enough to ring.
+function sfxHandStone() {
+    const v = 0.9 + Math.random() * 0.25;
+    noiseBurst(0.22, 0.1, 'bandpass', 1400 + Math.random() * 500, 1.1, 0.09);
+    setTimeout(() => {
+        ring(430 * v, 5, 0.1, 0.08);
+        ring(260 * v, 4, 0.14, 0.075);
+        noiseBurst(0.1, 0.07, 'bandpass', 800 + Math.random() * 700, 1.4, 0.03);
+    }, 110 + Math.random() * 70);
+}
+
+// Tearing a branch off by hand: fibres going one at a time, then the snap.
+// Mostly noise, almost no pitch — the opposite of a tool landing cleanly.
+function sfxHandBranch() {
+    const v = 0.9 + Math.random() * 0.22;
+    noiseBurst(0.3, 0.06, 'bandpass', 2600 + Math.random() * 900, 2.2, 0.12);
+    setTimeout(() => {
+        ring(430 * v, 7, 0.09, 0.07);
+        noiseBurst(0.07, 0.07, 'highpass', 1800, 0.6, 0.006);
+    }, 150 + Math.random() * 90);
+}
+
+// A wooden head on stone: the shaft takes most of the blow, so you get the
+// knock and the grit but none of the bright ring that stone against stone
+// gives. This is what makes the first pickaxe feel like a stopgap.
+function sfxWoodOnStone() {
+    const v = 0.9 + Math.random() * 0.2;
+    noiseBurst(0.03, 0.1, 'bandpass', 1400, 1.0, 0.004);
+    ring(300 * v, 7, 0.1, 0.11);
+    ring(170 * v, 5, 0.16, 0.1);
+    blip('triangle', 108 * v, 54, 0.14, 0.09, 'lowpass', 460);
+    setTimeout(() => noiseBurst(0.1, 0.04, 'bandpass', 1700 + Math.random() * 900, 2.0, 0.03),
+        50 + Math.random() * 40);
+}
+
+// A chip coming off a boulder, rather than the whole thing giving way
+function sfxStoneChip() {
+    noiseBurst(0.05, 0.14, 'bandpass', 1900, 0.8, 0.003);
+    ring(760, 10, 0.16, 0.085);
+    ring(410, 6, 0.24, 0.12);
+    ring(230, 5, 0.28, 0.09);
+    blip('sine', 110, 52, 0.18, 0.07, 'lowpass', 380);
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => noiseBurst(0.07, 0.045, 'bandpass', 1400 + Math.random() * 1500, 2.0, 0.025),
+            70 + i * 80 + Math.random() * 50);
+    }
+}
+
+// A single branch coming away in your hands
+function sfxBranchOff() {
+    noiseBurst(0.09, 0.12, 'bandpass', 2200, 1.6, 0.006);
+    ring(380, 8, 0.14, 0.08);
+    ring(205, 6, 0.2, 0.07);
+    setTimeout(() => noiseBurst(0.18, 0.05, 'bandpass', 1100, 1.2, 0.07), 90);
+}
+
+// Which blow you hear depends on what is in your hands and what you are
+// hitting — bare hands, a wooden head and a stone head are three different
+// sounds, and that difference is most of what tells you a tool is working.
+function sfxWorkStrike(job) {
+    if (!job) return;
+    if (job.anim === 'mine') {
+        if (!job.tool) sfxHandStone();
+        else if (job.tool === 'woodpick') sfxWoodOnStone();
+        else sfxPickStrike();
+    } else {
+        if (!job.tool) sfxHandBranch();
+        else sfxAxeStrike();
+    }
+}
+
+function sfxWorkDone(job) {
+    if (!job) return;
+    if (job === JOBS.mine) sfxRockBreak();
+    else if (job === JOBS.chip) sfxStoneChip();
+    else if (job === JOBS.pebble) sfxHandStone();
+    else if (job === JOBS.fell) sfxTreeFall();
+    else sfxBranchOff();
+}
+
 function sfxRockBreak() {
     noiseBurst(0.07, 0.28, 'highpass', 2000, 0.7, 0.003);
     ring(440, 6, 0.42, 0.12);
@@ -4176,11 +4283,11 @@ function finishHarvest() {
 
     if (job.stone) {
         INV.stone += job.stone;
-        if (job === JOBS.mine) sfxRockBreak(); else sfxPickStrike();
+        sfxWorkDone(job);
         toast('+' + job.stone + ' stone  ·  ' + INV.stone + ' carried', 2000);
     } else {
         INV.wood += job.wood;
-        if (job === JOBS.fell) sfxTreeFall(); else sfxAxeStrike();
+        sfxWorkDone(job);
         toast('+' + job.wood + ' wood  ·  ' + INV.wood + ' carried', 2000);
     }
 
@@ -4238,7 +4345,7 @@ function updateHarvest(dt) {
             const elapsed = H.total - H.timer;
             while (H.hits.length && elapsed >= H.hits[0]) {
                 H.hits.shift();
-                if (H.job.anim === 'mine') sfxPickStrike(); else sfxAxeStrike();
+                sfxWorkStrike(H.job);
                 camShake = Math.min(camShake + 0.07, 0.16);
             }
             if (H.timer <= 0) finishHarvest();
@@ -4961,13 +5068,27 @@ function setupInput() {
             return;
         }
 
+        // Lying down in daylight ends the moment you try to do anything
+        if (SLEEP.phase === 'rest') {
+            if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft',
+                 'ArrowRight', 'Space', 'KeyK', 'Escape'].includes(e.code)) {
+                getUp();
+                return;
+            }
+        }
+
         if (e.code === 'Escape') { if (overlay) closeOverlay(); else togglePause(); }
         if (e.code === 'KeyM') { if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map'); }
         if (e.code === 'KeyI' || e.code === 'Tab') {
             e.preventDefault();
             if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
         }
-        if (e.code === 'KeyK') beginSleep();
+        // K sleeps the night away anywhere; inside the hut it also lies you
+        // down in daylight
+        if (e.code === 'KeyK') {
+            if (isNight()) beginSleep();
+            else if (hutWithinReach()) lieDown(true);
+        }
         if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
@@ -4991,8 +5112,12 @@ function setupInput() {
         // crosshair — a rock or tree if one is in reach, otherwise a swing.
         // A foe in range always comes first.
         if (pointerLocked) {
+            if (SLEEP.phase === 'rest') { getUp(); return; }
             if (H.active) { cancelHarvest(); return; }
-            if (!foeWithinSwing() && tryHarvest(pickHarvestable(0, 0))) return;
+            if (!foeWithinSwing()) {
+                if (hutWithinReach() && lieDown(true)) return;
+                if (tryHarvest(pickHarvestable(0, 0))) return;
+            }
             playerAttack();
             return;
         }
@@ -5099,8 +5224,10 @@ function setupInput() {
         const held = performance.now() - touchState.tapAt;
         const moved = Math.hypot(e.clientX - touchState.tapX, e.clientY - touchState.tapY);
         if (held < 300 && moved < 14 && started && !paused && !overlay) {
+            if (SLEEP.phase === 'rest') { getUp(); return; }
             if (H.active) { cancelHarvest(); return; }
             if (foeWithinSwing()) return;   // the HIT button is for fighting
+            if (hutWithinReach() && lieDown(true)) return;
             const r = renderer.domElement.getBoundingClientRect();
             const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
             const ny = -((e.clientY - r.top) / r.height) * 2 + 1;
@@ -5114,8 +5241,10 @@ function setupInput() {
     attackBtn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         initAudio();
-        if (H.active) cancelHarvest();
+        if (SLEEP.phase === 'rest') getUp();
+        else if (H.active) cancelHarvest();
         else if (foeWithinSwing()) playerAttack();
+        else if (hutWithinReach() && lieDown(true)) { /* lay down in the shelter */ }
         else if (!tryHarvest(pickHarvestable(0, 0))) playerAttack();
     });
 
@@ -5317,7 +5446,9 @@ function updatePlayer(dt) {
     player.position.z += P.vel.z * dt;
     player.position.y += P.vel.y * dt;
 
-    resolveCollisions(player.position, PLAYER_RADIUS);
+    // A player lying inside the hut is standing in something solid on
+    // purpose, so the collision pass has to leave them there
+    if (!SLEEP.from) resolveCollisions(player.position, PLAYER_RADIUS);
 
     // World bounds — soft wall
     const dist = Math.hypot(player.position.x, player.position.z);
@@ -5393,7 +5524,7 @@ function updatePlayer(dt) {
     // HUD state line
     let state = 'Exploring';
     if (P.dead) state = 'Down';
-    else if (SLEEP.phase) state = 'Sleeping';
+    else if (SLEEP.phase) state = SLEEP.phase === 'rest' ? 'Resting' : 'Sleeping';
     else if (H.active && H.job) state = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
     else if (P.combatTimer > 0) state = 'In combat';
     else if (P.swimming) state = 'Swimming';
@@ -6008,6 +6139,112 @@ function closeOverlay() {
 }
 
 /* ============================================================
+   THE STICK HOUSE
+   ============================================================ */
+
+// One hut, raised where you choose to raise it. The model is a teepee of
+// sticks that reach the ground all the way round, so it is solid rather than
+// something to walk into — lying down moves you inside it instead.
+let hutProto = null;
+let hut = null;
+const HUT_REACH = 2.9;        // how close you must be to lie down
+const HUT_RADIUS = 0.95;      // what you cannot walk through
+
+function loadStickHouse() {
+    return new Promise((resolve) => {
+        new GLTFLoader().load(
+            HUT_PATH,
+            (gltf) => {
+                hutProto = gltf.scene;
+                hutProto.traverse(o => {
+                    if (o.isMesh) {
+                        o.castShadow = settings.shadows;
+                        o.receiveShadow = true;
+                    }
+                });
+                resolve(true);
+            },
+            undefined,
+            (err) => {
+                console.warn('Stick house GLB not loaded (' + HUT_PATH + ').', err);
+                resolve(false);
+            }
+        );
+    });
+}
+
+// Somewhere it will actually stand: out of the water, off the steep stuff,
+// and clear of the ruin
+function hutSiteOk(x, z) {
+    const g = groundHeight(x, z);
+    if (g < WATER_LEVEL + 0.7) return false;
+    if (slopeAt(x, z) > 0.34) return false;
+    if (insideTempleFootprint(x, z, 2)) return false;
+    return true;
+}
+
+function placeHut(x, z, rot) {
+    if (!hutProto || hut) return false;
+
+    const root = hutProto;
+    root.rotation.set(0, rot, 0);
+    root.updateMatrixWorld(true);
+
+    // Seat it on the highest ground under its own footprint, then sink it a
+    // little, so no corner of it is left standing in mid-air on a slope
+    const box = new THREE.Box3().setFromObject(root);
+    const halfX = (box.max.x - box.min.x) / 2;
+    const halfZ = (box.max.z - box.min.z) / 2;
+    let highest = -Infinity;
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            const g = groundHeight(x + i * halfX * 0.8, z + j * halfZ * 0.8);
+            if (g > highest) highest = g;
+        }
+    }
+
+    root.position.set(
+        x - (box.min.x + box.max.x) / 2,
+        highest - box.min.y - 0.06,
+        z - (box.min.z + box.max.z) / 2
+    );
+    scene.add(root);
+
+    hut = { x, z, y: highest, rot, collider: addCollider(x, z, HUT_RADIUS) };
+    return true;
+}
+
+function removeHut() {
+    if (!hut) return;
+    removeCollider(hut.collider);
+    if (hutProto && hutProto.parent) hutProto.parent.remove(hutProto);
+    hut = null;
+}
+
+// Raised a few paces ahead, with its doorway turned back towards you
+function raiseHut() {
+    if (!hutProto) { toast('The stick house model is missing', 2600); return false; }
+    if (hut) return false;
+
+    const ahead = 3.1;
+    const x = player.position.x + Math.sin(P.yaw) * ahead;
+    const z = player.position.z + Math.cos(P.yaw) * ahead;
+    if (!hutSiteOk(x, z)) {
+        toast('No ground flat and dry enough here', 3000);
+        return false;
+    }
+    // the model's opening faces its own +Z, so point that back at the player
+    placeHut(x, z, Math.atan2(player.position.x - x, player.position.z - z));
+    toast('Shelter raised', 3000);
+    return true;
+}
+
+function hutWithinReach() {
+    return !!hut &&
+        Math.hypot(hut.x - player.position.x, hut.z - player.position.z) <= HUT_REACH;
+}
+
+/* ============================================================
    SLEEPING THROUGH THE NIGHT
    ============================================================ */
 
@@ -6019,26 +6256,60 @@ function isNight() {
 
 const DAWN = 0.265;           // just past sunrise, with the light coming up
 
-const SLEEP = { phase: null, t: 0 };
+// 'down' and 'up' are the two halves of sleeping the night away. 'rest' is
+// lying down in daylight, which passes no time and ends when you get up.
+const SLEEP = { phase: null, t: 0, from: null };
 const SLEEP_DOWN = 2.2;       // lying down and the screen going dark
 const SLEEP_UP = 1.8;         // and coming back
 
-function canSleep() {
+// The conditions for lying down at all, whatever time it is
+function canLieDown() {
     return started && !paused && !overlay && !SLEEP.phase &&
         !P.dead && !P.swimming && P.grounded && !H.active &&
-        P.combatTimer <= 0 && !foeWithinSwing() && isNight();
+        P.combatTimer <= 0 && !foeWithinSwing();
+}
+
+function canSleep() {
+    return canLieDown() && isNight();
+}
+
+// Lying down in the hut puts you inside it. The hut is solid, so the player
+// is moved there outright and put back where they were on getting up, rather
+// than being shoved out by the collision pass mid-sleep.
+function lieDown(inHut) {
+    if (!canLieDown()) return false;
+    SLEEP.from = inHut && hut
+        ? { x: player.position.x, y: player.position.y, z: player.position.z }
+        : null;
+    if (SLEEP.from) {
+        player.position.set(hut.x, groundHeight(hut.x, hut.z), hut.z);
+        P.faceTarget = hut.rot;
+        P.faceTimer = 0.6;
+    }
+    SLEEP.phase = isNight() ? 'down' : 'rest';
+    SLEEP.t = 0;
+    cancelHarvest();
+    P.vel.set(0, 0, 0);
+    if (SLEEP.phase === 'rest') toast('Resting. Move to get up.', 3200);
+    return true;
+    // Deliberately keeps the mouse captured. Releasing it trips the "pointer
+    // lock lost" handler, which pauses the game and puts the settings menu up
+    // over the top of a player who only wanted to lie down.
 }
 
 function beginSleep() {
     if (!canSleep()) return;
-    SLEEP.phase = 'down';
+    lieDown(false);
+}
+
+function getUp() {
+    if (SLEEP.phase !== 'rest') return;
+    SLEEP.phase = null;
     SLEEP.t = 0;
-    cancelHarvest();
-    P.vel.x = 0;
-    P.vel.z = 0;
-    // Deliberately keeps the mouse captured. Releasing it trips the "pointer
-    // lock lost" handler, which pauses the game and puts the settings menu up
-    // over the top of a player who only wanted to go to sleep.
+    if (SLEEP.from) {
+        player.position.set(SLEEP.from.x, SLEEP.from.y, SLEEP.from.z);
+        SLEEP.from = null;
+    }
 }
 
 function updateSleep(dt) {
@@ -6047,6 +6318,19 @@ function updateSleep(dt) {
         return;
     }
     SLEEP.t += dt;
+
+    // Daytime: lying there, nothing passing, until the player gets up
+    if (SLEEP.phase === 'rest') {
+        sleepFadeEl.style.opacity = '0';
+        if (P.dead || P.combatTimer > 0) {
+            getUp();
+            toast('On your feet — something is on you', 2600);
+        } else if (isNight()) {
+            SLEEP.phase = 'down';     // dusk caught up with you; sleep on
+            SLEEP.t = 0;
+        }
+        return;
+    }
 
     if (SLEEP.phase === 'down') {
         // Being set upon wakes you; something merely wandering past does not.
@@ -6076,6 +6360,10 @@ function updateSleep(dt) {
     if (SLEEP.t >= SLEEP_UP) {
         SLEEP.phase = null;
         SLEEP.t = 0;
+        if (SLEEP.from) {
+            player.position.set(SLEEP.from.x, SLEEP.from.y, SLEEP.from.z);
+            SLEEP.from = null;
+        }
         toast('Dawn. Rested.', 2800);
     }
 }
@@ -6126,6 +6414,9 @@ function refreshCraftCue() {
 function craft(id) {
     const r = RECIPES.find(x => x.id === id);
     if (!r || !canCraft(r)) return;
+    // The hut has to go somewhere. If there is nowhere for it, the wood is
+    // not spent and the panel stays as it was.
+    if (r.id === 'stickhouse' && !raiseHut()) return;
     INV.wood -= r.wood;
     INV.stone -= r.stone;
     INV[r.id] = true;
@@ -6671,8 +6962,10 @@ function resetProgress() {
     INV.woodpick = false;
     INV.axe = false;
     INV.pickaxe = false;
+    INV.stickhouse = false;
     INV.whetstone = false;
     INV.honed = false;
+    removeHut();
     cancelHarvest();
     for (const h of harvestables) {
         if (h.gone > 0) setHarvestablePartsVisible(h, true);
@@ -6704,12 +6997,14 @@ function buildControlsList() {
            ['Jump', 'JUMP button'], ['Sprint', 'RUN button (toggle)'],
            ['Map', 'MAP button'], ['Pack and crafting', 'PACK button'],
            ['Sleep till dawn', 'SLEEP button, at night'],
+           ['Lie down', 'Tap your stick house'],
            ['Settings', '≡ button']]
         : [['Move', 'WASD / arrows'], ['Look', 'Mouse'], ['Zoom', 'Scroll wheel'],
            ['Strike', 'Click or E'], ['Gather', 'Click a rock or tree'],
            ['Jump', 'Space'], ['Sprint', 'Shift'],
            ['Map', 'M'], ['Pack and crafting', 'I or Tab'],
            ['Sleep till dawn', 'K, at night'],
+           ['Lie down', 'Click your stick house'],
            ['First person', 'V'], ['Hide HUD', 'F'],
            ['Flip model facing', 'B'], ['Skip time', 'T'], ['Settings', 'Esc']];
     document.getElementById('controls-list').innerHTML =
@@ -6984,13 +7279,22 @@ function animate() {
         }
 
         refreshCraftCue();
-        sleepCueEl.classList.toggle('on', canSleep());
+        sleepCueEl.classList.toggle('on', canSleep() && !hutWithinReach());
 
         if (H.active && H.job) {
             gatherEl.classList.add('on');
             gatherBar.classList.add('on');
             gatherLabel.textContent = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
             gatherFill.style.width = ((1 - H.timer / H.total) * 100).toFixed(0) + '%';
+        } else if (SLEEP.phase === 'rest') {
+            gatherEl.classList.add('on');
+            gatherBar.classList.remove('on');
+            gatherLabel.textContent = isTouch ? 'Tap to get up' : 'Move to get up';
+        } else if (hutWithinReach() && canLieDown()) {
+            gatherEl.classList.add('on');
+            gatherBar.classList.remove('on');
+            gatherLabel.textContent = (isTouch ? 'Tap' : 'Click') +
+                (isNight() ? ' · Sleep until dawn' : ' · Lie down in the shelter');
         } else if (H.target) {
             gatherEl.classList.add('on');
             gatherBar.classList.remove('on');
@@ -7092,8 +7396,12 @@ async function boot() {
         const usedModel = await loadPlayerModel();
         setupPlayer();
         await Promise.all([loadTool(PICKAXE_PATH, 'pickaxe'), loadTool(AXE_PATH, 'axe'),
-                           loadTool(WOODPICK_PATH, 'woodpick')]);
+                           loadTool(WOODPICK_PATH, 'woodpick'), loadStickHouse()]);
         attachTools();
+        // A hut raised in an earlier session goes back exactly where it stood
+        if (INV.stickhouse && Array.isArray(save.hut)) {
+            placeHut(save.hut[0], save.hut[1], save.hut[2] || 0);
+        }
         updateGrass(true);
 
         await progress(95, 'Rousing the hostiles');
@@ -7118,6 +7426,7 @@ async function boot() {
         if (!tools.pickaxe) missing.push(PICKAXE_PATH + ' (pickaxe)');
         if (!tools.axe) missing.push(AXE_PATH + ' (axe)');
         if (!tools.woodpick) missing.push(WOODPICK_PATH + ' (wooden pickaxe)');
+        if (!hutProto) missing.push(HUT_PATH + ' (stick house)');
 
         if (missing.length === 0) {
             loaderText.textContent = 'Ready';
