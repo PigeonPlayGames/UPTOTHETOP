@@ -107,6 +107,13 @@ canvas { display: block; touch-action: none; }
 
 #kill-line { color: var(--dim); }
 #kill-line b { color: #e8a07a; font-size: 15px; letter-spacing: 0.06em; }
+#kill-line i.tool {
+    font-style: normal;
+    color: #9fe3d3;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
 
 #stamina {
     margin-top: 7px;
@@ -583,7 +590,7 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 
 /* ---------- Map and completion screens ---------- */
 
-#map-screen, #finish {
+#map-screen, #finish, #pack-screen {
     position: fixed;
     inset: 0;
     z-index: 24;
@@ -593,7 +600,84 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     background: rgba(6, 12, 13, 0.82);
     backdrop-filter: blur(10px);
 }
-#map-screen.on, #finish.on { display: flex; }
+#map-screen.on, #finish.on, #pack-screen.on { display: flex; }
+
+/* ---- what you are carrying, and what it can be turned into ---- */
+#pack-screen .sheet { width: min(460px, 92vw); align-items: stretch; }
+.carry {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.carry div {
+    flex: 1;
+    text-align: center;
+    padding: 9px 4px 7px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.03);
+}
+.carry b {
+    display: block;
+    font-size: 19px;
+    color: #e8a07a;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+.carry span {
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+.craft-h {
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 4px 0 -2px;
+}
+#pack-recipes { display: flex; flex-direction: column; gap: 6px; }
+.recipe {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.recipe.made { opacity: 0.5; }
+.recipe .txt { flex: 1; min-width: 0; }
+.recipe .nm { font-size: 12px; letter-spacing: 0.04em; }
+.recipe .no {
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.45;
+    margin-top: 2px;
+}
+.recipe .cost {
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    color: #9fe3d3;
+}
+.recipe .cost s { color: #d2645a; text-decoration: none; }
+.recipe button {
+    flex: 0 0 auto;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    padding: 7px 11px;
+}
+.recipe button[disabled] { opacity: 0.35; cursor: default; }
+.pack-hint {
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.5;
+    text-align: center;
+    margin: 2px 2px 0;
+}
 
 .sheet {
     display: flex;
@@ -728,6 +812,14 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     border-radius: 3px;
     font-size: 9px;
 }
+#btn-pack {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top));
+    right: calc(112px + env(safe-area-inset-right));
+    width: 52px; height: 36px;
+    border-radius: 3px;
+    font-size: 9px;
+}
 
 body.touch.playing #touch { display: block; }
 body.touch #minimap { width: 118px; height: 118px; bottom: calc(176px + env(safe-area-inset-bottom)); right: 16px; }
@@ -800,6 +892,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button class="tbtn" id="btn-jump">JUMP</button>
     <button class="tbtn" id="btn-run">RUN</button>
     <button class="tbtn" id="btn-map">MAP</button>
+    <button class="tbtn" id="btn-pack">PACK</button>
     <button class="tbtn" id="btn-menu">≡</button>
 </div>
 
@@ -856,6 +949,21 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
             <span id="map-scale">—</span>
         </div>
         <button class="ghost" id="map-close">Close</button>
+    </div>
+</div>
+
+<div id="pack-screen">
+    <div class="sheet">
+        <h2>Pack</h2>
+        <div class="carry">
+            <div><b id="pack-wood">0</b><span>wood</span></div>
+            <div><b id="pack-stone">0</b><span>stone</span></div>
+            <div><b id="pack-relics">0</b><span>relics</span></div>
+        </div>
+        <p class="craft-h">Make</p>
+        <div id="pack-recipes"></div>
+        <p class="pack-hint" id="pack-hint"></p>
+        <button class="ghost" id="pack-close">Close</button>
     </div>
 </div>
 
@@ -959,15 +1067,17 @@ const PLAYER_CLIP_NAMES = {
 const ATTACK_CLIP_IN = 0.30;
 const ATTACK_CLIP_OUT = 1.35;
 
-// Neither work animation is authored facing straight ahead. Measured against
-// the walk cycle — which is what the game's own sense of "forward" is built on
-// — the chop turns the body about 35 degrees to its left across the swing and
-// the pickaxe swing about 50 degrees to its right. The game aims the player at
-// the rock or the tree, so without cancelling that out the work lands off to
-// one side. These are added to the aim; set either to 0 to leave a clip as its
-// animator authored it.
+// The chop is not authored facing straight ahead: measured against the walk
+// cycle — which is what the game's own sense of "forward" is built on — it
+// turns the body about 33 degrees to its left across the swing, so aiming the
+// player at the trunk left him hacking past the side of it.
+//
+// The pickaxe swing measures 62 degrees off square and is deliberately left
+// alone. It is an overhead hammer swing, and you swing a pick side-on to the
+// rock, exactly as that animation does; squaring it up to the target made it
+// look wrong. Being off square is not the same as being aimed wrong.
 const WORK_FACING = {
-    rock: 1.02,     // +59 degrees, undoing the swing's lean to the right
+    rock: 0,        // as authored — the swing is side-on by design
     tree: -0.58     // -33 degrees, undoing the chop's lean to the left
 };
 
@@ -1146,7 +1256,34 @@ const settings = {
     intro: true
 };
 
-let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false };
+let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false,
+             inv: null };
+
+// What the player is carrying and what they have made. You start with nothing:
+// the first axe has to be cut out of branches you pull off a tree by hand, and
+// the first stones picked up off the ground, which is the whole reason the
+// hand-gathering below exists.
+const INV = {
+    stone: 0,
+    wood: 0,
+    axe: false,
+    pickaxe: false,
+    whetstone: false,   // attacks hit harder
+    honed: false        // tools bite deeper, so one swing does the work of two
+};
+
+// Cost is what it takes; `gives` is what owning it changes. Order is the order
+// they appear on the panel.
+const RECIPES = [
+    { id: 'axe', name: 'Stone axe', wood: 3, stone: 2,
+      note: 'Fell a whole tree for three wood instead of pulling off one branch.' },
+    { id: 'pickaxe', name: 'Stone pickaxe', wood: 3, stone: 3,
+      note: 'Break open boulders for three stone instead of scavenging pebbles.' },
+    { id: 'whetstone', name: 'Whetstone', wood: 1, stone: 4,
+      note: 'A keener edge. Every blow you land does half again as much.' },
+    { id: 'honed', name: 'Honed edges', wood: 6, stone: 6,
+      note: 'Rework both heads. Gathering takes one swing where it took two.' }
+];
 
 function loadSave() {
     try {
@@ -1161,6 +1298,14 @@ function loadSave() {
         if (Array.isArray(data.waystones)) save.waystones = data.waystones;
         if (data.completed) save.completed = true;
         if (Array.isArray(data.pos)) save.pos = data.pos;
+        if (data.inv && typeof data.inv === 'object') {
+            INV.stone = Math.max(0, data.inv.stone | 0);
+            INV.wood = Math.max(0, data.inv.wood | 0);
+            INV.axe = !!data.inv.axe;
+            INV.pickaxe = !!data.inv.pickaxe;
+            INV.whetstone = !!data.inv.whetstone;
+            INV.honed = !!data.inv.honed;
+        }
     } catch (e) { /* corrupt save, start fresh */ }
 }
 
@@ -1174,7 +1319,12 @@ function writeSave() {
             completed: P.completed,
             kills: P.kills,
             time: timeOfDay,
-            pos: player ? [player.position.x, player.position.y, player.position.z] : null
+            pos: player ? [player.position.x, player.position.y, player.position.z] : null,
+            inv: {
+                stone: INV.stone, wood: INV.wood,
+                axe: INV.axe, pickaxe: INV.pickaxe,
+                whetstone: INV.whetstone, honed: INV.honed
+            }
         }));
     } catch (e) { /* storage blocked — fine */ }
 }
@@ -1968,15 +2118,17 @@ function buildVegetation() {
         rockMesh.setMatrixAt(i, _dummy.matrix);
         tint.setHSL(0.25, 0.04, 0.34 + r.r * 0.22);
         rockMesh.setColorAt(i, tint);
-        const col = r.s > 0.7 ? addCollider(r.x, r.z, r.s * 0.95) : null;
-        // Only boulders are worth swinging a pickaxe at
-        if (r.s > 0.55) {
-            harvestables.push({
-                kind: 'rock', x: r.x, z: r.z, y: r.h, height: r.s * 1.2,
-                parts: [{ mesh: rockMesh, index: i }],
-                collider: col, gone: 0
-            });
-        }
+        const loose = r.s <= 0.7;
+        const col = loose ? null : addCollider(r.x, r.z, r.s * 0.95);
+        // Boulders are pickaxe work. Anything small enough to step over is
+        // small enough to pick up, which is where a player with no tools at
+        // all has to start, so the collider threshold decides both.
+        harvestables.push({
+            kind: loose ? 'pebble' : 'rock',
+            x: r.x, z: r.z, y: r.h, height: r.s * 1.2,
+            parts: [{ mesh: rockMesh, index: i }],
+            collider: col, gone: 0
+        });
     });
     if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
     rockMesh.count = rocks.length;
@@ -2882,6 +3034,17 @@ function sfxRelic() {
     });
 }
 
+// Lashing a head to a handle: two knocks of wood, then the thing ringing true
+function sfxCraft() {
+    if (!Audio.ready) return;
+    ring(240, 9, 0.12, 0.09);
+    setTimeout(() => ring(300, 9, 0.12, 0.09), 110);
+    setTimeout(() => {
+        blip('triangle', 523, 523, 0.5, 0.09);
+        blip('sine', 784, 784, 0.6, 0.06);
+    }, 240);
+}
+
 function sfxWaystone() {
     if (!Audio.ready) return;
     [392, 587, 784].forEach((f, i) => {
@@ -3523,8 +3686,8 @@ function updateAnimation(dt, horizontalSpeed, running) {
     if (hasClips) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
-        } else if (H.active) {
-            const work = H.active.kind === 'rock' ? 'mine' : 'chop';
+        } else if (H.active && H.job) {
+            const work = H.job.anim;
             playAction(work, 0.15);
             // walk and run leave a time scale behind on a shared action
             if (actions[work]) actions[work].setEffectiveTimeScale(1);
@@ -3605,20 +3768,54 @@ const harvestables = [];      // every tree and boulder that can be worked
 const harvestMeshes = [];     // the instanced meshes they live in, for picking
 
 const HARVEST_RANGE = 4.2;    // how close you must be to start
-const HARVEST_RESPAWN = 60;   // seconds before it grows back
+// Seconds before a thing comes back. Loose stones return quickest: they are
+// the only resource a player with empty hands can reach, so waiting on them
+// is waiting on the whole game.
+const HARVEST_RESPAWN = { pebble: 25, rock: 60, tree: 60 };
 
-// Work runs for two complete swings rather than a flat number of seconds, so
-// the rock never vanishes halfway through the animation. If a clip is missing
-// these stand in for its length.
-const HARVEST_SWINGS = 2;
-const HARVEST_FALLBACK = { rock: 1.85, tree: 1.95 };
+// Work runs for whole swings rather than a flat number of seconds, so nothing
+// ever vanishes halfway through the animation. If a clip is missing, these
+// stand in for its length.
+const HARVEST_FALLBACK = { mine: 1.85, chop: 1.95 };
 
 // Where in each swing the blow actually lands, as a fraction of the clip:
 // measured from the lowest point the right hand reaches. The pickaxe comes
 // down right at the end of its cycle, the axe a little under halfway.
-const HARVEST_IMPACT = { rock: 0.945, tree: 0.437 };
+const HARVEST_IMPACT = { mine: 0.945, chop: 0.437 };
 
-const harvestGone = [];       // only the ones currently cleared, for the respawn clock
+const BRANCH_COOLDOWN = 30;   // a tree you have stripped needs a while
+
+// What you can do to a thing depends on what you are carrying. With empty
+// hands you can still prise a loose stone off the ground and pull branches off
+// a trunk — badly, and slowly, but enough to make the first axe. Everything
+// better than that has to be crafted.
+const JOBS = {
+    mine:     { anim: 'mine', tool: 'pickaxe', swings: 2, stone: 3, clears: true,
+                verb: 'Mine the boulder' },
+    pebble:   { anim: 'mine', tool: null, swings: 1, stone: 1, clears: true,
+                verb: 'Prise out the stone' },
+    fell:     { anim: 'chop', tool: 'axe', swings: 2, wood: 3, clears: true,
+                verb: 'Fell the tree' },
+    branches: { anim: 'chop', tool: null, swings: 2, wood: 1, clears: false,
+                verb: 'Pull off a branch' }
+};
+
+// null means there is nothing you can do here yet; blockedBy says why
+function jobFor(h) {
+    if (!h) return null;
+    if (h.kind === 'pebble') return JOBS.pebble;
+    if (h.kind === 'rock') return INV.pickaxe ? JOBS.mine : null;
+    if (h.kind === 'tree') return INV.axe ? JOBS.fell : JOBS.branches;
+    return null;
+}
+
+function blockedBy(h) {
+    if (h && h.kind === 'rock' && !INV.pickaxe) return 'Need a pickaxe';
+    return null;
+}
+
+const harvestGone = [];       // cleared from the world, waiting to grow back
+const harvestCooling = [];    // still standing, but worked too recently
 
 const tools = { pickaxe: null, axe: null };
 let toolBone = null;
@@ -3626,19 +3823,23 @@ let toolBone = null;
 const H = {
     target: null,      // what is under the crosshair right now
     active: null,      // what is being worked
+    job: null,
     timer: 0,
     total: 0,
-    stone: 0,
-    wood: 0,
     hits: [],          // elapsed times at which each blow lands
     pickClock: 0
 };
 
-// How long one swing of the right tool takes, read from the animation itself
-function harvestSwing(kind) {
-    const a = actions && actions[kind === 'rock' ? 'mine' : 'chop'];
+// How long one swing takes, read from the animation itself
+function harvestSwing(anim) {
+    const a = actions && actions[anim];
     const d = a && a.userData && a.userData.duration;
-    return (d && d > 0.4) ? d : HARVEST_FALLBACK[kind];
+    return (d && d > 0.4) ? d : HARVEST_FALLBACK[anim];
+}
+
+// Honed heads do in one swing what used to take two
+function swingsFor(job) {
+    return (INV.honed && job.swings > 1) ? job.swings - 1 : job.swings;
 }
 
 const _zeroMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
@@ -3721,7 +3922,8 @@ function pickHarvestable(ndcX, ndcY) {
     for (const hit of hits) {
         if (hit.instanceId === undefined) continue;
         const h = harvestables.find(q =>
-            q.gone <= 0 && q.parts.some(p => p.mesh === hit.object && p.index === hit.instanceId));
+            q.gone <= 0 && !(q.cool > 0) &&
+            q.parts.some(p => p.mesh === hit.object && p.index === hit.instanceId));
         if (!h) continue;
         if (Math.hypot(h.x - player.position.x, h.z - player.position.z) > HARVEST_RANGE) return null;
         return h;
@@ -3731,33 +3933,51 @@ function pickHarvestable(ndcX, ndcY) {
 
 function startHarvest(h) {
     if (!h || H.active || P.dead || P.swimming) return false;
-    H.active = h;
+    const job = jobFor(h);
+    if (!job) {
+        const why = blockedBy(h);
+        if (why) toast(why, 1800);
+        return false;
+    }
 
-    // Two whole swings, so the last blow is seen to land before it gives
-    const swing = harvestSwing(h.kind);
-    H.total = swing * HARVEST_SWINGS;
+    H.active = h;
+    H.job = job;
+
+    // Whole swings, so the last blow is seen to land before it gives
+    const swing = harvestSwing(job.anim);
+    const n = swingsFor(job);
+    H.total = swing * n;
     H.timer = H.total;
 
     // One sound per blow, at the point in the swing where the tool arrives
     H.hits.length = 0;
-    for (let i = 0; i < HARVEST_SWINGS; i++) {
-        H.hits.push(swing * (i + HARVEST_IMPACT[h.kind]));
+    for (let i = 0; i < n; i++) {
+        H.hits.push(swing * (i + HARVEST_IMPACT[job.anim]));
     }
 
-    showTool(h.kind === 'rock' ? 'pickaxe' : 'axe');
+    showTool(job.tool);
 
     // Face the work, allowing for the lean the animation itself carries
     P.faceTarget = Math.atan2(h.x - player.position.x, h.z - player.position.z) +
-        (WORK_FACING[h.kind] || 0);
+        (WORK_FACING[job.anim === 'mine' ? 'rock' : 'tree'] || 0);
     P.faceTimer = H.total + 0.3;
     P.vel.x = 0;
     P.vel.z = 0;
     return true;
 }
 
+// True when the click was spent on gathering, including when it was refused
+// for want of a tool: throwing a punch at a boulder is not a useful fallback.
+function tryHarvest(h) {
+    if (!h) return false;
+    if (startHarvest(h)) return true;
+    return !!blockedBy(h);
+}
+
 function cancelHarvest() {
     if (!H.active) return;
     H.active = null;
+    H.job = null;
     H.timer = 0;
     H.hits.length = 0;
     showTool(null);
@@ -3765,17 +3985,33 @@ function cancelHarvest() {
 
 function finishHarvest() {
     const h = H.active;
-    if (!h) return;
-    setHarvestablePartsVisible(h, false);
-    h.gone = HARVEST_RESPAWN;
+    const job = H.job;
+    if (!h || !job) return;
 
-    harvestGone.push(h);
+    if (job.clears) {
+        setHarvestablePartsVisible(h, false);
+        h.gone = HARVEST_RESPAWN[h.kind] || 60;
+        harvestGone.push(h);
+    } else {
+        // The tree is still standing; it just has nothing more to give yet
+        h.cool = BRANCH_COOLDOWN;
+        harvestCooling.push(h);
+    }
 
-    if (h.kind === 'rock') { H.stone++; sfxRockBreak(); toast('Stone gathered · ' + H.stone, 2000); }
-    else { H.wood++; sfxTreeFall(); toast('Timber · ' + H.wood, 2000); }
+    if (job.stone) {
+        INV.stone += job.stone;
+        if (job === JOBS.mine) sfxRockBreak(); else sfxPickStrike();
+        toast('+' + job.stone + ' stone  ·  ' + INV.stone + ' carried', 2000);
+    } else {
+        INV.wood += job.wood;
+        if (job === JOBS.fell) sfxTreeFall(); else sfxAxeStrike();
+        toast('+' + job.wood + ' wood  ·  ' + INV.wood + ' carried', 2000);
+    }
 
     updateRelicHud();
+    if (overlay === 'pack') drawPack();
     H.active = null;
+    H.job = null;
     H.timer = 0;
     H.hits.length = 0;
     showTool(null);
@@ -3787,7 +4023,7 @@ function finishHarvest() {
 function harvestWithinReach() {
     const r2 = HARVEST_RANGE * HARVEST_RANGE;
     for (const h of harvestables) {
-        if (h.gone > 0) continue;
+        if (h.gone > 0 || h.cool > 0) continue;
         const dx = h.x - player.position.x;
         const dz = h.z - player.position.z;
         if (dx * dx + dz * dz <= r2) return true;
@@ -3805,6 +4041,12 @@ function updateHarvest(dt) {
             harvestGone.splice(i, 1);
         }
     }
+    // and stripped trees put out new growth
+    for (let i = harvestCooling.length - 1; i >= 0; i--) {
+        const h = harvestCooling[i];
+        h.cool -= dt;
+        if (h.cool <= 0) { h.cool = 0; harvestCooling.splice(i, 1); }
+    }
 
     if (H.active) {
         const h = H.active;
@@ -3820,7 +4062,7 @@ function updateHarvest(dt) {
             const elapsed = H.total - H.timer;
             while (H.hits.length && elapsed >= H.hits[0]) {
                 H.hits.shift();
-                if (h.kind === 'rock') sfxPickStrike(); else sfxAxeStrike();
+                if (H.job.anim === 'mine') sfxPickStrike(); else sfxAxeStrike();
                 camShake = Math.min(camShake + 0.07, 0.16);
             }
             if (H.timer <= 0) finishHarvest();
@@ -3838,7 +4080,7 @@ function updateHarvest(dt) {
             H.pickClock = 0.1;
             H.target = harvestWithinReach() ? pickHarvestable(0, 0) : null;
         } else if (H.target &&
-            (H.target.gone > 0 ||
+            (H.target.gone > 0 || H.target.cool > 0 ||
              Math.hypot(H.target.x - player.position.x, H.target.z - player.position.z) > HARVEST_RANGE)) {
             H.target = null;   // it was taken or we stepped back since the last look
         }
@@ -4445,7 +4687,7 @@ function playerAttack() {
         // The assisted target always connects; others need to be in the arc
         const inArc = (dx / d) * fx + (dz / d) * fz >= minDot;
         if (!inArc && !(best && best.e === e)) continue;
-        damageEnemy(e, ATTACK_DAMAGE, dx / d, dz / d);
+        damageEnemy(e, ATTACK_DAMAGE * (INV.whetstone ? 1.5 : 1), dx / d, dz / d);
         hits++;
     }
 
@@ -4545,6 +4787,10 @@ function setupInput() {
 
         if (e.code === 'Escape') { if (overlay) closeOverlay(); else togglePause(); }
         if (e.code === 'KeyM') { if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map'); }
+        if (e.code === 'KeyI' || e.code === 'Tab') {
+            e.preventDefault();
+            if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
+        }
         if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
@@ -4552,7 +4798,7 @@ function setupInput() {
         if (e.code === 'KeyE') {
             if (H.active) cancelHarvest();
             else if (foeWithinSwing()) playerAttack();
-            else if (!startHarvest(pickHarvestable(0, 0))) playerAttack();
+            else if (!tryHarvest(pickHarvestable(0, 0))) playerAttack();
         }
     });
 
@@ -4569,7 +4815,7 @@ function setupInput() {
         // A foe in range always comes first.
         if (pointerLocked) {
             if (H.active) { cancelHarvest(); return; }
-            if (!foeWithinSwing() && startHarvest(pickHarvestable(0, 0))) return;
+            if (!foeWithinSwing() && tryHarvest(pickHarvestable(0, 0))) return;
             playerAttack();
             return;
         }
@@ -4681,7 +4927,7 @@ function setupInput() {
             const r = renderer.domElement.getBoundingClientRect();
             const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
             const ny = -((e.clientY - r.top) / r.height) * 2 + 1;
-            startHarvest(pickHarvestable(nx, ny));
+            tryHarvest(pickHarvestable(nx, ny));
         }
     };
     window.addEventListener('pointerup', endLook);
@@ -4693,7 +4939,7 @@ function setupInput() {
         initAudio();
         if (H.active) cancelHarvest();
         else if (foeWithinSwing()) playerAttack();
-        else if (!startHarvest(pickHarvestable(0, 0))) playerAttack();
+        else if (!tryHarvest(pickHarvestable(0, 0))) playerAttack();
     });
 
     const jumpBtn = document.getElementById('btn-jump');
@@ -4711,15 +4957,19 @@ function setupInput() {
         e.preventDefault();
         if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map');
     });
+    document.getElementById('btn-pack').addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
+    });
     // Several independent ways out of a full-screen panel: the button (by
     // click or touch), a tap on the backdrop, or Escape. No single quirk of
     // one input path can trap someone on these screens.
-    for (const id of ['map-close', 'finish-close']) {
+    for (const id of ['map-close', 'finish-close', 'pack-close']) {
         const btn = document.getElementById(id);
         btn.addEventListener('click', closeOverlay);
         btn.addEventListener('pointerdown', (e) => { e.preventDefault(); closeOverlay(); });
     }
-    for (const id of ['map-screen', 'finish']) {
+    for (const id of ['map-screen', 'finish', 'pack-screen']) {
         document.getElementById(id).addEventListener('pointerdown', (e) => {
             if (e.target.id === id) closeOverlay();     // backdrop only
         });
@@ -5292,8 +5542,10 @@ function updateRelics(dt) {
 function updateRelicHud() {
     relicCountEl.textContent = collected;
     let extra = P.kills > 0 ? ' &nbsp;·&nbsp; <b>' + P.kills + '</b> felled' : '';
-    if (H.stone) extra += ' &nbsp;·&nbsp; <b>' + H.stone + '</b> stone';
-    if (H.wood) extra += ' &nbsp;·&nbsp; <b>' + H.wood + '</b> wood';
+    if (INV.stone) extra += ' &nbsp;·&nbsp; <b>' + INV.stone + '</b> stone';
+    if (INV.wood) extra += ' &nbsp;·&nbsp; <b>' + INV.wood + '</b> wood';
+    if (INV.pickaxe) extra += ' &nbsp;·&nbsp; <i class="tool">pickaxe</i>';
+    if (INV.axe) extra += ' &nbsp;·&nbsp; <i class="tool">axe</i>';
     killLineEl.innerHTML = extra;
 }
 
@@ -5551,7 +5803,7 @@ function drawCompass(nearestRelic) {
 
 // A screen that freezes play without opening the settings menu.
 let overlay = null;
-const overlayEls = { map: 'map-screen', finish: 'finish' };
+const overlayEls = { map: 'map-screen', finish: 'finish', pack: 'pack-screen' };
 
 function openOverlay(name) {
     if (paused || overlay) return;
@@ -5559,6 +5811,7 @@ function openOverlay(name) {
     document.getElementById(overlayEls[name]).classList.add('on');
     if (pointerLocked) document.exitPointerLock();
     if (name === 'map') drawBigMap();
+    if (name === 'pack') drawPack();
 }
 
 function closeOverlay() {
@@ -5569,6 +5822,84 @@ function closeOverlay() {
         const p = renderer.domElement.requestPointerLock();
         if (p && p.catch) p.catch(() => {});
     }
+}
+
+/* ---- the pack: what is carried, and what it can be made into ---- */
+
+const packWoodEl = document.getElementById('pack-wood');
+const packStoneEl = document.getElementById('pack-stone');
+const packRelicsEl = document.getElementById('pack-relics');
+const packRecipesEl = document.getElementById('pack-recipes');
+const packHintEl = document.getElementById('pack-hint');
+
+function canCraft(r) {
+    return !INV[r.id] && INV.wood >= r.wood && INV.stone >= r.stone;
+}
+
+function craft(id) {
+    const r = RECIPES.find(x => x.id === id);
+    if (!r || !canCraft(r)) return;
+    INV.wood -= r.wood;
+    INV.stone -= r.stone;
+    INV[r.id] = true;
+    sfxCraft();
+    toast(r.name + ' made', 2600);
+    updateRelicHud();
+    drawPack();
+    writeSave();
+}
+
+function drawPack() {
+    packWoodEl.textContent = INV.wood;
+    packStoneEl.textContent = INV.stone;
+    packRelicsEl.textContent = collected;
+
+    packRecipesEl.replaceChildren();
+    for (const r of RECIPES) {
+        const made = !!INV[r.id];
+        const row = document.createElement('div');
+        row.className = 'recipe' + (made ? ' made' : '');
+
+        const txt = document.createElement('div');
+        txt.className = 'txt';
+
+        const nm = document.createElement('div');
+        nm.className = 'nm';
+        nm.textContent = r.name;
+        txt.appendChild(nm);
+
+        const no = document.createElement('div');
+        no.className = 'no';
+        no.textContent = r.note;
+        txt.appendChild(no);
+
+        // Whichever half you are short of turns red, so it is obvious at a
+        // glance which one to go and look for
+        const cost = document.createElement('div');
+        cost.className = 'cost';
+        const wood = document.createElement(INV.wood >= r.wood ? 'span' : 's');
+        wood.textContent = r.wood + ' wood';
+        const stone = document.createElement(INV.stone >= r.stone ? 'span' : 's');
+        stone.textContent = r.stone + ' stone';
+        cost.append(wood, document.createTextNode('  ·  '), stone);
+        txt.appendChild(cost);
+
+        row.appendChild(txt);
+
+        const btn = document.createElement('button');
+        btn.className = 'ghost';
+        btn.textContent = made ? 'Made' : 'Make';
+        btn.disabled = made || !canCraft(r);
+        btn.addEventListener('click', () => craft(r.id));
+        row.appendChild(btn);
+
+        packRecipesEl.appendChild(row);
+    }
+
+    packHintEl.textContent = (!INV.axe && !INV.pickaxe)
+        ? 'With nothing in your hands you can still pull a branch off a tree and prise a loose stone out of the ground. Start there.'
+        : (!INV.axe ? 'An axe fells a whole tree instead of taking one branch.'
+        : (!INV.pickaxe ? 'A pickaxe opens the boulders, which hold far more stone.' : ''));
 }
 
 const bigMapCanvas = document.getElementById('big-map');
@@ -6040,6 +6371,21 @@ function resetProgress() {
     collected = 0;
     P.kills = 0;
     P.completed = false;
+    // Back to empty hands, which means making the first axe again
+    INV.stone = 0;
+    INV.wood = 0;
+    INV.axe = false;
+    INV.pickaxe = false;
+    INV.whetstone = false;
+    INV.honed = false;
+    cancelHarvest();
+    for (const h of harvestables) {
+        if (h.gone > 0) setHarvestablePartsVisible(h, true);
+        h.gone = 0;
+        h.cool = 0;
+    }
+    harvestGone.length = 0;
+    harvestCooling.length = 0;
     P.health = PLAYER_MAX_HEALTH;
     P.stamina = 100;
     P.dead = false;
@@ -6059,15 +6405,20 @@ function resetProgress() {
 function buildControlsList() {
     const rows = isTouch
         ? [['Move', 'Left stick'], ['Look', 'Drag the view'], ['Zoom', 'Pinch'],
-           ['Strike', 'HIT button'], ['Jump', 'JUMP button'], ['Sprint', 'RUN button (toggle)'],
-           ['Map', 'MAP button'], ['Settings', '≡ button']]
+           ['Strike', 'HIT button'], ['Gather', 'Tap a rock or tree'],
+           ['Jump', 'JUMP button'], ['Sprint', 'RUN button (toggle)'],
+           ['Map', 'MAP button'], ['Pack and crafting', 'PACK button'],
+           ['Settings', '≡ button']]
         : [['Move', 'WASD / arrows'], ['Look', 'Mouse'], ['Zoom', 'Scroll wheel'],
-           ['Strike', 'Click or E'], ['Jump', 'Space'], ['Sprint', 'Shift'],
-           ['Map', 'M'], ['First person', 'V'], ['Hide HUD', 'F'],
+           ['Strike', 'Click or E'], ['Gather', 'Click a rock or tree'],
+           ['Jump', 'Space'], ['Sprint', 'Shift'],
+           ['Map', 'M'], ['Pack and crafting', 'I or Tab'],
+           ['First person', 'V'], ['Hide HUD', 'F'],
            ['Flip model facing', 'B'], ['Skip time', 'T'], ['Settings', 'Esc']];
     document.getElementById('controls-list').innerHTML =
         rows.map(r => '<div><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('') +
         '<div><span>Heal</span><b>Rest at the campfire</b></div>' +
+        '<div><span>Tools</span><b>Made in the pack, not found</b></div>' +
         '<div><span>Respawn point</span><b>Nearest waystone you woke</b></div>';
 }
 
@@ -6333,16 +6684,18 @@ function animate() {
             drawMinimap();
         }
 
-        if (H.active) {
+        if (H.active && H.job) {
             gatherEl.classList.add('on');
             gatherBar.classList.add('on');
-            gatherLabel.textContent = H.active.kind === 'rock' ? 'Mining' : 'Chopping';
+            gatherLabel.textContent = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
             gatherFill.style.width = ((1 - H.timer / H.total) * 100).toFixed(0) + '%';
         } else if (H.target) {
             gatherEl.classList.add('on');
             gatherBar.classList.remove('on');
-            gatherLabel.textContent = (isTouch ? 'Tap' : 'Click') +
-                (H.target.kind === 'rock' ? ' to mine' : ' to chop');
+            const job = jobFor(H.target);
+            gatherLabel.textContent = job
+                ? (isTouch ? 'Tap' : 'Click') + ' · ' + job.verb
+                : (blockedBy(H.target) || '');
         } else {
             gatherEl.classList.remove('on');
             gatherBar.classList.remove('on');
