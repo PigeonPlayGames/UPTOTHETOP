@@ -590,6 +590,38 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
 
 /* ---------- Map and completion screens ---------- */
 
+/* ---------- Choosing where a shelter goes ---------- */
+
+#site-bar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    z-index: 16;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    padding: 12px 16px;
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    background: rgba(13, 22, 24, 0.86);
+    backdrop-filter: blur(6px);
+    max-width: min(420px, 92vw);
+}
+#site-bar.on { display: flex; }
+#site-bar .row { display: flex; gap: 8px; }
+#site-bar button { font-size: 9px; letter-spacing: 0.16em; padding: 8px 13px; }
+#site-bar button[disabled] { opacity: 0.35; cursor: default; }
+#site-hint {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: var(--dim);
+    text-align: center;
+    line-height: 1.5;
+}
+
 /* ---------- Contextual nudges along the bottom ---------- */
 
 #cues {
@@ -620,6 +652,8 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     backdrop-filter: blur(5px);
 }
 #cues button.on { display: flex; }
+/* the siting bar stands where these do, and says everything they would */
+body.siting #cues { display: none; }
 #cues button:hover { color: var(--ink); border-color: rgba(159, 227, 211, 0.5); }
 #cues kbd {
     font: inherit;
@@ -658,6 +692,22 @@ button.ghost:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
     background: #e8a07a;
     border: 1px solid rgba(8, 14, 15, 0.8);
 }
+
+/* Darkened corners, drawn by the compositor rather than the GPU's 3D pass,
+   so it costs nothing per frame. Pulls the eye to the middle of the screen
+   and takes the flatness off the sky at the edges. */
+#vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 85% 75% at 50% 48%,
+            rgba(0, 0, 0, 0) 55%,
+            rgba(4, 10, 12, 0.3) 88%,
+            rgba(3, 8, 10, 0.52) 100%);
+}
+body:not(.playing) #vignette { display: none; }
 
 #sleep-fade {
     position: fixed;
@@ -991,10 +1041,20 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <div id="hint">Click to look around</div>
 </div>
 
+<div id="site-bar">
+    <p id="site-hint">Walk about to move it, then build</p>
+    <div class="row">
+        <button class="ghost" id="site-build">Build here · 10 wood</button>
+        <button class="ghost" id="site-cancel">Cancel</button>
+    </div>
+</div>
+
 <div id="cues">
     <button id="pack-cue" type="button"><kbd>I</kbd><span id="pack-cue-key">Pack</span></button>
     <button id="sleep-cue" type="button"><kbd id="sleep-key">K</kbd><span>Sleep until dawn</span></button>
 </div>
+
+<div id="vignette"></div>
 
 <div id="sleep-fade"></div>
 
@@ -1373,7 +1433,7 @@ const settings = {
 };
 
 let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false,
-             inv: null, hut: null };
+             inv: null, huts: [] };
 
 // What the player is carrying and what they have made. You start with nothing:
 // the first axe has to be cut out of branches you pull off a tree by hand, and
@@ -1403,8 +1463,8 @@ const RECIPES = [
       note: 'A keener edge. Every blow you land does half again as much.' },
     { id: 'honed', name: 'Honed edges', wood: 6, stone: 6,
       note: 'Rework the heads. Gathering takes one swing where it took two.' },
-    { id: 'stickhouse', name: 'Stick house', wood: 10, stone: 0,
-      note: 'A shelter, raised where you stand. Lie down in it to rest; at night you sleep through till dawn.' }
+    { id: 'stickhouse', name: 'Stick house', wood: 10, stone: 0, repeatable: true,
+      note: 'A shelter you place yourself. Lie down in it to rest; at night you sleep through till dawn. Build as many as you like.' }
 ];
 
 // Drawn here rather than shipped as images: they are a few hundred bytes each,
@@ -1448,7 +1508,9 @@ function loadSave() {
         if (Array.isArray(data.waystones)) save.waystones = data.waystones;
         if (data.completed) save.completed = true;
         if (Array.isArray(data.pos)) save.pos = data.pos;
-        if (Array.isArray(data.inv && data.inv.hut)) save.hut = data.inv.hut;
+        if (data.inv && Array.isArray(data.inv.huts)) save.huts = data.inv.huts;
+        // one hut, from before you could build more than one
+        else if (data.inv && Array.isArray(data.inv.hut)) save.huts = [data.inv.hut];
         if (data.inv && typeof data.inv === 'object') {
             INV.stone = Math.max(0, data.inv.stone | 0);
             INV.wood = Math.max(0, data.inv.wood | 0);
@@ -1477,7 +1539,7 @@ function writeSave() {
                 stone: INV.stone, wood: INV.wood,
                 woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
                 stickhouse: INV.stickhouse, whetstone: INV.whetstone, honed: INV.honed,
-                hut: hut ? [+hut.x.toFixed(2), +hut.z.toFixed(2), +hut.rot.toFixed(3)] : null
+                huts: huts.map(h => [+h.x.toFixed(2), +h.z.toFixed(2), +h.rot.toFixed(3)])
             }
         }));
     } catch (e) { /* storage blocked — fine */ }
@@ -1703,8 +1765,37 @@ const skyUniforms = {
     uGround: { value: new THREE.Color(0x4a5c58) },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) },
     uSunColor: { value: new THREE.Color(0xfff2d8) },
-    uNight: { value: 0 }
+    uNight: { value: 0 },
+    uCloudTime: { value: 0 },
+    uCloudiness: { value: 0.5 },
+    uCloudLit: { value: new THREE.Color(0xfdf6ec) },
+    uCloudDark: { value: new THREE.Color(0x8fa3b8) }
 };
+
+// Cheap value noise for the cloud deck. Four octaves is enough to read as
+// weather at this scale and costs one sky pass, which is a single dome.
+const CLOUD_GLSL = `
+float hash12(vec2 p){
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+float vnoise(vec2 p){
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash12(i), hash12(i + vec2(1,0)), u.x),
+               mix(hash12(i + vec2(0,1)), hash12(i + vec2(1,1)), u.x), u.y);
+}
+// Normalised to 0..1. Without the divide the amplitudes only sum to 0.9375
+// and the mean sits at 0.47, so any threshold written as though the range
+// were 0..1 silently never fires.
+float fbm2(vec2 p){
+    float v = 0.0, a = 0.5, norm = 0.0;
+    mat2 r = mat2(0.86, 0.5, -0.5, 0.86);
+    for (int i = 0; i < 4; i++) { v += a * vnoise(p); norm += a; p = r * p * 2.03; a *= 0.5; }
+    return v / norm;
+}
+`;
 
 const ACES_GLSL = `
 vec3 aces(vec3 x){
@@ -1772,6 +1863,9 @@ function initRenderer() {
                 uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uGround;
                 uniform vec3 uSunDir; uniform vec3 uSunColor; uniform float uNight;
                 varying vec3 vDir;
+                uniform float uCloudTime; uniform float uCloudiness;
+                uniform vec3 uCloudLit; uniform vec3 uCloudDark;
+                ${CLOUD_GLSL}
                 ${ACES_GLSL}
                 void main() {
                     vec3 d = normalize(vDir);
@@ -1782,6 +1876,34 @@ function initRenderer() {
                     col += uSunColor * pow(sd, 420.0) * 7.0;
                     col += uSunColor * pow(sd, 6.0) * 0.30 * (1.0 - uNight);
                     col += uSunColor * pow(sd, 1.8) * 0.08 * (1.0 - uNight);
+
+                    // ---- cloud deck ----
+                    // Projecting the view direction onto a flat sheet overhead
+                    // is what makes the cloud layer foreshorten towards the
+                    // horizon instead of sitting on the dome like wallpaper.
+                    if (up > 0.02) {
+                        // The scale has to put several cloud masses across the
+                        // sky. Too small and the whole dome sits inside one
+                        // noise cell, which reads as no clouds at all.
+                        vec2 p = d.xz / up * 4.0 + vec2(uCloudTime * 2.2, uCloudTime * 0.9);
+                        float f = fbm2(p);
+                        // Centred on the noise's actual mean of 0.5, so
+                        // cloudiness moves it rather than switching it off
+                        float lo = 0.62 - uCloudiness * 0.26;
+                        float cover = smoothstep(lo, lo + 0.19, f);
+                        // thicker through the middle of each mass, which is
+                        // what gives the underside its shading
+                        float body = smoothstep(lo + 0.05, lo + 0.30, f);
+                        // fade them out near the horizon, where the sheet runs
+                        // away to infinity and the noise turns to fizz
+                        cover *= smoothstep(0.02, 0.26, up);
+
+                        vec3 lit = mix(uCloudDark, uCloudLit, body);
+                        // a bright rim where the sun is behind them
+                        lit += uSunColor * pow(sd, 10.0) * 0.55 * (1.0 - body) * (1.0 - uNight);
+                        lit = mix(lit, lit * 0.28 + vec3(0.03, 0.04, 0.07), uNight);
+                        col = mix(col, lit, cover * 0.9);
+                    }
 
                     // Moon sits opposite the sun, so it rises as the sun sets
                     float md = max(dot(d, -uSunDir), 0.0);
@@ -1829,10 +1951,14 @@ function initRenderer() {
     sun.shadow.mapSize.set(Q.shadowSize, Q.shadowSize);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 420;
-    sun.shadow.camera.left = -75;
-    sun.shadow.camera.right = 75;
-    sun.shadow.camera.top = 75;
-    sun.shadow.camera.bottom = -75;
+    // The sun follows the player, so the shadow camera only has to cover what
+    // is near them. Halving its span quadruples the texels on screen for the
+    // same map, which is where the crispness comes from.
+    const shadowSpan = 46;
+    sun.shadow.camera.left = -shadowSpan;
+    sun.shadow.camera.right = shadowSpan;
+    sun.shadow.camera.top = shadowSpan;
+    sun.shadow.camera.bottom = -shadowSpan;
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.04;
     scene.add(sun);
@@ -3932,7 +4058,16 @@ function playAction(name, fadeTime) {
 
 function updateAnimation(dt, horizontalSpeed, running) {
     const modelYawOffset = settings.flip ? Math.PI : 0;
-    modelRoot.rotation.y = modelYawOffset;
+
+    // Someone lying down follows the ground they are lying on. Standing up,
+    // the model stays upright — feet track the slope on their own, and a
+    // tilted standing figure reads as falling over.
+    if (SLEEP.phase) {
+        orientToGround(modelRoot, player.position.x, player.position.z, modelYawOffset);
+    } else {
+        modelRoot.quaternion.identity();
+        modelRoot.rotation.y = modelYawOffset;
+    }
 
     if (hasClips) {
         if (P.dead && actions.death) {
@@ -5077,6 +5212,11 @@ function setupInput() {
             }
         }
 
+        if (siting.on) {
+            if (e.code === 'Escape') { endSiting(); return; }
+            if (e.code === 'Enter' || e.code === 'KeyB') { confirmSiting(); return; }
+        }
+
         if (e.code === 'Escape') { if (overlay) closeOverlay(); else togglePause(); }
         if (e.code === 'KeyM') { if (overlay === 'map') closeOverlay(); else if (!overlay) openOverlay('map'); }
         if (e.code === 'KeyI' || e.code === 'Tab') {
@@ -5112,6 +5252,7 @@ function setupInput() {
         // crosshair — a rock or tree if one is in reach, otherwise a swing.
         // A foe in range always comes first.
         if (pointerLocked) {
+            if (siting.on) { confirmSiting(); return; }
             if (SLEEP.phase === 'rest') { getUp(); return; }
             if (H.active) { cancelHarvest(); return; }
             if (!foeWithinSwing()) {
@@ -5128,7 +5269,9 @@ function setupInput() {
     document.addEventListener('pointerlockchange', () => {
         pointerLocked = document.pointerLockElement === canvas;
         document.getElementById('hint').classList.toggle('gone', pointerLocked);
-        if (!pointerLocked && started && !paused && !overlay && !isTouch) togglePause(true);
+        if (!pointerLocked && started && !paused && !overlay && !siting.on && !isTouch) {
+            togglePause(true);
+        }
     });
 
     let dragging = false;
@@ -5224,6 +5367,7 @@ function setupInput() {
         const held = performance.now() - touchState.tapAt;
         const moved = Math.hypot(e.clientX - touchState.tapX, e.clientY - touchState.tapY);
         if (held < 300 && moved < 14 && started && !paused && !overlay) {
+            if (siting.on) return;          // the bar's own buttons decide
             if (SLEEP.phase === 'rest') { getUp(); return; }
             if (H.active) { cancelHarvest(); return; }
             if (foeWithinSwing()) return;   // the HIT button is for fighting
@@ -5270,6 +5414,8 @@ function setupInput() {
     packCueEl.addEventListener('click', () => {
         if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
     });
+    siteBuildEl.addEventListener('click', confirmSiting);
+    document.getElementById('site-cancel').addEventListener('click', endSiting);
     sleepCueEl.addEventListener('click', beginSleep);
     sleepCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginSleep(); });
     // Several independent ways out of a full-screen panel: the button (by
@@ -5637,6 +5783,8 @@ const _horizon = new THREE.Color();
 const _sunCol = new THREE.Color();
 const DUSK_SUN = new THREE.Color(0xff8c42);
 const HEMI_WHITE = new THREE.Color(0xffffff);
+const CLOUD_SHADE = new THREE.Color(0x6b7f94);
+const _cloudLit = new THREE.Color();
 
 function updateSky(dt) {
     if (!settings.freeze) {
@@ -5663,6 +5811,13 @@ function updateSky(dt) {
 
     _sunCol.setRGB(1, 0.94, 0.84).lerp(DUSK_SUN, duskAmount);
     skyUniforms.uSunColor.value.copy(_sunCol);
+
+    // The cloud deck drifts on its own clock so it keeps moving even with the
+    // day frozen, and takes its colour from the same light as everything else
+    skyUniforms.uCloudTime.value += dt * 0.0042;
+    _cloudLit.setRGB(1, 0.97, 0.94).lerp(DUSK_SUN, duskAmount * 0.75);
+    skyUniforms.uCloudLit.value.copy(_cloudLit).lerp(_horizon, 0.18);
+    skyUniforms.uCloudDark.value.copy(_horizon).lerp(CLOUD_SHADE, 0.55);
 
     sun.position.copy(_sunDir).multiplyScalar(180);
     if (player) {
@@ -6146,9 +6301,15 @@ function closeOverlay() {
 // sticks that reach the ground all the way round, so it is solid rather than
 // something to walk into — lying down moves you inside it instead.
 let hutProto = null;
-let hut = null;
+let hutBounds = null;         // the model's own extents, measured once
+const huts = [];
 const HUT_REACH = 2.9;        // how close you must be to lie down
 const HUT_RADIUS = 0.95;      // what you cannot walk through
+// Stated as an angle, because the underlying measure is 1 - normal.y and in
+// those units 0.62 looks gentle while actually being a 68 degree cliff face.
+const HUT_MAX_SLOPE_DEG = 37;
+const HUT_SITE_SLOPE = 1 - Math.cos(HUT_MAX_SLOPE_DEG * Math.PI / 180);
+const HUT_COST_WOOD = 10;
 
 function loadStickHouse() {
     return new Promise((resolve) => {
@@ -6162,6 +6323,8 @@ function loadStickHouse() {
                         o.receiveShadow = true;
                     }
                 });
+                hutProto.updateMatrixWorld(true);
+                hutBounds = new THREE.Box3().setFromObject(hutProto);
                 resolve(true);
             },
             undefined,
@@ -6173,75 +6336,200 @@ function loadStickHouse() {
     });
 }
 
-// Somewhere it will actually stand: out of the water, off the steep stuff,
-// and clear of the ruin
+// Somewhere it will actually stand: out of the water, off anything you could
+// not stand on yourself, clear of the ruin, and not on top of another hut
 function hutSiteOk(x, z) {
-    const g = groundHeight(x, z);
-    if (g < WATER_LEVEL + 0.7) return false;
-    if (slopeAt(x, z) > 0.34) return false;
+    if (groundHeight(x, z) < WATER_LEVEL + 0.7) return false;
+    if (slopeAt(x, z) > HUT_SITE_SLOPE) return false;
     if (insideTempleFootprint(x, z, 2)) return false;
+    for (const h of huts) {
+        if (Math.hypot(h.x - x, h.z - z) < HUT_RADIUS * 2.4) return false;
+    }
     return true;
+}
+
+// Lay something down along the ground rather than stand it bolt upright on a
+// slope: tilt its up axis towards the terrain normal, then turn it to face.
+// Full tilt looks wrong on anything steep — a hut leans, it does not topple —
+// so only part of the slope is taken.
+// How much of the slope anything resting on the ground takes. Full
+// conformance seats perfectly but reads as toppling over; none of it leaves
+// the downhill side in mid-air. The hut, its ghost and anyone lying in it all
+// use the same figure, so a sleeper lies along the floor they are lying on.
+const GROUND_LEAN = 0.8;
+
+const _upY = new THREE.Vector3(0, 1, 0);
+const _tiltN = new THREE.Vector3();
+const _tiltQ = new THREE.Quaternion();
+const _yawQ = new THREE.Quaternion();
+
+function orientToGround(obj, x, z, yaw, lean) {
+    terrainNormal(x, z, _tiltN);
+    _tiltN.lerp(_upY, 1 - (lean === undefined ? GROUND_LEAN : lean)).normalize();
+    _tiltQ.setFromUnitVectors(_upY, _tiltN);
+    _yawQ.setFromAxisAngle(_upY, yaw);
+    obj.quaternion.copy(_tiltQ).multiply(_yawQ);
+}
+
+// The height to seat the hut at.
+//
+// Once it is tilted the base already follows the slope, so the centre ground
+// height is the right reference — seating on the lowest ground under the
+// footprint, which is correct for something standing level, instead lifts the
+// downhill edge clear into the air.
+//
+// The tilt only takes GROUND_LEAN of the slope, so a residual wedge is left
+// between base and hillside. Sinking by exactly that wedge puts the downhill
+// edge on the ground and buries the uphill edge in the bank, which is the way
+// round you want it: a buried edge is hidden by the hill, a floating one is not.
+function hutDrop(x, z) {
+    const g = groundHeight(x, z);
+    if (!hutBounds) return g;
+    const radius = Math.max(hutBounds.max.x - hutBounds.min.x,
+                            hutBounds.max.z - hutBounds.min.z) / 2;
+    const slopeAngle = Math.acos(Math.min(1, Math.max(-1, terrainNormal(x, z, _tiltN).y)));
+    const residual = (1 - GROUND_LEAN) * slopeAngle;
+    return g - (radius * Math.tan(residual) + 0.06);
+}
+
+function makeHutModel() {
+    const root = hutProto.clone(true);
+    root.traverse(o => {
+        if (o.isMesh) { o.castShadow = settings.shadows; o.receiveShadow = true; }
+    });
+    return root;
 }
 
 function placeHut(x, z, rot) {
-    if (!hutProto || hut) return false;
+    if (!hutProto) return null;
 
-    const root = hutProto;
-    root.rotation.set(0, rot, 0);
-    root.updateMatrixWorld(true);
-
-    // Seat it on the highest ground under its own footprint, then sink it a
-    // little, so no corner of it is left standing in mid-air on a slope
-    const box = new THREE.Box3().setFromObject(root);
-    const halfX = (box.max.x - box.min.x) / 2;
-    const halfZ = (box.max.z - box.min.z) / 2;
-    let highest = -Infinity;
-    for (let i = -1; i <= 1; i++) {
-        for (let j = -1; j <= 1; j++) {
-            const g = groundHeight(x + i * halfX * 0.8, z + j * halfZ * 0.8);
-            if (g > highest) highest = g;
-        }
-    }
-
-    root.position.set(
-        x - (box.min.x + box.max.x) / 2,
-        highest - box.min.y - 0.06,
-        z - (box.min.z + box.max.z) / 2
-    );
+    const root = makeHutModel();
+    const y = hutDrop(x, z);
+    orientToGround(root, x, z, rot);
+    // the model's own middle is not its origin, so take the offset out
+    const cx = (hutBounds.min.x + hutBounds.max.x) / 2;
+    const cz = (hutBounds.min.z + hutBounds.max.z) / 2;
+    root.position.set(x - cx, y - hutBounds.min.y, z - cz);
     scene.add(root);
 
-    hut = { x, z, y: highest, rot, collider: addCollider(x, z, HUT_RADIUS) };
-    return true;
+    const h = { x, z, y, rot, root, collider: addCollider(x, z, HUT_RADIUS) };
+    huts.push(h);
+    return h;
 }
 
-function removeHut() {
-    if (!hut) return;
-    removeCollider(hut.collider);
-    if (hutProto && hutProto.parent) hutProto.parent.remove(hutProto);
-    hut = null;
+function removeAllHuts() {
+    for (const h of huts) {
+        removeCollider(h.collider);
+        if (h.root && h.root.parent) h.root.parent.remove(h.root);
+    }
+    huts.length = 0;
 }
 
-// Raised a few paces ahead, with its doorway turned back towards you
-function raiseHut() {
-    if (!hutProto) { toast('The stick house model is missing', 2600); return false; }
-    if (hut) return false;
+// Where a hut would go if you built one from where you are standing now
+function hutSiteAhead(out) {
+    const ahead = 4.4;
+    out.x = player.position.x + Math.sin(P.yaw) * ahead;
+    out.z = player.position.z + Math.cos(P.yaw) * ahead;
+    // the model's opening faces its own +Z, so point that back at the player
+    out.rot = Math.atan2(player.position.x - out.x, player.position.z - out.z);
+    out.ok = hutSiteOk(out.x, out.z);
+    return out;
+}
 
-    const ahead = 3.1;
-    const x = player.position.x + Math.sin(P.yaw) * ahead;
-    const z = player.position.z + Math.cos(P.yaw) * ahead;
-    if (!hutSiteOk(x, z)) {
-        toast('No ground flat and dry enough here', 3000);
+function nearestHut() {
+    let best = null;
+    let bd = Infinity;
+    for (const h of huts) {
+        const d = Math.hypot(h.x - player.position.x, h.z - player.position.z);
+        if (d < bd) { bd = d; best = h; }
+    }
+    return bd <= HUT_REACH ? best : null;
+}
+
+function hutWithinReach() { return !!nearestHut(); }
+
+/* ---- choosing where it goes ---- */
+
+// Rather than a yes/no box over a view of nothing in particular, the panel
+// stands back and shows a ghost of the hut on the ground in front of you.
+// Walk about, turn, and build it where it actually looks right.
+const siting = { on: false, ghost: null, spot: { x: 0, z: 0, rot: 0, ok: false } };
+
+function makeGhost() {
+    const g = makeHutModel();
+    g.traverse(o => {
+        if (!o.isMesh) return;
+        o.castShadow = false;
+        o.receiveShadow = false;
+        o.material = o.material.clone();
+        o.material.transparent = true;
+        o.material.opacity = 0.45;
+        o.material.depthWrite = false;
+    });
+    return g;
+}
+
+function tintGhost(ok) {
+    siting.ghost.traverse(o => {
+        if (o.isMesh && o.material.emissive) {
+            o.material.emissive.setHex(ok ? 0x1d5c3a : 0x5c1d1d);
+            o.material.emissiveIntensity = 1;
+        }
+    });
+}
+
+function beginSiting() {
+    if (siting.on || !hutProto) {
+        if (!hutProto) toast('The stick house model is missing', 2600);
         return false;
     }
-    // the model's opening faces its own +Z, so point that back at the player
-    placeHut(x, z, Math.atan2(player.position.x - x, player.position.z - z));
-    toast('Shelter raised', 3000);
+    siting.on = true;
+    document.body.classList.add('siting');
+    siting.ghost = makeGhost();
+    scene.add(siting.ghost);
+    closeOverlay();
+    siteBarEl.classList.add('on');
+    updateSiting();
     return true;
 }
 
-function hutWithinReach() {
-    return !!hut &&
-        Math.hypot(hut.x - player.position.x, hut.z - player.position.z) <= HUT_REACH;
+function endSiting() {
+    if (!siting.on) return;
+    siting.on = false;
+    document.body.classList.remove('siting');
+    if (siting.ghost) {
+        scene.remove(siting.ghost);
+        siting.ghost.traverse(o => { if (o.isMesh) o.material.dispose(); });
+        siting.ghost = null;
+    }
+    siteBarEl.classList.remove('on');
+}
+
+function updateSiting() {
+    if (!siting.on) return;
+    const s = hutSiteAhead(siting.spot);
+    const y = hutDrop(s.x, s.z);
+    orientToGround(siting.ghost, s.x, s.z, s.rot);
+    const cx = (hutBounds.min.x + hutBounds.max.x) / 2;
+    const cz = (hutBounds.min.z + hutBounds.max.z) / 2;
+    siting.ghost.position.set(s.x - cx, y - hutBounds.min.y, s.z - cz);
+    tintGhost(s.ok);
+    siteHintEl.textContent = s.ok
+        ? 'Walk about to move it, then build'
+        : 'Not here — too steep, too wet, or too close to something';
+    siteBuildEl.disabled = !s.ok || INV.wood < HUT_COST_WOOD;
+}
+
+function confirmSiting() {
+    if (!siting.on || !siting.spot.ok || INV.wood < HUT_COST_WOOD) return;
+    INV.wood -= HUT_COST_WOOD;
+    INV.stickhouse = true;
+    placeHut(siting.spot.x, siting.spot.z, siting.spot.rot);
+    sfxCraft();
+    toast('Shelter raised  ·  ' + INV.wood + ' wood left', 3000);
+    updateRelicHud();
+    endSiting();
+    writeSave();
 }
 
 /* ============================================================
@@ -6278,12 +6566,14 @@ function canSleep() {
 // than being shoved out by the collision pass mid-sleep.
 function lieDown(inHut) {
     if (!canLieDown()) return false;
-    SLEEP.from = inHut && hut
+    const h = inHut ? nearestHut() : null;
+    SLEEP.from = h
         ? { x: player.position.x, y: player.position.y, z: player.position.z }
         : null;
-    if (SLEEP.from) {
-        player.position.set(hut.x, groundHeight(hut.x, hut.z), hut.z);
-        P.faceTarget = hut.rot;
+    if (h) {
+        player.position.set(h.x, groundHeight(h.x, h.z), h.z);
+        P.yaw = h.rot;
+        P.faceTarget = h.rot;
         P.faceTimer = 0.6;
     }
     SLEEP.phase = isNight() ? 'down' : 'rest';
@@ -6370,6 +6660,9 @@ function updateSleep(dt) {
 
 /* ---- the pack: what is carried, and what it can be made into ---- */
 
+const siteBarEl = document.getElementById('site-bar');
+const siteHintEl = document.getElementById('site-hint');
+const siteBuildEl = document.getElementById('site-build');
 const sleepFadeEl = document.getElementById('sleep-fade');
 // A key cap means nothing to a thumb
 if (isTouch) document.getElementById('sleep-key').remove();
@@ -6385,7 +6678,8 @@ const packRecipesEl = document.getElementById('pack-recipes');
 const packHintEl = document.getElementById('pack-hint');
 
 function canCraft(r) {
-    return !INV[r.id] && INV.wood >= r.wood && INV.stone >= r.stone;
+    if (!r.repeatable && INV[r.id]) return false;
+    return INV.wood >= r.wood && INV.stone >= r.stone;
 }
 
 // Anything you can afford that you have not already been shown counts as news.
@@ -6414,9 +6708,9 @@ function refreshCraftCue() {
 function craft(id) {
     const r = RECIPES.find(x => x.id === id);
     if (!r || !canCraft(r)) return;
-    // The hut has to go somewhere. If there is nowhere for it, the wood is
-    // not spent and the panel stays as it was.
-    if (r.id === 'stickhouse' && !raiseHut()) return;
+    // The hut is placed by hand, so this hands over to the siting mode and
+    // spends nothing until the player says where it goes
+    if (r.id === 'stickhouse') { beginSiting(); return; }
     INV.wood -= r.wood;
     INV.stone -= r.stone;
     INV[r.id] = true;
@@ -6435,7 +6729,7 @@ function drawPack() {
 
     packRecipesEl.replaceChildren();
     for (const r of RECIPES) {
-        const made = !!INV[r.id];
+        const made = !r.repeatable && !!INV[r.id];
         const row = document.createElement('div');
         row.className = 'recipe' + (made ? ' made' : '');
 
@@ -6473,7 +6767,8 @@ function drawPack() {
 
         const btn = document.createElement('button');
         btn.className = 'ghost';
-        btn.textContent = made ? 'Made' : 'Make';
+        btn.textContent = made ? 'Made'
+            : (r.repeatable && INV[r.id] ? 'Build another' : 'Make');
         btn.disabled = made || !canCraft(r);
         btn.addEventListener('click', () => craft(r.id));
         row.appendChild(btn);
@@ -6965,7 +7260,8 @@ function resetProgress() {
     INV.stickhouse = false;
     INV.whetstone = false;
     INV.honed = false;
-    removeHut();
+    endSiting();
+    removeAllHuts();
     cancelHarvest();
     for (const h of harvestables) {
         if (h.gone > 0) setHarvestablePartsVisible(h, true);
@@ -7232,6 +7528,7 @@ function animate() {
         updateSky(dt);
         updateEnemies(dt);
         updateHarvest(dt);
+        updateSiting();
         updateSleep(dt);
         updateWaystones(dt);
         updateSwing(dt);
@@ -7399,9 +7696,7 @@ async function boot() {
                            loadTool(WOODPICK_PATH, 'woodpick'), loadStickHouse()]);
         attachTools();
         // A hut raised in an earlier session goes back exactly where it stood
-        if (INV.stickhouse && Array.isArray(save.hut)) {
-            placeHut(save.hut[0], save.hut[1], save.hut[2] || 0);
-        }
+        for (const h of (save.huts || [])) placeHut(h[0], h[1], h[2] || 0);
         updateGrass(true);
 
         await progress(95, 'Rousing the hostiles');
