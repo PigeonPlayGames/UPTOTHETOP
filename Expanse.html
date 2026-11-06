@@ -1975,6 +1975,98 @@ function initRenderer() {
    WIND SHADER INJECTION
    ============================================================ */
 
+/* ============================================================
+   NATURAL SHADING
+   ============================================================ */
+
+// Flat-shaded low-poly reads as cardboard because every face of an object
+// gets the same light. Three cheap things fix most of that, and all three come
+// from information the shader already has:
+//
+//   sky      — surfaces facing up catch more of the sky than surfaces facing
+//              down. Shading by the world normal's Y gives objects their form
+//              back without another light or an occlusion pass.
+//   moss     — up-facing rock goes green at the edges where it meets a damp
+//              world. Broken up by position so it is not a uniform wash.
+//   variety  — a hash of where the instance stands, so a hundred copies of one
+//              rock stop reading as a hundred copies of one rock.
+//
+// Hooked onto project_vertex rather than begin_vertex, because the wind
+// injection already owns begin_vertex and whichever ran second would find the
+// token gone.
+function addNaturalShading(material, opts) {
+    const o = opts || {};
+    const sky = o.sky === undefined ? 0.26 : o.sky;
+    const moss = o.moss || 0;
+    const mossColor = new THREE.Color(o.mossColor || 0x6f8f52);
+    const variety = o.variety === undefined ? 0.07 : o.variety;
+    const rootDark = o.rootDark || 0;     // darkens the bottom of a thing
+    const rootSpan = o.rootSpan || 1.0;
+
+    const prev = material.onBeforeCompile;
+    material.onBeforeCompile = (shader, renderer) => {
+        if (prev) prev(shader, renderer);
+
+        shader.vertexShader = shader.vertexShader
+            .replace('void main() {',
+                `varying vec3 vNatN;
+                 varying vec3 vNatW;
+                 varying float vNatLocalY;
+                 void main() {`)
+            .replace('#include <project_vertex>',
+                `#ifdef USE_INSTANCING
+                     vec4 natW = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+                     vNatN = normalize(mat3(modelMatrix) * (mat3(instanceMatrix) * objectNormal));
+                 #else
+                     vec4 natW = modelMatrix * vec4(transformed, 1.0);
+                     vNatN = normalize(mat3(modelMatrix) * objectNormal);
+                 #endif
+                 vNatW = natW.xyz;
+                 vNatLocalY = position.y;
+                 #include <project_vertex>`);
+
+        shader.fragmentShader = shader.fragmentShader
+            .replace('void main() {',
+                `varying vec3 vNatN;
+                 varying vec3 vNatW;
+                 varying float vNatLocalY;
+                 float natHash(vec2 p){
+                     vec3 q = fract(vec3(p.xyx) * 0.1031);
+                     q += dot(q, q.yzx + 33.33);
+                     return fract((q.x + q.y) * q.z);
+                 }
+                 void main() {`)
+            .replace('#include <color_fragment>',
+                `#include <color_fragment>
+                 {
+                     float upness = clamp(vNatN.y * 0.5 + 0.5, 0.0, 1.0);
+                     // sky light from above, bounce from below
+                     diffuseColor.rgb *= mix(1.0 - ${sky.toFixed(3)},
+                                             1.0 + ${(sky * 0.42).toFixed(3)},
+                                             smoothstep(0.1, 0.95, upness));
+                     #if ${moss > 0 ? 1 : 0}
+                         // not "patch": that is a reserved word in GLSL ES 3
+                         float lichen = natHash(floor(vNatW.xz * 1.7));
+                         float grow = smoothstep(0.3, 0.9, vNatN.y) * (0.45 + lichen * 0.75);
+                         diffuseColor.rgb = mix(diffuseColor.rgb,
+                             vec3(${mossColor.r.toFixed(3)}, ${mossColor.g.toFixed(3)}, ${mossColor.b.toFixed(3)}),
+                             clamp(grow * ${moss.toFixed(3)}, 0.0, 1.0));
+                     #endif
+                     #if ${variety > 0 ? 1 : 0}
+                         float who = natHash(floor(vNatW.xz * 0.37) + 7.1);
+                         diffuseColor.rgb *= 1.0 + (who - 0.5) * ${(variety * 2).toFixed(3)};
+                     #endif
+                     #if ${rootDark > 0 ? 1 : 0}
+                         float up01 = clamp(vNatLocalY / ${rootSpan.toFixed(3)}, 0.0, 1.0);
+                         diffuseColor.rgb *= mix(1.0 - ${rootDark.toFixed(3)}, 1.0,
+                                                 smoothstep(0.0, 0.75, up01));
+                     #endif
+                 }`);
+    };
+    material.customProgramCacheKey = () =>
+        'nat' + sky + '_' + moss + '_' + variety + '_' + rootDark + '_' + rootSpan;
+}
+
 function applyWind(material, strength, heightBias) {
     const bias = heightBias === undefined ? 0 : heightBias;
     material.onBeforeCompile = (shader) => {
@@ -2327,7 +2419,8 @@ function buildVegetation() {
 
     const trunkGeo = new THREE.CylinderGeometry(0.17, 0.3, 3.4, 6);
     trunkGeo.translate(0, 1.7, 0);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4330, roughness: 1 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4330, roughness: 1, flatShading: true });
+    addNaturalShading(trunkMat, { sky: 0.2, variety: 0.1, rootDark: 0.3, rootSpan: 3.4 });
 
     const allTrees = pines.concat(broads);
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, Math.max(allTrees.length, 1));
@@ -2338,6 +2431,10 @@ function buildVegetation() {
     const broadMat = new THREE.MeshStandardMaterial({ color: 0x5c8a42, roughness: 1, flatShading: true });
     applyWind(pineMat, 0.012, 2.5);
     applyWind(broadMat, 0.016, 2.5);
+    // Leaves in shadow underneath, sun on the crown: the single biggest thing
+    // that stops a canopy reading as a flat green blob
+    addNaturalShading(pineMat, { sky: 0.42, variety: 0.1 });
+    addNaturalShading(broadMat, { sky: 0.46, variety: 0.12 });
 
     const pineMesh = new THREE.InstancedMesh(pineCanopyGeometry(), pineMat, Math.max(pines.length, 1));
     const broadMesh = new THREE.InstancedMesh(broadCanopyGeometry(), broadMat, Math.max(broads.length, 1));
@@ -2401,6 +2498,7 @@ function buildVegetation() {
     // Rocks
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x7c7f79, roughness: 1, flatShading: true });
+    addNaturalShading(rockMat, { sky: 0.4, moss: 0.5, mossColor: 0x6d8a4e, variety: 0.1 });
     const rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, Math.max(rocks.length, 1));
     rockMesh.castShadow = settings.shadows;
     rockMesh.receiveShadow = true;
@@ -2440,6 +2538,7 @@ function buildVegetation() {
             vertexColors: true, side: THREE.DoubleSide, roughness: 1, metalness: 0
         });
         applyWind(gMat, 0.22, 0);
+        addNaturalShading(gMat, { sky: 0.16, variety: 0.16, rootDark: 0.42, rootSpan: 0.55 });
         grassMesh = new THREE.InstancedMesh(tuftGeometry(), gMat, total);
         grassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         grassMesh.frustumCulled = false;
@@ -4005,6 +4104,7 @@ function loadPlayerModel() {
 
                 const scaled = new THREE.Box3().setFromObject(modelRoot);
                 modelRoot.position.y -= scaled.min.y;
+                modelBaseY = modelRoot.position.y;
 
                 modelRoot.traverse(o => {
                     if (o.isMesh || o.isSkinnedMesh) {
@@ -4056,6 +4156,32 @@ function playAction(name, fadeTime) {
     currentAction = next;
 }
 
+// Put the lying body on the ground, measured rather than assumed. The clip is
+// posed wherever its author left it, so this asks the skeleton where its
+// lowest joint has ended up this frame and shifts the model by the difference.
+// It is eased rather than snapped, because on the first frame the correction
+// can be a whole body-height and a jump would be visible.
+const _jointPos = new THREE.Vector3();
+
+function settleSleeper(dt) {
+    if (!sleepJoints.length) return;
+
+    modelRoot.position.y = modelBaseY + sleepLift;
+    modelRoot.updateMatrixWorld(true);
+
+    let lowest = Infinity;
+    for (const b of sleepJoints) {
+        b.getWorldPosition(_jointPos);
+        if (_jointPos.y < lowest) lowest = _jointPos.y;
+    }
+    if (!isFinite(lowest)) return;
+
+    const want = groundHeight(player.position.x, player.position.z) + SLEEPER_CLEARANCE;
+    const target = sleepLift + (want - lowest);
+    sleepLift = THREE.MathUtils.damp(sleepLift, target, 9, dt);
+    modelRoot.position.y = modelBaseY + sleepLift;
+}
+
 function updateAnimation(dt, horizontalSpeed, running) {
     const modelYawOffset = settings.flip ? Math.PI : 0;
 
@@ -4064,9 +4190,12 @@ function updateAnimation(dt, horizontalSpeed, running) {
     // tilted standing figure reads as falling over.
     if (SLEEP.phase) {
         orientToGround(modelRoot, player.position.x, player.position.z, modelYawOffset);
+        settleSleeper(dt);
     } else {
         modelRoot.quaternion.identity();
         modelRoot.rotation.y = modelYawOffset;
+        if (!fallbackRig) modelRoot.position.y = modelBaseY;
+        sleepLift = 0;
     }
 
     if (hasClips) {
@@ -4212,6 +4341,19 @@ const harvestCooling = [];    // still standing, but worked too recently
 
 const tools = { pickaxe: null, axe: null, woodpick: null };
 let toolBone = null;
+let modelBaseY = 0;
+
+// The handful of joints that decide where a body actually is. A standing rig
+// has its origin at the feet, but a lying-down clip can put the body anywhere
+// relative to that — on the floor, at standing hip height, or somewhere in
+// between, depending on how it was exported. Rather than guess an offset per
+// clip, measure the lowest of these every frame and settle the model onto the
+// ground from whatever it finds.
+const SLEEP_JOINT_NAMES = ['hips', 'spine', 'head', 'leftfoot', 'rightfoot',
+                           'lefthand', 'righthand', 'leftshoulder', 'rightshoulder'];
+const sleepJoints = [];
+const SLEEPER_CLEARANCE = 0.06;   // a body has some thickness
+let sleepLift = 0;
 
 const H = {
     target: null,      // what is under the crosshair right now
@@ -4274,6 +4416,12 @@ function attachTools() {
     if (!modelRoot) return;
     modelRoot.traverse(o => {
         if (!toolBone && o.isBone && normName(o.name).includes(normName(TOOL_BONE))) toolBone = o;
+        if (o.isBone) {
+            const n = normName(o.name);
+            for (const want of SLEEP_JOINT_NAMES) {
+                if (n.endsWith(want)) { sleepJoints.push(o); break; }
+            }
+        }
     });
     const parent = toolBone || modelRoot;
     for (const key of Object.keys(tools)) {
