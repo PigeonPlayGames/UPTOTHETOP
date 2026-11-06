@@ -1951,14 +1951,11 @@ function initRenderer() {
     sun.shadow.mapSize.set(Q.shadowSize, Q.shadowSize);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 420;
-    // The sun follows the player, so the shadow camera only has to cover what
-    // is near them. Halving its span quadruples the texels on screen for the
-    // same map, which is where the crispness comes from.
-    const shadowSpan = 46;
-    sun.shadow.camera.left = -shadowSpan;
-    sun.shadow.camera.right = shadowSpan;
-    sun.shadow.camera.top = shadowSpan;
-    sun.shadow.camera.bottom = -shadowSpan;
+    // Span is set per frame from the sun's height — see updateShadowSpan.
+    sun.shadow.camera.left = -SHADOW_SPAN_HIGH;
+    sun.shadow.camera.right = SHADOW_SPAN_HIGH;
+    sun.shadow.camera.top = SHADOW_SPAN_HIGH;
+    sun.shadow.camera.bottom = -SHADOW_SPAN_HIGH;
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.04;
     scene.add(sun);
@@ -2065,6 +2062,33 @@ function addNaturalShading(material, opts) {
     };
     material.customProgramCacheKey = () =>
         'nat' + sky + '_' + moss + '_' + variety + '_' + rootDark + '_' + rootSpan;
+}
+
+// A low sun throws long shadows, and anything falling outside the shadow
+// camera does not simply go unshadowed: the map is clamped at its edges, so
+// the border texel is stretched across everything beyond it and whole
+// hillsides turn dark. The frustum therefore has to grow as the sun drops.
+// It is kept as tight as it can be the rest of the time, because halving the
+// span quadruples the texels on screen for the same map.
+const SHADOW_SPAN_HIGH = 52;    // sun overhead: tight and crisp
+const SHADOW_SPAN_LOW = 165;    // sun on the horizon: long shadows to contain
+let shadowSpan = SHADOW_SPAN_HIGH;
+
+function updateShadowSpan(elevation) {
+    // tan of the sun's angle is literally how far a shadow runs per metre of
+    // height, so the span follows it rather than a guessed curve
+    const ang = Math.max(0.12, Math.asin(Math.max(0.02, elevation)));
+    const reach = 12 / Math.tan(ang);          // a 12m tree's shadow
+    const want = THREE.MathUtils.clamp(reach + 40, SHADOW_SPAN_HIGH, SHADOW_SPAN_LOW);
+    // Snap to steps, so the camera is not rebuilt every single frame
+    const stepped = Math.round(want / 12) * 12;
+    if (stepped === shadowSpan) return;
+    shadowSpan = stepped;
+    sun.shadow.camera.left = -stepped;
+    sun.shadow.camera.right = stepped;
+    sun.shadow.camera.top = stepped;
+    sun.shadow.camera.bottom = -stepped;
+    sun.shadow.camera.updateProjectionMatrix();
 }
 
 function applyWind(material, strength, heightBias) {
@@ -2498,7 +2522,9 @@ function buildVegetation() {
     // Rocks
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x7c7f79, roughness: 1, flatShading: true });
-    addNaturalShading(rockMat, { sky: 0.4, moss: 0.5, mossColor: 0x6d8a4e, variety: 0.1 });
+    // No moss: green on the stone read as algae rather than lichen. The
+    // sky term alone is what gives them their form back.
+    addNaturalShading(rockMat, { sky: 0.4, variety: 0.12 });
     const rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, Math.max(rocks.length, 1));
     rockMesh.castShadow = settings.shadows;
     rockMesh.receiveShadow = true;
@@ -4162,24 +4188,48 @@ function playAction(name, fadeTime) {
 // It is eased rather than snapped, because on the first frame the correction
 // can be a whole body-height and a jump would be visible.
 const _jointPos = new THREE.Vector3();
+const _sleepShift = new THREE.Vector3();
+const _invYaw = new THREE.Quaternion();
 
 function settleSleeper(dt) {
     if (!sleepJoints.length) return;
 
-    modelRoot.position.y = modelBaseY + sleepLift;
+    modelRoot.position.set(sleepSlide.x, modelBaseY + sleepLift, sleepSlide.z);
     modelRoot.updateMatrixWorld(true);
 
+    // Where the body has actually ended up this frame
     let lowest = Infinity;
+    let sx = 0;
+    let sz = 0;
     for (const b of sleepJoints) {
         b.getWorldPosition(_jointPos);
         if (_jointPos.y < lowest) lowest = _jointPos.y;
+        sx += _jointPos.x;
+        sz += _jointPos.z;
     }
     if (!isFinite(lowest)) return;
+    sx /= sleepJoints.length;
+    sz /= sleepJoints.length;
 
-    const want = groundHeight(player.position.x, player.position.z) + SLEEPER_CLEARANCE;
-    const target = sleepLift + (want - lowest);
-    sleepLift = THREE.MathUtils.damp(sleepLift, target, 9, dt);
-    modelRoot.position.y = modelBaseY + sleepLift;
+    // Down onto the ground...
+    const wantY = groundHeight(player.position.x, player.position.z) + SLEEPER_CLEARANCE;
+    sleepLift = THREE.MathUtils.damp(sleepLift, sleepLift + (wantY - lowest), 9, dt);
+
+    // ...and in, so the body lies centred on the spot rather than trailing out
+    // of it. A standing rig is pinned at the feet, so a lying clip hangs the
+    // whole body off to one side of where the player is standing — which is
+    // what left the legs outside the shelter.
+    //
+    // The error is measured in world space but modelRoot.position is read in
+    // the player's own rotated space, so it has to be turned about before it
+    // is applied, or the body slides off in whatever direction you are facing.
+    _sleepShift.set(player.position.x - sx, 0, player.position.z - sz);
+    _invYaw.copy(player.quaternion).invert();
+    _sleepShift.applyQuaternion(_invYaw);
+    sleepSlide.x = THREE.MathUtils.damp(sleepSlide.x, sleepSlide.x + _sleepShift.x, 9, dt);
+    sleepSlide.z = THREE.MathUtils.damp(sleepSlide.z, sleepSlide.z + _sleepShift.z, 9, dt);
+
+    modelRoot.position.set(sleepSlide.x, modelBaseY + sleepLift, sleepSlide.z);
 }
 
 function updateAnimation(dt, horizontalSpeed, running) {
@@ -4194,8 +4244,10 @@ function updateAnimation(dt, horizontalSpeed, running) {
     } else {
         modelRoot.quaternion.identity();
         modelRoot.rotation.y = modelYawOffset;
-        if (!fallbackRig) modelRoot.position.y = modelBaseY;
+        if (!fallbackRig) modelRoot.position.set(0, modelBaseY, 0);
         sleepLift = 0;
+        sleepSlide.x = 0;
+        sleepSlide.z = 0;
     }
 
     if (hasClips) {
@@ -4354,6 +4406,7 @@ const SLEEP_JOINT_NAMES = ['hips', 'spine', 'head', 'leftfoot', 'rightfoot',
 const sleepJoints = [];
 const SLEEPER_CLEARANCE = 0.06;   // a body has some thickness
 let sleepLift = 0;
+const sleepSlide = { x: 0, z: 0 };
 
 const H = {
     target: null,      // what is under the crosshair right now
@@ -5975,6 +6028,7 @@ function updateSky(dt) {
     // Keep a low warm sun right at the horizon for golden hour, and let the
     // sky itself carry the ambient so dusk stays readable.
     sun.intensity = 3.1 * smoothstep(-0.16, 0.14, elevation);
+    updateShadowSpan(elevation);
     sun.color.copy(_sunCol);
 
     moon.position.copy(_sunDir).multiplyScalar(-180);
