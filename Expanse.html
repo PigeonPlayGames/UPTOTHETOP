@@ -1016,6 +1016,22 @@ body.touch #minimap { width: 118px; height: 118px; bottom: calc(176px + env(safe
 body.touch #hint { display: none; }
 body.touch #tr { top: 58px; }
 body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
+/* On a phone the bottom-left corner is the only roomy space left, and a
+   running tally of relics and kills does not need to be on screen while you
+   play — it is in the pack. The buttons do need to be, so they take the
+   space the tally was using, stacked so a narrow screen can hold several. */
+body.touch #relic-line,
+body.touch #coords { display: none; }
+body.touch #cues {
+    left: 16px;
+    right: auto;
+    transform: none;
+    bottom: calc(196px + env(safe-area-inset-bottom));
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: 64vw;
+}
 </style>
 
 <script type="importmap">
@@ -1175,8 +1191,11 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
             <div><b id="pack-arrows">0</b><span>arrows</span></div>
             <div><b id="pack-radish">0</b><span>radishes</span></div>
             <div><b id="pack-fish">0</b><span>fish</span></div>
+            <div><b id="pack-coconut-n">0</b><span>coconuts</span></div>
             <div><b id="pack-relics">0</b><span>relics</span></div>
+            <div><b id="pack-felled">0</b><span>felled</span></div>
         </div>
+        <p class="pack-hint" id="pack-where"></p>
         <div id="larder">
             <p class="craft-h">Larder</p>
             <div class="row">
@@ -1185,6 +1204,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
             </div>
             <div class="row">
                 <button class="ghost" id="pack-fish-eat">Eat a fish</button>
+                <button class="ghost" id="pack-coconut">Open a coconut</button>
             </div>
             <p class="pack-hint" id="larder-hint"></p>
         </div>
@@ -1521,6 +1541,7 @@ const INV = {
     rope: 0,
     arrows: 0,
     fish: 0,
+    coconut: 0,
     woodpick: false,
     axe: false,
     pickaxe: false,
@@ -1628,6 +1649,7 @@ function loadSave() {
             INV.rope = Math.max(0, data.inv.rope | 0);
             INV.arrows = Math.max(0, data.inv.arrows | 0);
             INV.fish = Math.max(0, data.inv.fish | 0);
+            INV.coconut = Math.max(0, data.inv.coconut | 0);
             INV.woodpick = !!data.inv.woodpick;
             INV.axe = !!data.inv.axe;
             INV.pickaxe = !!data.inv.pickaxe;
@@ -1654,7 +1676,7 @@ function writeSave() {
             inv: {
                 stone: INV.stone, wood: INV.wood, radish: INV.radish,
                 leaf: INV.leaf, rope: INV.rope, arrows: INV.arrows,
-                fish: INV.fish,
+                fish: INV.fish, coconut: INV.coconut,
                 woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
                 bow: INV.bow, net: INV.net,
                 stickhouse: INV.stickhouse, whetstone: INV.whetstone, honed: INV.honed,
@@ -2666,7 +2688,17 @@ const FISH_ACTIVE = 150;         // only those near the player actually swim
 
 const fish = [];
 let fishMesh = null;
+let fishGeo = null;
+let fishMat = null;
 const _fishSpin = new THREE.Euler();
+
+// A speared fish is not in the pack yet. It comes up belly-first and lies at
+// the surface with the shaft still in it, and someone has to wade out and
+// pick it up — which is the whole difference between shooting a fish and
+// catching one.
+const FLOAT_LIFE = 120;       // how long it stays up before it drifts away
+const FLOAT_PICKUP = 2.2;
+const floatingFish = [];
 
 function waterDepthAt(x, z) {
     return WATER_LEVEL - groundHeight(x, z);
@@ -2693,8 +2725,11 @@ function buildFish() {
     const mat = new THREE.MeshStandardMaterial({
         color: 0xd9ddcf, roughness: 0.38, metalness: 0.14, flatShading: true
     });
+    // kept so a speared one can be lifted out of the shoal as its own mesh
+    fishGeo = fishGeometry();
+    fishMat = mat;
 
-    fishMesh = new THREE.InstancedMesh(fishGeometry(), mat, FISH_COUNT);
+    fishMesh = new THREE.InstancedMesh(fishGeo, mat, FISH_COUNT);
     fishMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     fishMesh.castShadow = false;
     fishMesh.receiveShadow = false;
@@ -2806,6 +2841,54 @@ function fishNear(x, z, radius, y, vertical) {
 function takeFish(f) {
     f.gone = FISH_RETURN;
     drawFish(f);
+}
+
+function addFloatingFish(x, y, z, size, arrows) {
+    if (!fishGeo) return;
+    const mesh = new THREE.Mesh(fishGeo, fishMat);
+    mesh.scale.setScalar(size || 1);
+    mesh.castShadow = false;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    floatingFish.push({
+        x, z, y, mesh, life: FLOAT_LIFE,
+        phase: Math.random() * 6.283, arrows: arrows | 0
+    });
+}
+
+function updateFloatingFish(dt) {
+    for (let i = floatingFish.length - 1; i >= 0; i--) {
+        const f = floatingFish[i];
+        f.life -= dt;
+        // up to the surface, then rocking there
+        f.y += (WATER_LEVEL - 0.05 - f.y) * Math.min(1, dt * 2.2);
+        f.mesh.position.set(f.x, f.y + Math.sin(elapsed * 1.7 + f.phase) * 0.025, f.z);
+        f.mesh.rotation.set(Math.sin(elapsed * 0.9 + f.phase) * 0.12, f.phase, Math.PI);
+
+        const near = !P.dead &&
+            Math.hypot(f.x - player.position.x, f.z - player.position.z) < FLOAT_PICKUP &&
+            Math.abs(player.position.y - WATER_LEVEL) < 3.5;
+        if (near) {
+            INV.fish += 1;
+            INV.arrows += f.arrows;
+            sfxFishCatch();
+            toast(f.arrows
+                ? 'Fish and shaft recovered  ·  ' + INV.fish + ' in the pack'
+                : 'Fish collected  ·  ' + INV.fish + ' in the pack', 2400);
+            updateRelicHud();
+            if (overlay === 'pack') drawPack();
+            writeSave();
+        }
+        if (near || f.life <= 0) {
+            scene.remove(f.mesh);
+            floatingFish.splice(i, 1);
+        }
+    }
+}
+
+function clearFloatingFish() {
+    for (const f of floatingFish) scene.remove(f.mesh);
+    floatingFish.length = 0;
 }
 
 /* ============================================================
@@ -2968,6 +3051,146 @@ function buildYuccas() {
 
     yuccaMesh.instanceMatrix.needsUpdate = true;
     yuccaBloomMesh.instanceMatrix.needsUpdate = true;
+}
+
+/* ============================================================
+   COCONUT PALMS
+   ============================================================ */
+
+// On the sand, where nothing else grows: the band between the waterline and
+// the grass. A palm is never felled — you knock a nut out of the crown and
+// the tree carries on — so these are a standing larder on every beach, which
+// is what makes the shoreline worth walking.
+const PALM_COUNT = 80;
+const PALM_FRONDS = 11;
+const COCONUT_HEAL = 20;
+const COCONUT_STAMINA = 26;
+const palms = [];
+let palmTrunkMesh = null;
+let palmFrondMesh = null;
+let palmNutMesh = null;
+
+// One frond: a long blade that droops, built as a strip so the droop reads
+// along its length rather than as a flat triangle
+function palmFrondGeometry() {
+    const parts = [];
+    const L = 2.7;
+    for (let i = 0; i < PALM_FRONDS; i++) {
+        const blade = new THREE.PlaneGeometry(0.5, L, 1, 6);
+        blade.rotateX(-Math.PI / 2);           // lay it flat
+        blade.translate(0, 0, L / 2);          // running out from the crown
+        // Shaped in its final orientation rather than before the rotations,
+        // which is what went wrong the first time: the arch ended up in the
+        // wrong axis and the fronds came out as straight spikes. It lifts a
+        // little off the crown and then falls away, which is the line that
+        // reads as a palm from any distance.
+        const pos = blade.attributes.position;
+        for (let v = 0; v < pos.count; v++) {
+            const t = pos.getZ(v) / L;                      // 0 stem, 1 tip
+            pos.setY(v, pos.getY(v) + 0.95 * t - 2.3 * t * t);
+            pos.setX(v, pos.getX(v) * (1 - t * 0.62));      // tapering to a point
+        }
+        pos.needsUpdate = true;
+        blade.rotateZ((i % 2 ? 1 : -1) * 0.07);             // no two quite alike
+        blade.rotateY((i / PALM_FRONDS) * Math.PI * 2 + 0.25);
+        parts.push(blade.toNonIndexed());
+    }
+    const g = mergeGeometries(parts, false);
+    g.computeVertexNormals();
+    return g;
+}
+
+function coconutGeometry() {
+    const parts = [];
+    for (let i = 0; i < 4; i++) {
+        const n = new THREE.SphereGeometry(0.145, 6, 5);
+        const a = (i / 4) * Math.PI * 2;
+        n.translate(Math.cos(a) * 0.21, -0.1 - (i % 2) * 0.08, Math.sin(a) * 0.21);
+        parts.push(n.toNonIndexed());
+    }
+    const g = mergeGeometries(parts, false);
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildPalms() {
+    const rnd = mulberry32(SEED ^ 0x9a1e);
+
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8a7050, roughness: 0.93 });
+    addNaturalShading(trunkMat, { sky: 0.2, variety: 0.12, rootDark: 0.28, rootSpan: 2.2 });
+    const frondMat = new THREE.MeshStandardMaterial({
+        color: 0x5f9440, roughness: 0.88, side: THREE.DoubleSide
+    });
+    applyWind(frondMat, 0.22, 0);
+    addNaturalShading(frondMat, { sky: 0.4, variety: 0.13 });
+    const nutMat = new THREE.MeshStandardMaterial({ color: 0x7a5533, roughness: 0.85 });
+
+    const trunk = new THREE.CylinderGeometry(0.13, 0.21, 1, 6, 1);
+    trunk.translate(0, 0.5, 0);      // stands on its own base, scaled by height
+
+    palmTrunkMesh = new THREE.InstancedMesh(trunk, trunkMat, PALM_COUNT);
+    palmFrondMesh = new THREE.InstancedMesh(palmFrondGeometry(), frondMat, PALM_COUNT);
+    palmNutMesh = new THREE.InstancedMesh(coconutGeometry(), nutMat, PALM_COUNT);
+    for (const m of [palmTrunkMesh, palmFrondMesh, palmNutMesh]) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+        m.count = 0;
+        scene.add(m);
+    }
+
+    let placed = 0, tries = 0;
+    while (placed < PALM_COUNT && tries < PALM_COUNT * 200) {
+        tries++;
+        const x = (rnd() * 2 - 1) * WORLD_RADIUS * 0.97;
+        const z = (rnd() * 2 - 1) * WORLD_RADIUS * 0.97;
+        const g = groundHeight(x, z);
+        // the sand: above the water, below the grass, and flat enough to root
+        if (g < WATER_LEVEL + 0.35 || g > WATER_LEVEL + 2.6) continue;
+        if (slopeAt(x, z) > 0.22) continue;
+        if (insideTempleFootprint(x, z, 3)) continue;
+        if (Math.hypot(x, z) < 18) continue;
+        let crowded = false;
+        for (const p of palms) {
+            if (Math.hypot(p.x - x, p.z - z) < 5.5) { crowded = true; break; }
+        }
+        if (crowded) continue;
+
+        const index = palms.length;
+        const height = 4.6 + rnd() * 2.4;
+        const lean = (rnd() - 0.5) * 0.17;
+        const spin = rnd() * Math.PI * 2;
+
+        _dummy.position.set(x, g, z);
+        _dummy.rotation.set(lean, spin, (rnd() - 0.5) * 0.17);
+        _dummy.scale.set(1, height, 1);
+        _dummy.updateMatrix();
+        palmTrunkMesh.setMatrixAt(index, _dummy.matrix);
+
+        // the crown rides on top, so it takes the lean but not the stretch
+        const tipX = x + Math.sin(_dummy.rotation.z) * height * 0.5;
+        const tipZ = z - Math.sin(lean) * height * 0.5;
+        _dummy.position.set(tipX, g + height, tipZ);
+        _dummy.rotation.set(lean * 0.6, spin, 0);
+        _dummy.scale.setScalar(0.85 + rnd() * 0.3);
+        _dummy.updateMatrix();
+        palmFrondMesh.setMatrixAt(index, _dummy.matrix);
+        palmNutMesh.setMatrixAt(index, _dummy.matrix);
+
+        palms.push({
+            kind: 'palm', x: tipX, z: tipZ, y: g, height,
+            index, gone: 0, cool: 0,
+            parts: [{ mesh: palmNutMesh, index }],
+            collider: addCollider(x, z, 0.34)
+        });
+        harvestables.push(palms[palms.length - 1]);
+        placed++;
+    }
+    palmTrunkMesh.count = palms.length;
+    palmFrondMesh.count = palms.length;
+    palmNutMesh.count = palms.length;
+    palmTrunkMesh.instanceMatrix.needsUpdate = true;
+    palmFrondMesh.instanceMatrix.needsUpdate = true;
+    palmNutMesh.instanceMatrix.needsUpdate = true;
 }
 
 function buildVegetation() {
@@ -3134,7 +3357,9 @@ function buildVegetation() {
 
     buildRadishes();
     buildYuccas();
+    buildPalms();
     buildFish();
+    buildArrowTip();
 
     // Grass
     if (Q.grassCells > 0) {
@@ -3543,7 +3768,7 @@ function updateFires() {
 // a point, the nocked shaft comes with it, and both snap forward on release.
 // A proper aiming clip would be better and would drop straight in here.
 const BOW_DRAW_TIME = 0.6;        // to a full draw
-const BOW_MIN_POWER = 0.4;        // a half-hearted pull still sends it, weakly
+const BOW_MIN_POWER = 0.4;        // the weakest shot there is: a bare click
 const BOW_COOLDOWN = 0.3;
 const BOW_STAVE = 1.3;            // tip to tip
 const BOW_BELLY = 0.21;           // how far the grip stands off the string
@@ -3701,8 +3926,7 @@ function drawBowString(power) {
 // if one ever gets exported, this should give way to it — but it is the
 // difference between aiming and standing about holding a stick.
 const BOW_ARM_BONES = ['leftshoulder', 'leftarm', 'leftforearm', 'lefthand',
-                       'rightshoulder', 'rightarm', 'rightforearm', 'righthand',
-                       'head'];
+                       'rightshoulder', 'rightarm', 'rightforearm', 'righthand'];
 const bowBones = {};
 let armBlend = 0;
 
@@ -3711,27 +3935,46 @@ let armBlend = 0;
 // the arms, the bow and the rest of the body rendering as they were. The
 // original scale is kept so it comes back exactly, however the clip squashes
 // or stretches that bone.
-const WORLD_NEAR = 0.1;
-const BOW_NEAR = 0.32;        // just beyond the shoulder, just inside the hand
-function setNearPlane(n) {
-    if (!camera || camera.near === n) return;
-    camera.near = n;
-    camera.updateProjectionMatrix();
+/* ---- the shaft as the archer sees it ---- */
+
+// From behind your own eyes you do not see the bow, or your fist round it:
+// you see the head of the nocked shaft lying under the sight line. That is
+// all this is — a tip, held just below the crosshair, drawn back as the
+// string comes back and springing forward when it goes.
+const TIP_AHEAD = 0.62;       // how far out in front it rides
+const TIP_DOWN = 0.085;       // and how far under the crosshair
+const TIP_SIDE = 0.02;
+const TIP_PULL = 0.20;        // how far back a full draw brings it
+let tipGroup = null;
+const _tipOffset = new THREE.Vector3();
+
+function buildArrowTip() {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xbda278, roughness: 0.8 });
+    // built pointing -Z, which is the way a camera faces, so the group can
+    // simply take the camera's own rotation
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.019, 0.075, 5), mat);
+    head.rotation.x = -Math.PI / 2;
+    head.position.z = -0.085;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0075, 0.0075, 0.32, 5), mat);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.z = 0.11;
+    tipGroup = new THREE.Group();
+    tipGroup.add(head, shaft);
+    tipGroup.frustumCulled = false;
+    tipGroup.visible = false;
+    scene.add(tipGroup);
 }
 
-let headRestScale = null;
-function setHeadHidden(on) {
-    const h = bowBones.head;
-    if (!h) return;
-    if (on) {
-        if (!headRestScale) headRestScale = h.scale.clone();
-        h.scale.setScalar(0.0001);
-        h.updateMatrixWorld(true);
-    } else if (headRestScale) {
-        h.scale.copy(headRestScale);
-        h.updateMatrixWorld(true);
-        headRestScale = null;
-    }
+function updateArrowTip() {
+    if (!tipGroup) return;
+    const show = BOW.out && !P.dead && !paused && !overlay && INV.arrows > 0;
+    tipGroup.visible = show;
+    if (!show) return;
+    const pull = BOW.drawing ? Math.min(1, BOW.draw / BOW_DRAW_TIME) : 0;
+    tipGroup.quaternion.copy(camera.quaternion);
+    _tipOffset.set(TIP_SIDE, -TIP_DOWN, -(TIP_AHEAD - TIP_PULL * pull));
+    _tipOffset.applyQuaternion(camera.quaternion);
+    tipGroup.position.copy(camera.position).add(_tipOffset);
 }
 
 const _boneA = new THREE.Vector3();
@@ -3796,6 +4039,10 @@ function poseBowArms(dt) {
     const want = (BOW.out && !P.dead && !P.swimming) ? 1 : 0;
     armBlend = THREE.MathUtils.damp(armBlend, want, 10, dt);
     if (armBlend < 0.01) return;
+    // Nobody is looking at the archer while the bow is up — the view is
+    // behind their eyes and the body is not drawn — so there is no one to
+    // pose. This stays for the moment the body is on screen again.
+    if (modelRoot && !modelRoot.visible) return;
     if (!bowBones.leftarm) findBowBones();
     const L = bowBones;
     if (!L.leftarm || !L.leftforearm) return;
@@ -3908,10 +4155,13 @@ function bowDrawStart() {
 function bowRelease() {
     if (!BOW.drawing) return;
     BOW.drawing = false;
-    const power = Math.min(1, BOW.draw / BOW_DRAW_TIME);
+    // A plain click is shorter than the minimum pull, and it used to loose
+    // nothing at all: no arrow, no sound, no reason given. A click now sends
+    // a weak shot instead, and holding is what buys the power.
+    const power = Math.max(BOW_MIN_POWER, Math.min(1, BOW.draw / BOW_DRAW_TIME));
     BOW.draw = 0;
     drawBowString(0);
-    if (power < BOW_MIN_POWER || INV.arrows < 1) return;
+    if (INV.arrows < 1) return;
     loose(power);
 }
 
@@ -3921,6 +4171,9 @@ const _bowWorld = new THREE.Vector3();
 
 const AIM_RANGE = 140;            // how far out the crosshair is read
 const AIM_STEP = 1.6;             // how finely the ray is walked
+const AIM_FOE_R2 = 0.2;           // squared: about half a body's width
+const AIM_FISH_R2 = 0.09;         // and a fish is a much smaller thing to hit
+const _aimEye = new THREE.Vector3();
 
 // What the player is aiming at: a foe if the line of sight passes through
 // one, otherwise the ground where it lands, otherwise a point far out for a
@@ -3937,46 +4190,29 @@ function aimPoint(out) {
     lookDirection(_aimDir);
     if (bowGroup && bowBoneL) bowGroup.getWorldPosition(_bowWorld);
     else _bowWorld.set(player.position.x, player.position.y + 1.35, player.position.z);
-    const o = _bowWorld;
 
-    let nearestFoe = Infinity;
-    for (const e of enemies) {
-        if (e.state === 'dead') continue;
-        const h = e.type.height || 1.9;
-        // distance along the ray to the foe's middle, then how far off it is
-        const cx = e.x - o.x, cy = (e.y + h * 0.55) - o.y, cz = e.z - o.z;
-        const along = cx * _aimDir.x + cy * _aimDir.y + cz * _aimDir.z;
-        if (along < 1 || along > AIM_RANGE || along >= nearestFoe) continue;
-        const ox = cx - _aimDir.x * along;
-        const oy = cy - _aimDir.y * along;
-        const oz = cz - _aimDir.z * along;
-        // a generous cylinder, so the crosshair does not have to be perfect
-        if (ox * ox + oy * oy + oz * oz > 0.9) continue;
-        nearestFoe = along;
-        out.set(e.x, e.y + h * 0.55, e.z);
+    // The crosshair is the camera's own axis, so that is the line the shot
+    // has to answer to. This used to be read from the bow instead, which was
+    // right while the camera looked over a shoulder and wrong now the bow
+    // puts the view behind the archer's eyes.
+    //
+    // Worked out from the body rather than read off the camera, and matching
+    // what updateCamera puts the eye on. The camera spends the first third of
+    // a second sliding in from behind, and is a frame behind the body even
+    // after that; either would send a shot off into the air behind the
+    // archer. This cannot be stale, because it is derived, not remembered.
+    const o = _aimEye;
+    if (BOW.out) {
+        o.set(player.position.x + _aimDir.x * 0.18,
+              player.position.y + (P.swimming ? 1.2 : 1.62),
+              player.position.z + _aimDir.z * 0.18);
+    } else {
+        o.copy(camera.position);
     }
-    if (nearestFoe < Infinity) return out;
 
-    // Fish get the same courtesy, and need it more. Without it the arc is
-    // solved to wherever the ray finally meets the bed, which can be eighty
-    // metres out and twenty down — and an arc aimed that far past a fish
-    // rides clear over the top of one only a few metres away.
-    let nearestFish = Infinity;
-    for (const f of fish) {
-        if (f.gone > 0) continue;
-        const cx = f.x - o.x, cy = f.y - o.y, cz = f.z - o.z;
-        const along = cx * _aimDir.x + cy * _aimDir.y + cz * _aimDir.z;
-        if (along < 1 || along > AIM_RANGE || along >= nearestFish) continue;
-        const ox = cx - _aimDir.x * along;
-        const oy = cy - _aimDir.y * along;
-        const oz = cz - _aimDir.z * along;
-        if (ox * ox + oy * oy + oz * oz > 0.75) continue;
-        nearestFish = along;
-        out.set(f.x, f.y, f.z);
-    }
-    if (nearestFish < Infinity) return out;
-
-    // Walk the ray until it goes under the ground, then take the step before
+    // Where the line of sight meets the ground, which is the far end of the
+    // shot unless something is standing in the way
+    let hit = AIM_RANGE;
     let prev = 1;
     for (let d = AIM_STEP; d <= AIM_RANGE; d += AIM_STEP) {
         const x = o.x + _aimDir.x * d;
@@ -3992,12 +4228,46 @@ function aimPoint(out) {
                 const mz = o.z + _aimDir.z * m;
                 if (my <= groundHeight(mx, mz)) hi = m; else lo = m;
             }
-            out.set(o.x + _aimDir.x * hi, o.y + _aimDir.y * hi, o.z + _aimDir.z * hi);
-            return out;
+            hit = hi;
+            break;
         }
         prev = d;
     }
-    out.copy(o).addScaledVector(_aimDir, AIM_RANGE);
+
+    // Then whatever the line actually passes through before it gets there.
+    // These are deliberately tight: a wide cone would drag the shot off the
+    // crosshair and on to a target the player had not pointed at.
+    let best = hit;
+    let found = false;
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const h = e.type.height || 1.9;
+        const cx = e.x - o.x, cy = (e.y + h * 0.55) - o.y, cz = e.z - o.z;
+        const along = cx * _aimDir.x + cy * _aimDir.y + cz * _aimDir.z;
+        if (along < 1 || along >= best) continue;
+        const ox = cx - _aimDir.x * along;
+        const oy = cy - _aimDir.y * along;
+        const oz = cz - _aimDir.z * along;
+        if (ox * ox + oy * oy + oz * oz > AIM_FOE_R2) continue;
+        best = along;
+        found = true;
+        out.set(e.x, e.y + h * 0.55, e.z);
+    }
+    for (const f of fish) {
+        if (f.gone > 0) continue;
+        const cx = f.x - o.x, cy = f.y - o.y, cz = f.z - o.z;
+        const along = cx * _aimDir.x + cy * _aimDir.y + cz * _aimDir.z;
+        if (along < 1 || along >= best) continue;
+        const ox = cx - _aimDir.x * along;
+        const oy = cy - _aimDir.y * along;
+        const oz = cz - _aimDir.z * along;
+        if (ox * ox + oy * oy + oz * oz > AIM_FISH_R2) continue;
+        best = along;
+        found = true;
+        out.set(f.x, f.y, f.z);
+    }
+
+    if (!found) out.copy(o).addScaledVector(_aimDir, hit);
     return out;
 }
 
@@ -4026,17 +4296,17 @@ function loose(power) {
     BOW.cool = BOW_COOLDOWN;
     P.combatTimer = 5;
 
-    // aimPoint leaves the shot's origin in _bowWorld, so both ends of the
-    // trajectory come from the same place
     aimPoint(_aimAt);
 
     const speed = ARROW_SPEED * (0.55 + 0.45 * power);
     const a = takeArrow();
-    a.pos.copy(_bowWorld);
-    aimVelocity(_bowWorld, _aimAt, speed, a.vel);
-    // Clear of the body, along the way it is actually going
+    // Away from just in front of the eye rather than from the bow hand. Both
+    // ends of the shot are then on the crosshair's own line, so what the
+    // crosshair is on is what the shaft is sent to, with no parallax to
+    // carry it wide at close range.
+    a.pos.copy(_aimEye).addScaledVector(_aimDir, 0.45);
+    aimVelocity(a.pos, _aimAt, speed, a.vel);
     _aimDir.copy(a.vel).normalize();
-    a.pos.addScaledVector(_aimDir, 0.5);
     // A half-drawn bow still hits what you pointed it at, it just does less
     a.damage = ARROW_DAMAGE * (0.5 + 0.5 * power);
     a.life = ARROW_LIFE;
@@ -4174,16 +4444,14 @@ function updateArrows(dt) {
             arrowsStuck.push(a);
             sfxArrowMiss();
         } else if (state === 'fish') {
-            // The shaft comes back with the catch rather than being lost in
-            // the water, or fishing this way would cost an arrow a fish.
-            takeFish(a.fish);
-            INV.fish += 1;
-            INV.arrows += 1;
+            // Hitting it is not having it. It floats up with the shaft still
+            // in it and waits to be waded out to; the arrow comes back with
+            // it, so fishing this way never costs one.
+            const hit = a.fish;
+            takeFish(hit);
+            addFloatingFish(hit.x, hit.y, hit.z, hit.size, 1);
             sfxFishCatch();
-            toast('Speared a fish  ·  ' + INV.fish + ' in the pack', 2400);
-            updateRelicHud();
-            if (overlay === 'pack') drawPack();
-            writeSave();
+            toast('Hit — it is floating up. Go and get it.', 2600);
             freeArrow(a);
         } else {
             freeArrow(a);
@@ -5851,7 +6119,8 @@ function updateAnimation(dt, horizontalSpeed, running) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
         } else if (CHORE.kind) {
-            const clip = (CHORE.kind === 'eat' || CHORE.kind === 'fish') ? 'eat' : 'pickup';
+            const clip = (CHORE.kind === 'eat' || CHORE.kind === 'fish' ||
+                          CHORE.kind === 'coconut') ? 'eat' : 'pickup';
             playAction(clip, 0.18);
             const act = actions[clip];
             if (act) {
@@ -6000,7 +6269,11 @@ const JOBS = {
     leaves:   { anim: 'pickup', tool: null, swings: 1, leaf: 1, clears: false,
                 verb: 'Pull a yucca leaf' },
     blades:   { anim: 'chop', tool: 'axe', swings: 1, leaf: 3, clears: false,
-                verb: 'Cut yucca leaves' }
+                verb: 'Cut yucca leaves' },
+    // Knocked out of the crown rather than cut down. One swing bare-handed,
+    // and the palm is still there afterwards.
+    coconut:  { anim: 'pickup', tool: null, swings: 1, coconut: 1, clears: false,
+                verb: 'Knock down a coconut' }
 };
 
 // null means there is nothing you can do here yet; blockedBy says why
@@ -6011,6 +6284,7 @@ function jobFor(h) {
     if (h.kind === 'rock') return INV.pickaxe ? JOBS.mine : (INV.woodpick ? JOBS.chip : null);
     if (h.kind === 'tree') return INV.axe ? JOBS.fell : JOBS.branches;
     if (h.kind === 'yucca') return INV.axe ? JOBS.blades : JOBS.leaves;
+    if (h.kind === 'palm') return JOBS.coconut;
     return null;
 }
 
@@ -6256,6 +6530,10 @@ function finishHarvest() {
         INV.radish += job.radish;
         sfxWorkDone(job);
         toast('Radish pulled  ·  ' + INV.radish + ' in the pack', 2400);
+    } else if (job.coconut) {
+        INV.coconut += job.coconut;
+        sfxWorkDone(job);
+        toast('Coconut  ·  ' + INV.coconut + ' in the pack', 2300);
     } else if (job.leaf) {
         INV.leaf += job.leaf;
         sfxWorkDone(job);
@@ -7285,6 +7563,7 @@ function setupInput() {
     packEatEl.addEventListener('click', () => { closeOverlay(); beginChore('eat'); });
     packPlantEl.addEventListener('click', () => { closeOverlay(); beginChore('plant'); });
     packFishEatEl.addEventListener('click', () => { closeOverlay(); beginChore('fish'); });
+    packCoconutEl.addEventListener('click', () => { closeOverlay(); beginChore('coconut'); });
     siteBuildEl.addEventListener('click', confirmSiting);
     document.getElementById('site-cancel').addEventListener('click', endSiting);
     sleepCueEl.addEventListener('click', beginSleep);
@@ -7612,39 +7891,19 @@ function updateCamera(dt, horizontalSpeed) {
     }
 
     if (eyeView) {
+        // Nothing of the archer is drawn from in here. Showing the body meant
+        // the near shoulder filled half the screen, and showing the bow and
+        // the fist holding it filled most of the rest; what an archer is
+        // actually aware of is the head of the shaft, and that is drawn
+        // separately, as a tip laid under the sight line.
+        modelRoot.visible = false;
         lookDirection(_aimLook);
-        // Sit in the actual head rather than at a guessed height above the
-        // feet. The guess is close enough when the body is not drawn, but
-        // with it drawn a few centimetres puts the view inside the chest,
-        // and from in there the shoulder is the whole screen.
-        const hb = bowEye ? bowBones.head : null;
-        if (hb) {
-            // barely forward of the head bone: the skull is collapsed and
-            // the near plane takes care of the rest, and every centimetre
-            // forward is a centimetre of reach lost in front of the bow
-            hb.getWorldPosition(_eye);
-            _eye.y += 0.04;
-            _eye.addScaledVector(_aimLook, 0.03);
-        } else {
-            _eye.set(_focus.x + _aimLook.x * 0.18, _focus.y + 0.1, _focus.z + _aimLook.z * 0.18);
-        }
+        _eye.set(_focus.x + _aimLook.x * 0.18, _focus.y + 0.1, _focus.z + _aimLook.z * 0.18);
         camera.position.lerp(_eye, 1 - Math.exp(-20 * dt));
-        // The view takes a moment to come in. Keep the head on until it has
-        // actually arrived, or that moment shows a headless archer.
-        const arrived = camera.position.distanceTo(_eye) < 0.45;
-        modelRoot.visible = bowEye;
-        setHeadHidden(bowEye && arrived);
-        // From inside the body the near shoulder is a wall across the screen.
-        // Pushing the near plane out cuts away everything closer than an arm
-        // and leaves the forearm, the hand and the bow, which are what the
-        // archer would actually see.
-        setNearPlane(bowEye && arrived ? BOW_NEAR : WORLD_NEAR);
         _camTarget.copy(camera.position).add(_aimLook);
         camera.lookAt(_camTarget);
     } else {
         modelRoot.visible = true;
-        setHeadHidden(false);
-        setNearPlane(WORLD_NEAR);
         const cp = Math.cos(camPitch);
         _camDesired.set(
             _focus.x + Math.sin(camYaw) * cp * camDistance,
@@ -8546,13 +8805,16 @@ function beginChore(kind) {
     if (kind === 'fish') {
         if (INV.fish < 1) return false;
     }
+    if (kind === 'coconut') {
+        if (INV.coconut < 1) return false;
+    }
     CHORE.kind = kind;
     // Netting and sowing are the same stoop, and eating a fish is the same
     // motion as eating a radish, so each runs for as long as its clip does.
+    const eating = kind === 'eat' || kind === 'fish' || kind === 'coconut';
     CHORE.total = kind === 'fire'
         ? FIRE_LIGHT_TIME
-        : choreLength(kind === 'eat' || kind === 'fish' ? 'eat' : 'pickup',
-                      kind === 'eat' || kind === 'fish' ? 2.45 : 2.95);
+        : choreLength(eating ? 'eat' : 'pickup', eating ? 2.45 : 2.95);
     CHORE.timer = CHORE.total;
     CHORE.done = false;
     CHORE.spark = 0;
@@ -8624,6 +8886,12 @@ function updateChore(dt) {
             toast(cooked
                 ? 'Cooked over the fire  ·  ' + INV.fish + ' left'
                 : 'Eaten raw  ·  better cooked over a fire', 2600);
+        } else if (CHORE.kind === 'coconut') {
+            INV.coconut = Math.max(0, INV.coconut - 1);
+            P.health = Math.min(PLAYER_MAX_HEALTH, P.health + COCONUT_HEAL);
+            P.stamina = Math.min(100, P.stamina + COCONUT_STAMINA);
+            sfxEat();
+            toast('Coconut  ·  ' + INV.coconut + ' left', 2400);
         } else if (CHORE.kind === 'net') {
             const caught = fishNear(CHORE.netX, CHORE.netZ, NET_SWEEP);
             if (caught) {
@@ -8803,11 +9071,15 @@ const packArrowsEl = document.getElementById('pack-arrows');
 const packRelicsEl = document.getElementById('pack-relics');
 const packRadishEl = document.getElementById('pack-radish');
 const packFishEl = document.getElementById('pack-fish');
+const packCoconutNEl = document.getElementById('pack-coconut-n');
+const packFelledEl = document.getElementById('pack-felled');
+const packWhereEl = document.getElementById('pack-where');
 const larderEl = document.getElementById('larder');
 const larderHintEl = document.getElementById('larder-hint');
 const packEatEl = document.getElementById('pack-eat');
 const packPlantEl = document.getElementById('pack-plant');
 const packFishEatEl = document.getElementById('pack-fish-eat');
+const packCoconutEl = document.getElementById('pack-coconut');
 const packRecipesEl = document.getElementById('pack-recipes');
 const packHintEl = document.getElementById('pack-hint');
 
@@ -8891,7 +9163,11 @@ function drawPack() {
     packArrowsEl.textContent = INV.arrows;
     packRadishEl.textContent = INV.radish;
     packFishEl.textContent = INV.fish;
-    packRelicsEl.textContent = collected;
+    packRelicsEl.textContent = collected + ' / ' + relics.length;
+    packCoconutNEl.textContent = INV.coconut;
+    packFelledEl.textContent = P.kills;
+    packWhereEl.textContent = 'You are at x ' + Math.round(player.position.x) +
+        ' · z ' + Math.round(player.position.z) + '.';
 
     const has = INV.radish > 0;
     const hasFish = INV.fish > 0;
@@ -8899,6 +9175,7 @@ function drawPack() {
     packEatEl.disabled = !has || full;
     packPlantEl.disabled = !has;
     packFishEatEl.disabled = !hasFish || full;
+    packCoconutEl.disabled = INV.coconut < 1 || (full && P.stamina >= 100);
     packFishEatEl.textContent = hasFish && nearAnyFire()
         ? 'Cook a fish on the fire'
         : 'Eat a fish';
@@ -9448,6 +9725,7 @@ function resetProgress() {
     INV.rope = 0;
     INV.arrows = 0;
     INV.fish = 0;
+    INV.coconut = 0;
     INV.woodpick = false;
     INV.axe = false;
     INV.pickaxe = false;
@@ -9467,6 +9745,7 @@ function resetProgress() {
         f.z = f.homeZ;
         drawFish(f);
     }
+    clearFloatingFish();
     stowBow();
     for (const a of arrowsFlying.splice(0)) freeArrow(a);
     for (const a of arrowsStuck.splice(0)) freeArrow(a);
@@ -9749,6 +10028,8 @@ function animate() {
         updateHarvest(dt);
         updateRadishes(dt);
         updateFish(dt);
+        updateFloatingFish(dt);
+        updateArrowTip();
         updateChore(dt);
         updateFires();
         updateArrows(dt);
