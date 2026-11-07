@@ -826,6 +826,10 @@ body:not(.playing) #vignette { display: none; }
     padding: 7px 11px;
 }
 .recipe button[disabled] { opacity: 0.35; cursor: default; }
+#larder { display: flex; flex-direction: column; gap: 7px; }
+#larder .row { display: flex; gap: 8px; }
+#larder .row button { flex: 1; font-size: 9px; letter-spacing: 0.14em; padding: 8px 6px; }
+#larder .row button[disabled] { opacity: 0.35; cursor: default; }
 .pack-hint {
     font-size: 10px;
     color: var(--dim);
@@ -1130,7 +1134,16 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <div class="carry">
             <div><b id="pack-wood">0</b><span>wood</span></div>
             <div><b id="pack-stone">0</b><span>stone</span></div>
+            <div><b id="pack-radish">0</b><span>radishes</span></div>
             <div><b id="pack-relics">0</b><span>relics</span></div>
+        </div>
+        <div id="larder">
+            <p class="craft-h">Larder</p>
+            <div class="row">
+                <button class="ghost" id="pack-eat">Eat one</button>
+                <button class="ghost" id="pack-plant">Sow one here</button>
+            </div>
+            <p class="pack-hint" id="larder-hint"></p>
         </div>
         <p class="craft-h">Make</p>
         <div id="pack-recipes"></div>
@@ -1197,7 +1210,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
    ============================================================ */
 
 const params = new URLSearchParams(location.search);
-const MODEL_PATH = params.get('model') || './Tom6.glb';
+const MODEL_PATH = params.get('model') || './Tom7.glb';
 const PICKAXE_PATH = params.get('pickaxe') || './Pickaxe.glb';
 const AXE_PATH = params.get('axe') || './Axe.glb';
 const WOODPICK_PATH = params.get('woodpick') || './Wooden_Pickaxe.glb';
@@ -1218,19 +1231,29 @@ const SEED = (parseInt(params.get('seed'), 10) || 20261101) >>> 0;
 
 // If Tom3D2.glb's clips aren't picked up correctly, name them here exactly as
 // they appear in the file — these win over any guessing by name.
+// Each entry may be a name or a list of names to try in order.
+//
+// Three of these clips come out of Mixamo with a UUID instead of a name. The
+// UUIDs are listed as fallbacks so they match anyway, and they were not
+// guessed: each was identified by what the body actually does in it. "eat"
+// never reaches below 0.87m and stays standing at hip height 0.95m while a
+// hand comes within 0.21m of the head; "pick-up" crouches to 0.71m and
+// reaches down to 0.34m with the hands well clear of the face. A re-export
+// with readable names takes priority over both.
 const PLAYER_CLIP_NAMES = {
     idle:     'Idle 5',
     walk:     'Walking',
     run:      'Running',
     attack:   'Right Jab from Guard',
     jump:     'Jump with Arms Open',
+    jumpRun:  'Jump Over Obstacle 2',
     swim:     'Swim Forward',
     swimIdle: 'Swim Idle',
     mine:     'Heavy Hammer Swing',
     sleep:    'Sleep Normally',
-    // The model exports this one without a readable name, so if "Chop2" is not
-    // found the leftover unmatched clip is used instead (see buildActions).
-    chop:     'Chop2'
+    chop:     ['Chop2', '_01a1abcc_03a5_713b_b15c_9633d554c179'],
+    pickup:   ['pick-up', 'pickup', 'pick up', '_01a1b569_4697_72f3_bcc4_774d558fd377'],
+    eat:      ['eat', 'eating', '_01a1b565_a7b4_73c7_bf1e_2e945589475c']
 };
 
 // "Right Jab from Guard" runs for two seconds, but the hand only moves between
@@ -1252,8 +1275,9 @@ const ATTACK_CLIP_OUT = 1.35;
 // rock, exactly as that animation does; squaring it up to the target made it
 // look wrong. Being off square is not the same as being aimed wrong.
 const WORK_FACING = {
-    rock: 0,        // as authored — the swing is side-on by design
-    tree: -0.58     // -33 degrees, undoing the chop's lean to the left
+    mine: 0,        // as authored — the swing is side-on by design
+    chop: -0.58,    // -33 degrees, undoing the chop's lean to the left
+    pickup: 0       // a crouch faces where it faces
 };
 
 // The tools hang off this bone. Mixamo rigs name it mixamorigRightHand; the
@@ -1442,6 +1466,7 @@ let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kill
 const INV = {
     stone: 0,
     wood: 0,
+    radish: 0,
     woodpick: false,
     axe: false,
     pickaxe: false,
@@ -1514,6 +1539,7 @@ function loadSave() {
         if (data.inv && typeof data.inv === 'object') {
             INV.stone = Math.max(0, data.inv.stone | 0);
             INV.wood = Math.max(0, data.inv.wood | 0);
+            INV.radish = Math.max(0, data.inv.radish | 0);
             INV.woodpick = !!data.inv.woodpick;
             INV.axe = !!data.inv.axe;
             INV.pickaxe = !!data.inv.pickaxe;
@@ -1536,7 +1562,7 @@ function writeSave() {
             time: timeOfDay,
             pos: player ? [player.position.x, player.position.y, player.position.z] : null,
             inv: {
-                stone: INV.stone, wood: INV.wood,
+                stone: INV.stone, wood: INV.wood, radish: INV.radish,
                 woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
                 stickhouse: INV.stickhouse, whetstone: INV.whetstone, honed: INV.honed,
                 huts: huts.map(h => [+h.x.toFixed(2), +h.z.toFixed(2), +h.rot.toFixed(3)])
@@ -2393,6 +2419,133 @@ function tuftGeometry() {
     return g;
 }
 
+/* ============================================================
+   RADISHES
+   ============================================================ */
+
+// A radish in the ground is a tuft of leaves with the shoulder of the root
+// showing through. Two instanced meshes share one transform per plant: the
+// leaves, and the little red crown. A seedling is the same thing scaled down,
+// so growth is a number rather than a second model.
+const RADISH_WILD = 170;        // how many grow wild across the map
+const RADISH_RIPEN = 150;       // seconds from planting to pulling
+const RADISH_REGROW = 220;      // wild ones come back on their own
+const RADISH_HEAL = 22;         // what eating one is worth
+const radishes = [];
+let radishLeafMesh = null;
+let radishRootMesh = null;
+
+function radishLeafGeometry() {
+    // Four blades fanning out from the crown
+    const parts = [];
+    for (let i = 0; i < 4; i++) {
+        const blade = new THREE.PlaneGeometry(0.15, 0.52, 1, 2);
+        blade.translate(0, 0.26, 0);
+        blade.rotateX(-0.5);
+        blade.rotateY((i / 4) * Math.PI * 2 + 0.3);
+        parts.push(blade);
+    }
+    const g = mergeGeometries(parts, false);
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildRadishes() {
+    // its own stream, so where the radishes land does not shift when the
+    // tree or rock counts change with the quality setting
+    const rnd = mulberry32(SEED ^ 0x2d1b);
+
+    const leafMat = new THREE.MeshStandardMaterial({
+        color: 0x74ad48, roughness: 0.92, side: THREE.DoubleSide
+    });
+    applyWind(leafMat, 0.1, 0);
+    addNaturalShading(leafMat, { sky: 0.2, variety: 0.14 });
+
+    const rootMat = new THREE.MeshStandardMaterial({ color: 0xc2456b, roughness: 0.72 });
+    addNaturalShading(rootMat, { sky: 0.26, variety: 0.1 });
+
+    const cap = RADISH_WILD + 80;      // headroom for anything the player sows
+    radishLeafMesh = new THREE.InstancedMesh(radishLeafGeometry(), leafMat, cap);
+    radishRootMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.115, 8, 6), rootMat, cap);
+    for (const m of [radishLeafMesh, radishRootMesh]) {
+        m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        m.castShadow = false;
+        m.receiveShadow = true;
+        m.count = 0;
+        scene.add(m);
+    }
+    harvestMeshes.push(radishLeafMesh, radishRootMesh);
+
+    // Scattered where they would actually grow: off the rock, out of the
+    // water, and not on ground too steep to hold soil
+    let placed = 0;
+    let tries = 0;
+    while (placed < RADISH_WILD && tries < RADISH_WILD * 40) {
+        tries++;
+        const x = (rnd() * 2 - 1) * WORLD_RADIUS * 0.92;
+        const z = (rnd() * 2 - 1) * WORLD_RADIUS * 0.92;
+        const g = groundHeight(x, z);
+        if (g < WATER_LEVEL + 0.9 || g > 26) continue;
+        if (slopeAt(x, z) > 0.17) continue;
+        if (insideTempleFootprint(x, z, 2)) continue;
+        addRadish(x, z, 1);
+        placed++;
+    }
+}
+
+function addRadish(x, z, ripeness) {
+    if (!radishLeafMesh || radishes.length >= radishLeafMesh.instanceMatrix.count) return null;
+    const index = radishes.length;
+    const r = {
+        kind: 'radish', x, z, y: groundHeight(x, z), height: 0.3,
+        ripeness,                      // 0 just sown, 1 ready to pull
+        index, gone: 0, cool: 0,
+        parts: [{ mesh: radishLeafMesh, index }, { mesh: radishRootMesh, index }],
+        collider: null
+    };
+    radishes.push(r);
+    harvestables.push(r);
+    radishLeafMesh.count = radishes.length;
+    radishRootMesh.count = radishes.length;
+    drawRadish(r);
+    return r;
+}
+
+const _radishSpin = new THREE.Euler();
+
+function drawRadish(r) {
+    if (!radishLeafMesh) return;
+    const show = r.gone > 0 ? 0 : Math.max(0.16, r.ripeness);
+    if (r.gone > 0) {
+        radishLeafMesh.setMatrixAt(r.index, _zeroMatrix);
+        radishRootMesh.setMatrixAt(r.index, _zeroMatrix);
+    } else {
+        _radishSpin.set(0, (r.x * 1.7 + r.z * 2.3) % Math.PI, 0);
+        _dummy.position.set(r.x, r.y, r.z);
+        _dummy.rotation.copy(_radishSpin);
+        _dummy.scale.setScalar(0.75 + show * 0.55);
+        _dummy.updateMatrix();
+        radishLeafMesh.setMatrixAt(r.index, _dummy.matrix);
+        // The root only breaks the surface once it has something to show
+        _dummy.position.set(r.x, r.y + 0.05, r.z);
+        _dummy.scale.setScalar(show < 0.72 ? 0.001 : show);
+        _dummy.updateMatrix();
+        radishRootMesh.setMatrixAt(r.index, _dummy.matrix);
+    }
+    radishLeafMesh.instanceMatrix.needsUpdate = true;
+    radishRootMesh.instanceMatrix.needsUpdate = true;
+}
+
+function updateRadishes(dt) {
+    for (const r of radishes) {
+        if (r.ripeness >= 1) continue;
+        const before = r.ripeness;
+        r.ripeness = Math.min(1, r.ripeness + dt / RADISH_RIPEN);
+        // redrawn only when the change would actually show
+        if (Math.floor(r.ripeness * 12) !== Math.floor(before * 12)) drawRadish(r);
+    }
+}
+
 function buildVegetation() {
     const rnd = mulberry32(SEED ^ 0x7777);
     const pines = [];
@@ -2554,6 +2707,8 @@ function buildVegetation() {
     rockMesh.instanceMatrix.needsUpdate = true;
     harvestMeshes.push(rockMesh);
     scene.add(rockMesh);
+
+    buildRadishes();
 
     // Grass
     if (Q.grassCells > 0) {
@@ -3771,6 +3926,7 @@ function sfxBranchOff() {
 // sounds, and that difference is most of what tells you a tool is working.
 function sfxWorkStrike(job) {
     if (!job) return;
+    if (job.anim === 'pickup') { sfxHandStone(); return; }
     if (job.anim === 'mine') {
         if (!job.tool) sfxHandStone();
         else if (job.tool === 'woodpick') sfxWoodOnStone();
@@ -3783,11 +3939,39 @@ function sfxWorkStrike(job) {
 
 function sfxWorkDone(job) {
     if (!job) return;
+    if (job === JOBS.pull) { sfxRadishPull(); return; }
     if (job === JOBS.mine) sfxRockBreak();
     else if (job === JOBS.chip) sfxStoneChip();
     else if (job === JOBS.pebble) sfxHandStone();
     else if (job === JOBS.fell) sfxTreeFall();
     else sfxBranchOff();
+}
+
+// Leaves tearing out of damp soil, then the root coming free
+function sfxRadishPull() {
+    noiseBurst(0.22, 0.09, 'bandpass', 2100 + Math.random() * 700, 1.6, 0.07);
+    setTimeout(() => {
+        noiseBurst(0.12, 0.08, 'lowpass', 700, 0, 0.04);
+        ring(260, 5, 0.1, 0.06);
+    }, 130);
+}
+
+// A bite, and then chewing
+function sfxEat() {
+    noiseBurst(0.07, 0.17, 'bandpass', 1700, 1.1, 0.004);
+    ring(520, 7, 0.07, 0.06);
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => noiseBurst(0.1, 0.07, 'bandpass', 900 + Math.random() * 700, 1.4, 0.03),
+            320 + i * 290);
+    }
+    setTimeout(() => { blip('sine', 523, 659, 0.35, 0.05); }, 1150);
+}
+
+// Patting soil down over a seed
+function sfxPlant() {
+    noiseBurst(0.18, 0.1, 'lowpass', 600, 0, 0.05);
+    setTimeout(() => noiseBurst(0.14, 0.08, 'lowpass', 520, 0, 0.04), 200);
+    setTimeout(() => blip('sine', 392, 523, 0.4, 0.05), 400);
 }
 
 function sfxRockBreak() {
@@ -3887,6 +4071,7 @@ const P = {
     attackCd: 0,
     swingTimer: 0,
     attackAnim: 0,      // how long the jab still has to run
+    launchSpeed: 0,     // how fast we were going when we left the ground
     dead: false,
     deadTimer: 0,
     combatTimer: 0,
@@ -4027,12 +4212,17 @@ function buildActions(mixer, clips, names, opts) {
     // 1. Explicit mapping first
     if (names) {
         for (const key of Object.keys(names)) {
-            const clip = findClip(clips, names[key]);
-            if (clip && !used.has(clip)) {
+            const wanted = Array.isArray(names[key]) ? names[key] : [names[key]];
+            let clip = null;
+            for (const w of wanted) {
+                const c = findClip(clips, w);
+                if (c && !used.has(c)) { clip = c; break; }
+            }
+            if (clip) {
                 used.add(clip);
                 map[key] = actionFor(clip);
-            } else if (!clip) {
-                missing.push(key + ' ("' + names[key] + '")');
+            } else {
+                missing.push(key + ' ("' + wanted.join('" or "') + '")');
             }
         }
     }
@@ -4253,6 +4443,10 @@ function updateAnimation(dt, horizontalSpeed, running) {
     if (hasClips) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
+        } else if (CHORE.kind) {
+            const clip = CHORE.kind === 'eat' ? 'eat' : 'pickup';
+            playAction(clip, 0.18);
+            if (actions[clip]) actions[clip].setEffectiveTimeScale(1);
         } else if (SLEEP.phase && actions.sleep) {
             playAction('sleep', 0.4);
             if (actions.sleep) actions.sleep.setEffectiveTimeScale(1);
@@ -4271,7 +4465,15 @@ function updateAnimation(dt, horizontalSpeed, running) {
             playAction(name, 0.3);
             if (actions[name]) actions[name].setEffectiveTimeScale(1);
         } else if (!P.grounded) {
-            playAction(P.vel.y > 0.5 ? 'jump' : 'fall');
+            // A standing jump and a jump taken at a run are different motions.
+            // Which one is playing is decided by the speed you left the ground
+            // at, not your speed right now, so a leap does not switch clips
+            // halfway through as the air drag bleeds it off.
+            if (P.vel.y > 0.5) {
+                playAction(P.launchSpeed > RUN_SPEED * 0.5 && actions.jumpRun ? 'jumpRun' : 'jump');
+            } else {
+                playAction('fall');
+            }
         } else if (horizontalSpeed > RUN_SPEED * 0.55) {
             playAction('run');
             if (actions.run) actions.run.setEffectiveTimeScale(
@@ -4341,17 +4543,19 @@ const HARVEST_RANGE = 4.2;    // how close you must be to start
 // Seconds before a thing comes back. Loose stones return quickest: they are
 // the only resource a player with empty hands can reach, so waiting on them
 // is waiting on the whole game.
-const HARVEST_RESPAWN = { pebble: 25, rock: 60, tree: 60 };
+const HARVEST_RESPAWN = { pebble: 25, rock: 60, tree: 60, radish: RADISH_REGROW };
 
 // Work runs for whole swings rather than a flat number of seconds, so nothing
 // ever vanishes halfway through the animation. If a clip is missing, these
 // stand in for its length.
-const HARVEST_FALLBACK = { mine: 1.85, chop: 1.95 };
+const HARVEST_FALLBACK = { mine: 1.85, chop: 1.95, pickup: 2.95 };
 
 // Where in each swing the blow actually lands, as a fraction of the clip:
 // measured from the lowest point the right hand reaches. The pickaxe comes
 // down right at the end of its cycle, the axe a little under halfway.
-const HARVEST_IMPACT = { mine: 0.945, chop: 0.437 };
+// A pick-up has no blow to land; the hand closes around the thing somewhere
+// near the bottom of the crouch
+const HARVEST_IMPACT = { mine: 0.945, chop: 0.437, pickup: 0.55 };
 
 const BRANCH_COOLDOWN = 30;   // a tree you have stripped needs a while
 
@@ -4366,8 +4570,11 @@ const JOBS = {
     // which is enough to earn the stone head that can.
     chip:     { anim: 'mine', tool: 'woodpick', swings: 2, stone: 1, clears: false,
                 verb: 'Chip at the boulder' },
-    pebble:   { anim: 'mine', tool: null, swings: 1, stone: 1, clears: true,
-                verb: 'Prise out the stone' },
+    // Bare hands crouch and lift rather than swing a tool they do not have
+    pebble:   { anim: 'pickup', tool: null, swings: 1, stone: 1, clears: true,
+                verb: 'Pick up the stone' },
+    pull:     { anim: 'pickup', tool: null, swings: 1, radish: 1, clears: true,
+                verb: 'Pull the radish' },
     fell:     { anim: 'chop', tool: 'axe', swings: 2, wood: 3, clears: true,
                 verb: 'Fell the tree' },
     branches: { anim: 'chop', tool: null, swings: 2, wood: 1, clears: false,
@@ -4378,6 +4585,7 @@ const JOBS = {
 function jobFor(h) {
     if (!h) return null;
     if (h.kind === 'pebble') return JOBS.pebble;
+    if (h.kind === 'radish') return h.ripeness >= 1 ? JOBS.pull : null;
     if (h.kind === 'rock') return INV.pickaxe ? JOBS.mine : (INV.woodpick ? JOBS.chip : null);
     if (h.kind === 'tree') return INV.axe ? JOBS.fell : JOBS.branches;
     return null;
@@ -4385,6 +4593,9 @@ function jobFor(h) {
 
 function blockedBy(h) {
     if (h && h.kind === 'rock' && !INV.pickaxe && !INV.woodpick) return 'Need a pickaxe';
+    if (h && h.kind === 'radish' && h.ripeness < 1) {
+        return 'Still growing — ' + Math.round(h.ripeness * 100) + '%';
+    }
     return null;
 }
 
@@ -4578,7 +4789,7 @@ function startHarvest(h) {
 
     // Face the work, allowing for the lean the animation itself carries
     P.faceTarget = Math.atan2(h.x - player.position.x, h.z - player.position.z) +
-        (WORK_FACING[job.anim === 'mine' ? 'rock' : 'tree'] || 0);
+        (WORK_FACING[job.anim] || 0);
     P.faceTimer = H.total + 0.3;
     P.vel.x = 0;
     P.vel.z = 0;
@@ -4610,6 +4821,7 @@ function finishHarvest() {
     if (job.clears) {
         setHarvestablePartsVisible(h, false);
         h.gone = HARVEST_RESPAWN[h.kind] || 60;
+        if (h.kind === 'radish') { h.ripeness = 0; drawRadish(h); }
         harvestGone.push(h);
     } else {
         // The tree is still standing; it just has nothing more to give yet
@@ -4617,7 +4829,11 @@ function finishHarvest() {
         harvestCooling.push(h);
     }
 
-    if (job.stone) {
+    if (job.radish) {
+        INV.radish += job.radish;
+        sfxWorkDone(job);
+        toast('Radish pulled  ·  ' + INV.radish + ' in the pack', 2400);
+    } else if (job.stone) {
         INV.stone += job.stone;
         sfxWorkDone(job);
         toast('+' + job.stone + ' stone  ·  ' + INV.stone + ' carried', 2000);
@@ -4656,7 +4872,8 @@ function updateHarvest(dt) {
         const h = harvestGone[i];
         h.gone -= dt;
         if (h.gone <= 0) {
-            setHarvestablePartsVisible(h, true);
+            if (h.kind === 'radish') { h.gone = 0; drawRadish(h); }
+            else setHarvestablePartsVisible(h, true);
             harvestGone.splice(i, 1);
         }
     }
@@ -5615,6 +5832,8 @@ function setupInput() {
     packCueEl.addEventListener('click', () => {
         if (overlay === 'pack') closeOverlay(); else if (!overlay) openOverlay('pack');
     });
+    packEatEl.addEventListener('click', () => { closeOverlay(); beginChore('eat'); });
+    packPlantEl.addEventListener('click', () => { closeOverlay(); beginChore('plant'); });
     siteBuildEl.addEventListener('click', confirmSiting);
     document.getElementById('site-cancel').addEventListener('click', endSiting);
     sleepCueEl.addEventListener('click', beginSleep);
@@ -5713,7 +5932,8 @@ function updatePlayer(dt) {
         else if (P.combatTimer <= 0) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 1.6 * dt);
     }
 
-    const input = (P.dead || H.active || SLEEP.phase) ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
+    const input = (P.dead || H.active || SLEEP.phase || CHORE.kind)
+        ? { x: 0, f: 0, magnitude: 0 } : readMovementInput();
     const wantsRun = !P.dead && (keys.ShiftLeft || keys.ShiftRight || touchState.run);
 
     const forwardX = -Math.sin(camYaw);
@@ -5783,6 +6003,8 @@ function updatePlayer(dt) {
         P.grounded = false;
         P.coyote = 0;
         P.jumpBuffer = 0;
+        // remembered for the whole leap, so the clip does not change in mid-air
+        P.launchSpeed = Math.hypot(P.vel.x, P.vel.z);
         sfxJump();
     } else if (!P.grounded) {
         P.vel.y -= GRAVITY * dt;
@@ -5871,6 +6093,7 @@ function updatePlayer(dt) {
     // HUD state line
     let state = 'Exploring';
     if (P.dead) state = 'Down';
+    else if (CHORE.kind) state = CHORE.kind === 'eat' ? 'Eating' : 'Sowing';
     else if (SLEEP.phase) state = SLEEP.phase === 'rest' ? 'Resting' : 'Sleeping';
     else if (H.active && H.job) state = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
     else if (P.combatTimer > 0) state = 'In combat';
@@ -6215,6 +6438,7 @@ function updateRelicHud() {
     let extra = P.kills > 0 ? ' &nbsp;·&nbsp; <b>' + P.kills + '</b> felled' : '';
     if (INV.stone) extra += ' &nbsp;·&nbsp; <b>' + INV.stone + '</b> stone';
     if (INV.wood) extra += ' &nbsp;·&nbsp; <b>' + INV.wood + '</b> wood';
+    if (INV.radish) extra += ' &nbsp;·&nbsp; <b>' + INV.radish + '</b> radish' + (INV.radish > 1 ? 'es' : '');
     if (INV.pickaxe) extra += ' &nbsp;·&nbsp; <i class="tool">pickaxe</i>';
     if (INV.axe) extra += ' &nbsp;·&nbsp; <i class="tool">axe</i>';
     killLineEl.innerHTML = extra;
@@ -6735,6 +6959,85 @@ function confirmSiting() {
 }
 
 /* ============================================================
+   EATING AND SOWING
+   ============================================================ */
+
+// Both are the same shape of thing: stand still, play a clip, and have
+// something happen partway through rather than the instant you press the
+// button. CHORE holds whichever one is running.
+const CHORE = { kind: null, timer: 0, total: 0, done: false };
+
+function choreLength(anim, fallback) {
+    const a = actions && actions[anim];
+    const d = a && a.userData && a.userData.duration;
+    return (d && d > 0.3) ? d : fallback;
+}
+
+function canChore() {
+    return started && !paused && !overlay && !siting.on && !CHORE.kind &&
+        !SLEEP.phase && !H.active && !P.dead && !P.swimming && P.grounded;
+}
+
+function beginChore(kind) {
+    if (!canChore()) return false;
+    if (kind === 'eat' && INV.radish < 1) return false;
+    if (kind === 'plant') {
+        if (INV.radish < 1) return false;
+        if (!sowSiteOk(player.position.x, player.position.z)) {
+            toast('Nothing will take root here', 2600);
+            return false;
+        }
+    }
+    CHORE.kind = kind;
+    CHORE.total = choreLength(kind === 'eat' ? 'eat' : 'pickup', kind === 'eat' ? 2.45 : 2.95);
+    CHORE.timer = CHORE.total;
+    CHORE.done = false;
+    cancelHarvest();
+    P.vel.x = 0;
+    P.vel.z = 0;
+    return true;
+}
+
+// Soil, not rock or water, and not already crowded
+function sowSiteOk(x, z) {
+    if (groundHeight(x, z) < WATER_LEVEL + 0.9) return false;
+    if (slopeAt(x, z) > 0.2) return false;
+    if (insideTempleFootprint(x, z, 2)) return false;
+    for (const r of radishes) {
+        if (Math.hypot(r.x - x, r.z - z) < 1.1) return false;
+    }
+    return true;
+}
+
+function updateChore(dt) {
+    if (!CHORE.kind) return;
+    CHORE.timer -= dt;
+    const elapsed = CHORE.total - CHORE.timer;
+
+    // The pay-off lands with the motion, not when the button was pressed
+    if (!CHORE.done && elapsed >= CHORE.total * 0.55) {
+        CHORE.done = true;
+        if (CHORE.kind === 'eat') {
+            INV.radish = Math.max(0, INV.radish - 1);
+            P.health = Math.min(PLAYER_MAX_HEALTH, P.health + RADISH_HEAL);
+            P.stamina = Math.min(100, P.stamina + 18);
+            sfxEat();
+            toast('Eaten  ·  ' + INV.radish + ' left', 2400);
+        } else {
+            INV.radish = Math.max(0, INV.radish - 1);
+            addRadish(player.position.x, player.position.z, 0);
+            sfxPlant();
+            toast('Sown. It will want a few minutes.', 2800);
+        }
+        updateRelicHud();
+        if (overlay === 'pack') drawPack();
+        writeSave();
+    }
+
+    if (CHORE.timer <= 0) { CHORE.kind = null; CHORE.timer = 0; }
+}
+
+/* ============================================================
    SLEEPING THROUGH THE NIGHT
    ============================================================ */
 
@@ -6876,6 +7179,11 @@ const sleepCueEl = document.getElementById('sleep-cue');
 const packWoodEl = document.getElementById('pack-wood');
 const packStoneEl = document.getElementById('pack-stone');
 const packRelicsEl = document.getElementById('pack-relics');
+const packRadishEl = document.getElementById('pack-radish');
+const larderEl = document.getElementById('larder');
+const larderHintEl = document.getElementById('larder-hint');
+const packEatEl = document.getElementById('pack-eat');
+const packPlantEl = document.getElementById('pack-plant');
 const packRecipesEl = document.getElementById('pack-recipes');
 const packHintEl = document.getElementById('pack-hint');
 
@@ -6927,7 +7235,17 @@ function craft(id) {
 function drawPack() {
     packWoodEl.textContent = INV.wood;
     packStoneEl.textContent = INV.stone;
+    packRadishEl.textContent = INV.radish;
     packRelicsEl.textContent = collected;
+
+    const has = INV.radish > 0;
+    packEatEl.disabled = !has || P.health >= PLAYER_MAX_HEALTH;
+    packPlantEl.disabled = !has;
+    larderHintEl.textContent = !has
+        ? 'Radishes grow wild in the open. Walk up to one and pull it.'
+        : (P.health >= PLAYER_MAX_HEALTH
+            ? 'Nothing to mend right now — sow one instead and come back to it.'
+            : 'Eating one mends you. Sowing one gives you more later.');
 
     packRecipesEl.replaceChildren();
     for (const r of RECIPES) {
@@ -7456,6 +7774,7 @@ function resetProgress() {
     // Back to empty hands, which means making the first axe again
     INV.stone = 0;
     INV.wood = 0;
+    INV.radish = 0;
     INV.woodpick = false;
     INV.axe = false;
     INV.pickaxe = false;
@@ -7510,6 +7829,7 @@ function buildControlsList() {
         '<div><span>Heal</span><b>Rest at the campfire</b></div>' +
         '<div><span>Tools</span><b>Made in the pack, not found</b></div>' +
         '<div><span>First tool</span><b>A wooden pickaxe, from wood alone</b></div>' +
+        '<div><span>Food</span><b>Pull wild radishes; eat or sow from the pack</b></div>' +
         '<div><span>Respawn point</span><b>Nearest waystone you woke</b></div>';
 }
 
@@ -7730,6 +8050,8 @@ function animate() {
         updateSky(dt);
         updateEnemies(dt);
         updateHarvest(dt);
+        updateRadishes(dt);
+        updateChore(dt);
         updateSiting();
         updateSleep(dt);
         updateWaystones(dt);
@@ -7785,6 +8107,11 @@ function animate() {
             gatherBar.classList.add('on');
             gatherLabel.textContent = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
             gatherFill.style.width = ((1 - H.timer / H.total) * 100).toFixed(0) + '%';
+        } else if (CHORE.kind) {
+            gatherEl.classList.add('on');
+            gatherBar.classList.add('on');
+            gatherLabel.textContent = CHORE.kind === 'eat' ? 'Eating' : 'Sowing';
+            gatherFill.style.width = ((1 - CHORE.timer / CHORE.total) * 100).toFixed(0) + '%';
         } else if (SLEEP.phase === 'rest') {
             gatherEl.classList.add('on');
             gatherBar.classList.remove('on');
