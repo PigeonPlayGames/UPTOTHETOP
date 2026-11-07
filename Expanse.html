@@ -791,6 +791,9 @@ body:not(.playing) #vignette { display: none; }
 }
 .art .head.thin { stroke-width: 1.4; fill: none; opacity: 0.75; }
 .art .head.wood { stroke: #c89a6a; fill: rgba(200, 154, 106, 0.18); }
+/* cord: a strand of rope or a bowstring, drawn thinner than a tool haft */
+.art .cord { stroke: #c89a6a; stroke-width: 2; stroke-linecap: round; fill: none; }
+.art .cord.hair { stroke-width: 1.4; opacity: 0.9; }
 .art .spark { stroke: #e8a07a; stroke-width: 1.8; stroke-linecap: round; fill: none; }
 .recipe.made .art { filter: grayscale(0.7); }
 .recipe {
@@ -954,6 +957,8 @@ body:not(.playing) #vignette { display: none; }
     border-color: rgba(240, 160, 130, 0.7);
 }
 #btn-attack:active { background: rgba(230, 120, 95, 0.6); }
+#btn-attack.bow { background: rgba(140, 170, 120, 0.3); border-color: rgba(190, 220, 160, 0.75); }
+#btn-attack.bow:active { background: rgba(170, 205, 140, 0.6); }
 .tbtn.on { background: rgba(127, 212, 193, 0.4); border-color: #9fe3d3; }
 #btn-menu {
     position: absolute;
@@ -1056,6 +1061,8 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
 <div id="cues">
     <button id="pack-cue" type="button"><kbd>I</kbd><span id="pack-cue-key">Pack</span></button>
     <button id="sleep-cue" type="button"><kbd id="sleep-key">K</kbd><span>Sleep until dawn</span></button>
+    <button id="fire-cue" type="button"><kbd>G</kbd><span id="fire-cue-label">Lay a fire</span></button>
+    <button id="bow-cue" type="button"><kbd>Q</kbd><span id="bow-cue-label">Take out the bow</span></button>
 </div>
 
 <div id="vignette"></div>
@@ -1134,6 +1141,9 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
         <div class="carry">
             <div><b id="pack-wood">0</b><span>wood</span></div>
             <div><b id="pack-stone">0</b><span>stone</span></div>
+            <div><b id="pack-leaf">0</b><span>leaves</span></div>
+            <div><b id="pack-rope">0</b><span>rope</span></div>
+            <div><b id="pack-arrows">0</b><span>arrows</span></div>
             <div><b id="pack-radish">0</b><span>radishes</span></div>
             <div><b id="pack-relics">0</b><span>relics</span></div>
         </div>
@@ -1313,6 +1323,13 @@ const PLAYER_RADIUS = 0.45;
 
 // --- Combat ---
 const PLAYER_MAX_HEALTH = 100;
+// Left alone, a body scabs over and no more. Mending on its own crawls up to
+// a fifth of your health and stops dead there, so anything past a scratch has
+// to be eaten or sat out beside a fire. That is the whole point of a radish.
+const REGEN_CEILING = PLAYER_MAX_HEALTH * 0.2;
+const REGEN_RATE = 0.8;                // per second, and only out of combat
+const FIRE_REGEN = 7.5;                // per second beside a fire, all the way up
+const FIRE_WARMTH = 6.5;               // how close you must sit to feel it
 const ATTACK_COOLDOWN = 0.45;
 const ATTACK_RANGE = 3.6;
 const ATTACK_ARC = Math.PI * 0.85;     // total swing width (~153°)
@@ -1344,7 +1361,7 @@ const ENEMY_TYPES = [
         path: KYLE_PATH,
         height: 1.95,
         health: 60,
-        damage: 12,
+        damage: 15,
         chaseSpeed: 4.6,
         sight: 22,
         fallback: { cloth: 0x5c2a2e, dark: 0x241a1d, skin: 0x8e7468, hair: 0x18100f, eyes: 0xff5a3c, pack: false },
@@ -1369,7 +1386,7 @@ const ENEMY_TYPES = [
         path: CHRIS_PATH,
         height: 2.0,
         health: 85,            // tougher, hits harder, closes faster
-        damage: 16,
+        damage: 20,
         chaseSpeed: 5.4,
         sight: 25,
         fallback: { cloth: 0x2f3f66, dark: 0x1a2032, skin: 0x9a8070, hair: 0x14181f, eyes: 0x6fe0ff, pack: false },
@@ -1389,7 +1406,7 @@ const ENEMY_TYPES = [
         height: 1.5,           // a boy — smaller, quicker, hits lighter
         radius: 0.42,
         health: 50,
-        damage: 9,
+        damage: 11,
         chaseSpeed: 5.2,
         sight: 23,
         fallback: { cloth: 0x23262b, dark: 0x2b3550, skin: 0xe0b89a, hair: 0x6b4a2f, eyes: 0xffc14d, pack: false },
@@ -1409,7 +1426,7 @@ const ENEMY_TYPES = [
         height: 1.3,           // the smallest and fastest of the four
         radius: 0.38,
         health: 40,
-        damage: 7,
+        damage: 9,
         chaseSpeed: 5.9,
         sight: 25,
         fallback: { cloth: 0x16181f, dark: 0x101218, skin: 0xe6c0a6, hair: 0x3a2a20, eyes: 0xa8f0d0, pack: false },
@@ -1457,7 +1474,7 @@ const settings = {
 };
 
 let save = { relics: [], surveyed: [], waystones: [], time: 0.3, pos: null, kills: 0, completed: false,
-             inv: null, huts: [] };
+             inv: null, huts: [], fires: [] };
 
 // What the player is carrying and what they have made. You start with nothing:
 // the first axe has to be cut out of branches you pull off a tree by hand, and
@@ -1467,9 +1484,13 @@ const INV = {
     stone: 0,
     wood: 0,
     radish: 0,
+    leaf: 0,            // yucca blades, which is what rope is twisted from
+    rope: 0,
+    arrows: 0,
     woodpick: false,
     axe: false,
     pickaxe: false,
+    bow: false,
     stickhouse: false,  // a shelter of your own, raised once
     whetstone: false,   // attacks hit harder
     honed: false        // tools bite deeper, so one swing does the work of two
@@ -1484,6 +1505,12 @@ const RECIPES = [
       note: 'Fell a whole tree for three wood instead of pulling off one branch.' },
     { id: 'pickaxe', name: 'Stone pickaxe', wood: 3, stone: 3,
       note: 'Break open boulders for three stone at a time.' },
+    { id: 'rope', name: 'Rope', wood: 0, stone: 0, leaf: 4, repeatable: true, counted: true,
+      note: 'Four yucca blades, stripped and twisted together. Nothing else will tie a bow.' },
+    { id: 'bow', name: 'Bow', wood: 3, stone: 0, rope: 1,
+      note: 'A sprung stick and a strung cord. Reaches a great deal further than your fist.' },
+    { id: 'arrows', name: 'Ten arrows', wood: 3, stone: 2, repeatable: true, counted: true, gives: 10,
+      note: 'Shafts of stick, heads of stone, ten to a batch. Walk over spent ones to take them back.' },
     { id: 'whetstone', name: 'Whetstone', wood: 1, stone: 4,
       note: 'A keener edge. Every blow you land does half again as much.' },
     { id: 'honed', name: 'Honed edges', wood: 6, stone: 6,
@@ -1517,7 +1544,21 @@ const RECIPE_ART = {
         '<path d="M37 9 L40 13 M34 18 L39 19 M39 6 L41 6" class="spark"/>',
     stickhouse:
         '<path d="M25 7 L10 37 M25 7 L40 37 M17 22 L33 22" class="head wood"/>' +
-        '<path d="M19 37 L22 27 L28 27 L31 37" class="haft"/>'
+        '<path d="M19 37 L22 27 L28 27 L31 37" class="haft"/>',
+    // Two strands laid up into a cord
+    rope:
+        '<path d="M7 26 C15 16, 21 32, 29 22 C35 15, 40 20, 44 17" class="cord"/>' +
+        '<path d="M7 31 C15 21, 21 37, 29 27 C35 20, 40 25, 44 22" class="cord"/>',
+    // A strung stave, drawn as the bow sits when it is braced
+    bow:
+        '<path d="M34 5 C12 16, 12 28, 34 39" class="haft"/>' +
+        '<path d="M34 5 L34 39" class="cord hair"/>' +
+        '<path d="M15 22 L42 22" class="head thin"/>',
+    // Three shafts in a bundle: stone heads at the top, flights at the foot
+    arrows:
+        '<path d="M14 38 L20 8 M25 38 L25 8 M36 38 L30 8" class="haft"/>' +
+        '<path d="M17 12 L20 5 L23 12 Z M22 12 L25 5 L28 12 Z M27 12 L30 5 L33 12 Z" class="head"/>' +
+        '<path d="M12 36 L17 32 M23 36 L27 32 M34 36 L38 32" class="spark"/>'
 };
 
 function loadSave() {
@@ -1533,6 +1574,7 @@ function loadSave() {
         if (Array.isArray(data.waystones)) save.waystones = data.waystones;
         if (data.completed) save.completed = true;
         if (Array.isArray(data.pos)) save.pos = data.pos;
+        if (data.inv && Array.isArray(data.inv.fires)) save.fires = data.inv.fires;
         if (data.inv && Array.isArray(data.inv.huts)) save.huts = data.inv.huts;
         // one hut, from before you could build more than one
         else if (data.inv && Array.isArray(data.inv.hut)) save.huts = [data.inv.hut];
@@ -1540,9 +1582,13 @@ function loadSave() {
             INV.stone = Math.max(0, data.inv.stone | 0);
             INV.wood = Math.max(0, data.inv.wood | 0);
             INV.radish = Math.max(0, data.inv.radish | 0);
+            INV.leaf = Math.max(0, data.inv.leaf | 0);
+            INV.rope = Math.max(0, data.inv.rope | 0);
+            INV.arrows = Math.max(0, data.inv.arrows | 0);
             INV.woodpick = !!data.inv.woodpick;
             INV.axe = !!data.inv.axe;
             INV.pickaxe = !!data.inv.pickaxe;
+            INV.bow = !!data.inv.bow;
             INV.stickhouse = !!data.inv.stickhouse;
             INV.whetstone = !!data.inv.whetstone;
             INV.honed = !!data.inv.honed;
@@ -1563,9 +1609,12 @@ function writeSave() {
             pos: player ? [player.position.x, player.position.y, player.position.z] : null,
             inv: {
                 stone: INV.stone, wood: INV.wood, radish: INV.radish,
+                leaf: INV.leaf, rope: INV.rope, arrows: INV.arrows,
                 woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
+                bow: INV.bow,
                 stickhouse: INV.stickhouse, whetstone: INV.whetstone, honed: INV.honed,
-                huts: huts.map(h => [+h.x.toFixed(2), +h.z.toFixed(2), +h.rot.toFixed(3)])
+                huts: huts.map(h => [+h.x.toFixed(2), +h.z.toFixed(2), +h.rot.toFixed(3)]),
+                fires: fires.map(f => [+f.x.toFixed(2), +f.z.toFixed(2)])
             }
         }));
     } catch (e) { /* storage blocked — fine */ }
@@ -2546,6 +2595,168 @@ function updateRadishes(dt) {
     }
 }
 
+/* ============================================================
+   YUCCA
+   ============================================================ */
+
+// A rosette of stiff sword blades on dry open ground. The blades are what
+// rope is twisted from, and rope is what turns a stick into a bow, so these
+// are the start of the only weapon in the game that works at a distance.
+// Cutting leaves does not kill the plant — it just leaves it bare a while.
+const YUCCA_COUNT = 130;
+const YUCCA_BLADES = 15;
+const yuccas = [];
+let yuccaMesh = null;
+let yuccaBloomMesh = null;
+let yuccaBloomCount = 0;
+
+// One blade: a long taper to a point, three triangles, no thickness. Stiff
+// and flat is exactly what a yucca leaf looks like.
+//
+// It carries a uv set it never uses, and the stump it gets merged with is
+// stripped of its index, because mergeGeometries refuses a batch whose
+// attributes do not line up — and refusing means returning null, which took
+// the whole world build down with it the first time round.
+function yuccaBladeGeometry(len, width) {
+    const g = new THREE.BufferGeometry();
+    const w1 = width * 0.68;
+    const m = len * 0.55;
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+        -width, 0, 0,   width, 0, 0,   -w1, m, 0,
+         width, 0, 0,    w1, m, 0,     -w1, m, 0,
+        -w1, m, 0,       w1, m, 0,      0, len, 0
+    ]), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+        0, 0,  1, 0,  0, 0.55,
+        1, 0,  1, 0.55,  0, 0.55,
+        0, 0.55,  1, 0.55,  0.5, 1
+    ]), 2));
+    g.computeVertexNormals();
+    return g;
+}
+
+function yuccaGeometry() {
+    const parts = [];
+    for (let i = 0; i < YUCCA_BLADES; i++) {
+        // Inner blades stand near-upright, outer ones splay right out, which
+        // is what gives the rosette its shape
+        const r = i / YUCCA_BLADES;
+        const splay = 0.18 + r * 1.15;
+        const len = 1.05 - r * 0.42;
+        const blade = yuccaBladeGeometry(len, 0.042 + (1 - r) * 0.016);
+        blade.rotateX(splay);
+        blade.rotateY((i * 2.399) % (Math.PI * 2));   // golden angle, so no gaps
+        blade.translate(0, 0.14, 0);
+        parts.push(blade);
+    }
+    // A short woody stump under the crown, unindexed to match the blades
+    const stump = new THREE.CylinderGeometry(0.1, 0.13, 0.3, 6).toNonIndexed();
+    stump.translate(0, 0.14, 0);
+    parts.push(stump);
+
+    const g = mergeGeometries(parts, false);
+    if (!g) {
+        // A null here is a mismatch between the parts above, not bad luck.
+        // Say so and hand back something harmless rather than letting the
+        // whole world build fall over on one plant.
+        console.error('[yucca] the blades and the stump would not merge; ' +
+                      'check they all have the same attributes and none has an index');
+        return new THREE.ConeGeometry(0.3, 1, 5);
+    }
+    g.computeVertexNormals();
+    return g;
+}
+
+// The cream flower spike a good few of them carry, which is what makes a
+// yucca recognisable from across a valley
+function yuccaBloomGeometry() {
+    const parts = [];
+    const stalk = new THREE.CylinderGeometry(0.035, 0.05, 1.5, 5);
+    stalk.translate(0, 0.75, 0);
+    parts.push(stalk);
+    for (let i = 0; i < 9; i++) {
+        const t = i / 9;
+        const bell = new THREE.SphereGeometry(0.085 - t * 0.03, 5, 4);
+        bell.translate(Math.cos(i * 2.1) * (0.11 - t * 0.07), 0.78 + t * 0.78,
+                       Math.sin(i * 2.1) * (0.11 - t * 0.07));
+        parts.push(bell);
+    }
+    const g = mergeGeometries(parts, false);
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildYuccas() {
+    const rnd = mulberry32(SEED ^ 0x5cae);
+
+    const bladeMat = new THREE.MeshStandardMaterial({
+        color: 0x8ea47c, roughness: 0.88, side: THREE.DoubleSide, flatShading: true
+    });
+    applyWind(bladeMat, 0.05, 0);
+    addNaturalShading(bladeMat, { sky: 0.3, variety: 0.16 });
+
+    const bloomMat = new THREE.MeshStandardMaterial({ color: 0xe8e2cd, roughness: 0.85 });
+    applyWind(bloomMat, 0.09, 0);
+    addNaturalShading(bloomMat, { sky: 0.34, variety: 0.1 });
+
+    yuccaMesh = new THREE.InstancedMesh(yuccaGeometry(), bladeMat, YUCCA_COUNT);
+    yuccaBloomMesh = new THREE.InstancedMesh(yuccaBloomGeometry(), bloomMat, YUCCA_COUNT);
+    for (const m of [yuccaMesh, yuccaBloomMesh]) {
+        m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        m.castShadow = settings.shadows;
+        m.receiveShadow = true;
+        m.count = 0;
+        scene.add(m);
+    }
+    harvestMeshes.push(yuccaMesh);
+
+    let placed = 0;
+    let tries = 0;
+    while (placed < YUCCA_COUNT && tries < YUCCA_COUNT * 50) {
+        tries++;
+        const x = (rnd() * 2 - 1) * WORLD_RADIUS * 0.94;
+        const z = (rnd() * 2 - 1) * WORLD_RADIUS * 0.94;
+        const g = groundHeight(x, z);
+        // dry, open, and off the valley floor: they want height and drainage
+        if (g < WATER_LEVEL + 2.5 || g > 52) continue;
+        if (slopeAt(x, z) > 0.3) continue;
+        if (insideTempleFootprint(x, z, 3)) continue;
+        if (Math.hypot(x, z) < 16) continue;
+
+        const index = yuccas.length;
+        const scale = 0.85 + rnd() * 0.5;
+        _dummy.position.set(x, g, z);
+        _dummy.rotation.set(0, rnd() * Math.PI * 2, 0);
+        _dummy.scale.setScalar(scale);
+        _dummy.updateMatrix();
+        yuccaMesh.setMatrixAt(index, _dummy.matrix);
+
+        const y = {
+            kind: 'yucca', x, z, y: g, height: 1.2 * scale,
+            index, gone: 0, cool: 0,
+            parts: [{ mesh: yuccaMesh, index }],
+            collider: null
+        };
+
+        // Two in five are in flower
+        if (rnd() < 0.4) {
+            const bi = yuccaBloomCount++;
+            _dummy.scale.setScalar(scale * (0.9 + rnd() * 0.3));
+            _dummy.updateMatrix();
+            yuccaBloomMesh.setMatrixAt(bi, _dummy.matrix);
+            yuccaBloomMesh.count = yuccaBloomCount;
+        }
+
+        yuccas.push(y);
+        harvestables.push(y);
+        yuccaMesh.count = yuccas.length;
+        placed++;
+    }
+
+    yuccaMesh.instanceMatrix.needsUpdate = true;
+    yuccaBloomMesh.instanceMatrix.needsUpdate = true;
+}
+
 function buildVegetation() {
     const rnd = mulberry32(SEED ^ 0x7777);
     const pines = [];
@@ -2709,6 +2920,7 @@ function buildVegetation() {
     scene.add(rockMesh);
 
     buildRadishes();
+    buildYuccas();
 
     // Grass
     if (Q.grassCells > 0) {
@@ -2878,6 +3090,790 @@ function buildCamp() {
 
     scene.add(group);
     addCollider(2.6, -1.4, 0.4);
+}
+
+/* ============================================================
+   FIRES YOU LIGHT YOURSELF
+   ============================================================ */
+
+// A fire is the only thing that will mend you past a scratch, so laying one
+// is the thing to do with an armful of wood and a wound. It takes ten
+// seconds at a crouch, and once it catches it keeps burning.
+const FIRE_WOOD = 3;              // sticks it takes to lay one
+const FIRE_LIGHT_TIME = 10;       // seconds crouched over it before it catches
+const FIRE_MAX = 10;
+const FIRE_MIN_GAP = 8;           // no stacking them one on top of another
+const fires = [];
+const fireLights = [];
+const FIRE_LIGHT_POOL = 2;        // two lights, moved to whichever fires are nearest
+let fireKit = null;
+
+// Built once and shared by every fire: only the matrices differ.
+function fireKitBuild() {
+    if (fireKit) return fireKit;
+
+    const ring = [];
+    for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const s = new THREE.DodecahedronGeometry(0.2, 0);
+        s.rotateY(i * 1.1);
+        s.rotateX(i * 0.7);
+        s.translate(Math.cos(a) * 0.64, 0.07, Math.sin(a) * 0.64);
+        ring.push(s);
+    }
+    const logs = [];
+    for (let i = 0; i < 3; i++) {
+        const l = new THREE.CylinderGeometry(0.055, 0.075, 0.9, 5);
+        l.rotateZ(Math.PI / 2.9);
+        l.rotateY((i / 3) * Math.PI * 2 + 0.4);
+        l.translate(0, 0.21, 0);
+        logs.push(l);
+    }
+
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6f6f69, roughness: 1, flatShading: true });
+    addNaturalShading(stoneMat, { sky: 0.4, variety: 0.1 });
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 1 });
+    addNaturalShading(logMat, { sky: 0.2, variety: 0.1 });
+
+    fireKit = {
+        stones: mergeGeometries(ring, false),
+        logs: mergeGeometries(logs, false),
+        stoneMat, logMat,
+        flame: new THREE.ConeGeometry(0.3, 0.9, 7),
+        ember: new THREE.ConeGeometry(0.16, 0.44, 6),
+        flameMat: new THREE.MeshBasicMaterial({ color: 0xffa23c, transparent: true, opacity: 0.9, fog: false }),
+        emberMat: new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.95, fog: false })
+    };
+    fireKit.stones.computeVertexNormals();
+    fireKit.logs.computeVertexNormals();
+    return fireKit;
+}
+
+function buildFireLights() {
+    for (let i = 0; i < FIRE_LIGHT_POOL; i++) {
+        const l = new THREE.PointLight(0xff9a3c, 0, 22, 2);
+        l.visible = false;
+        scene.add(l);
+        fireLights.push(l);
+    }
+}
+
+function addFire(x, z) {
+    if (fires.length >= FIRE_MAX) return null;
+    const kit = fireKitBuild();
+    const y = groundHeight(x, z);
+
+    const group = new THREE.Group();
+    group.position.set(x, y - 0.05, z);
+    group.rotation.y = (x * 1.3 + z * 0.7) % Math.PI;
+
+    const stones = new THREE.Mesh(kit.stones, kit.stoneMat);
+    stones.castShadow = settings.shadows;
+    stones.receiveShadow = true;
+    group.add(stones);
+
+    const logs = new THREE.Mesh(kit.logs, kit.logMat);
+    logs.castShadow = settings.shadows;
+    group.add(logs);
+
+    const flame = new THREE.Mesh(kit.flame, kit.flameMat);
+    flame.position.y = 0.56;
+    group.add(flame);
+
+    const ember = new THREE.Mesh(kit.ember, kit.emberMat);
+    ember.position.y = 0.38;
+    group.add(ember);
+
+    scene.add(group);
+
+    const f = {
+        x, z, y, group, flame, ember,
+        seed: (x * 0.31 + z * 0.17) % 6.283,
+        collider: addCollider(x, z, 0.78)
+    };
+    fires.push(f);
+    return f;
+}
+
+function removeAllFires() {
+    for (const f of fires) {
+        removeCollider(f.collider);
+        if (f.group && f.group.parent) f.group.parent.remove(f.group);
+    }
+    fires.length = 0;
+}
+
+// Camp's own fire counts, which is what made camp worth walking back to
+// before you could carry the idea around with you.
+function nearAnyFire() {
+    if (!player) return false;
+    const px = player.position.x;
+    const pz = player.position.z;
+    if (Math.hypot(px, pz) < 7.5) return true;
+    for (const f of fires) {
+        if (Math.hypot(f.x - px, f.z - pz) < FIRE_WARMTH) return true;
+    }
+    return false;
+}
+
+// Flat enough to lay stones on, dry, and clear of everything else you built
+function fireSiteOk(x, z) {
+    if (groundHeight(x, z) < WATER_LEVEL + 0.8) return false;
+    if (slopeAt(x, z) > 0.26) return false;
+    if (insideTempleFootprint(x, z, 2.5)) return false;
+    if (Math.hypot(x, z) < 9) return false;          // camp already has one
+    for (const f of fires) if (Math.hypot(f.x - x, f.z - z) < FIRE_MIN_GAP) return false;
+    for (const h of huts) if (Math.hypot(h.x - x, h.z - z) < 3.2) return false;
+    return true;
+}
+
+function fireRefusal(x, z) {
+    if (INV.wood < FIRE_WOOD) return 'Need ' + FIRE_WOOD + ' wood';
+    if (fires.length >= FIRE_MAX) return 'That is as many fires as you can keep';
+    if (Math.hypot(x, z) < 9) return 'Camp already has a fire';
+    for (const f of fires) {
+        if (Math.hypot(f.x - x, f.z - z) < FIRE_MIN_GAP) return 'Too close to your last fire';
+    }
+    if (!fireSiteOk(x, z)) return 'No ground for a fire here';
+    return null;
+}
+
+function canLayFire() {
+    return started && !paused && !overlay && !siting.on && !CHORE.kind &&
+        !SLEEP.phase && !H.active && !P.dead && !P.swimming && P.grounded &&
+        INV.wood >= FIRE_WOOD && fires.length < FIRE_MAX &&
+        fireSiteOk(player.position.x, player.position.z);
+}
+
+const _fireNight = { v: 0 };
+
+function updateFires() {
+    if (!fires.length) return;
+    _fireNight.v = skyUniforms ? skyUniforms.uNight.value : 0;
+
+    // Only the nearest couple of fires get a light; the rest just flicker
+    const near = [];
+    for (const f of fires) {
+        const d = Math.hypot(f.x - camera.position.x, f.z - camera.position.z);
+        if (d < 70) near.push({ f, d });
+    }
+    near.sort((a, b) => a.d - b.d);
+
+    for (let i = 0; i < fireLights.length; i++) {
+        const l = fireLights[i];
+        const pick = near[i];
+        if (!pick || pick.d > 38) { l.visible = false; continue; }
+        const flick = 0.8 + Math.sin(elapsed * 9.3 + i * 2.1) * 0.1 + Math.sin(elapsed * 23 + i) * 0.06;
+        l.visible = true;
+        l.position.set(pick.f.x, pick.f.y + 0.85, pick.f.z);
+        l.intensity = (2.4 + _fireNight.v * 6.5) * flick;
+    }
+
+    for (const n of near) {
+        const f = n.f;
+        const flick = 0.8 + Math.sin(elapsed * 8.7 + f.seed) * 0.12 + Math.sin(elapsed * 21 + f.seed * 3) * 0.08;
+        f.flame.scale.set(0.9 + flick * 0.18, 0.85 + flick * 0.3, 0.9 + flick * 0.18);
+        f.flame.rotation.y = elapsed * 2.1 + f.seed;
+        f.ember.scale.setScalar(0.85 + flick * 0.25);
+    }
+}
+
+/* ============================================================
+   THE BOW
+   ============================================================ */
+
+// There is no draw-and-loose clip in the model, so the body keeps whatever
+// it was doing and the bow itself does the acting: the string pulls back to
+// a point, the nocked shaft comes with it, and both snap forward on release.
+// A proper aiming clip would be better and would drop straight in here.
+const BOW_DRAW_TIME = 0.6;        // to a full draw
+const BOW_MIN_POWER = 0.4;        // a half-hearted pull still sends it, weakly
+const BOW_COOLDOWN = 0.3;
+const BOW_STAVE = 1.3;            // tip to tip
+const BOW_BELLY = 0.21;           // how far the grip stands off the string
+const BOW_PULL = 0.46;            // how far back a full draw takes the string
+
+const ARROW_SPEED = 54;           // metres a second at a full draw
+const ARROW_GRAVITY = 9.5;
+const ARROW_DAMAGE = 42;          // two will see off most things out here
+const ARROW_LIFE = 7;
+const ARROW_STUCK_LIFE = 150;     // how long a spent shaft waits to be picked up
+const ARROW_PICKUP = 1.7;
+const ARROW_LEN = 0.68;
+
+// Measured off the idle pose rather than guessed: this is the inverse of the
+// left hand bone's own rotation, so a bow parented to that bone comes out
+// square with the model — stave upright, arrow along the way the model faces,
+// which the headfront bone puts at +Z.
+const BOW_FIT = [0.19017, -0.30442, -0.90430, -0.23107];
+
+const BOW = { out: false, drawing: false, draw: 0, cool: 0 };
+let bowGroup = null;
+let bowString = null;
+let bowNocked = null;
+let bowBoneL = null;
+let arrowProto = null;
+const arrowsFlying = [];
+const arrowsStuck = [];
+const arrowPool = [];
+
+function arrowGeometry() {
+    const parts = [];
+    const shaft = new THREE.CylinderGeometry(0.0105, 0.0105, ARROW_LEN, 5);
+    shaft.rotateX(Math.PI / 2);                       // lie along +Z
+    parts.push(shaft);
+
+    const head = new THREE.ConeGeometry(0.027, 0.1, 5);
+    head.rotateX(Math.PI / 2);
+    head.translate(0, 0, ARROW_LEN / 2 + 0.03);
+    parts.push(head);
+
+    // Three flights, each a flat blade in a plane containing the shaft
+    for (let i = 0; i < 3; i++) {
+        const f = new THREE.PlaneGeometry(0.13, 0.05);
+        f.rotateY(Math.PI / 2);                       // into the ZY plane
+        f.rotateZ((i / 3) * Math.PI * 2);             // spun round the shaft
+        f.translate(0, 0, -ARROW_LEN / 2 + 0.09);
+        parts.push(f);
+    }
+    const g = mergeGeometries(parts, false);
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildBow() {
+    if (!modelRoot) return;
+
+    // Find the hand that holds it. The tools go in the right; a bow is held
+    // out in the left and drawn with the right.
+    modelRoot.traverse(o => {
+        if (!bowBoneL && o.isBone && normName(o.name).endsWith('lefthand')) bowBoneL = o;
+    });
+
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a6134, roughness: 0.85 });
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0xbda278, roughness: 0.8 });
+
+    // The stave: a C bending away from the archer, so the string ends up
+    // between the grip and the chest where it belongs. The last tenth at each
+    // end turns back on itself — without that recurve, and seen edge-on from
+    // behind the archer, the whole thing just reads as a straight stick.
+    const pts = [];
+    for (let i = 0; i <= 16; i++) {
+        const t = i / 16;
+        const limb = Math.cos((t - 0.5) * Math.PI);
+        const tip = Math.max(0, Math.abs(t - 0.5) * 2 - 0.78) / 0.22;
+        pts.push(new THREE.Vector3(
+            0,
+            (t - 0.5) * BOW_STAVE,
+            limb * BOW_BELLY - BOW_BELLY - tip * tip * 0.1
+        ));
+    }
+    // Thicker at the grip than at the tips, as a bow is
+    const stave = new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 26, 0.023, 6, false),
+        woodMat);
+    stave.castShadow = settings.shadows;
+
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.17, 7), woodMat);
+    grip.position.set(0, 0, -0.001);
+
+    bowGroup = new THREE.Group();
+    bowGroup.add(stave, grip);
+
+    // The string. A Line would be a single pixel and vanish at any distance,
+    // so it is two thin cylinders spanning nock to draw point and back.
+    const stringMat = new THREE.MeshStandardMaterial({ color: 0xded3b8, roughness: 0.9 });
+    const stringGeo = new THREE.CylinderGeometry(0.0065, 0.0065, 1, 4);
+    bowString = new THREE.Group();
+    bowString.add(new THREE.Mesh(stringGeo, stringMat), new THREE.Mesh(stringGeo, stringMat));
+    bowString.frustumCulled = false;
+    bowGroup.add(bowString);
+
+    arrowProto = arrowGeometry();
+    bowNocked = new THREE.Mesh(arrowProto, shaftMat);
+    bowNocked.frustumCulled = false;
+    bowGroup.add(bowNocked);
+
+    bowGroup.quaternion.set(BOW_FIT[0], BOW_FIT[1], BOW_FIT[2], BOW_FIT[3]);
+    // The model is scaled to the player's height, and anything hung off a
+    // bone inherits that; undo it so the bow is the size it was drawn
+    const ms = modelRoot.scale.x || 1;
+    bowGroup.scale.setScalar(1 / ms);
+    bowGroup.visible = false;
+
+    (bowBoneL || modelRoot).add(bowGroup);
+    drawBowString(0);
+    console.info('[bow] held by ' + (bowBoneL ? bowBoneL.name : 'the model root (no left-hand bone found)'));
+}
+
+// Stretch a unit cylinder between two points, so a mesh can act as a span
+const _spanDir = new THREE.Vector3();
+const _spanUp = new THREE.Vector3(0, 1, 0);
+const _spanQ = new THREE.Quaternion();
+
+function spanCylinder(mesh, ax, ay, az, bx, by, bz) {
+    _spanDir.set(bx - ax, by - ay, bz - az);
+    const len = _spanDir.length() || 0.0001;
+    mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+    _spanDir.divideScalar(len);
+    _spanQ.setFromUnitVectors(_spanUp, _spanDir);
+    mesh.quaternion.copy(_spanQ);
+    mesh.scale.set(1, len, 1);
+}
+
+// Lay the string and the nocked shaft out for a given draw, 0 to 1
+function drawBowString(power) {
+    if (!bowString) return;
+    const half = BOW_STAVE / 2 - 0.03;
+    const tipZ = -BOW_BELLY - 0.1;            // where the recurved tips sit
+    const nockZ = -BOW_BELLY - BOW_PULL * power;
+    spanCylinder(bowString.children[0], 0, half, tipZ, 0, 0, nockZ);
+    spanCylinder(bowString.children[1], 0, -half, tipZ, 0, 0, nockZ);
+    if (bowNocked) {
+        bowNocked.position.set(0, 0, nockZ + ARROW_LEN / 2);
+        bowNocked.visible = INV.arrows > 0;
+    }
+}
+
+/* --- posing the arms, because the model has no draw clip --- */
+
+// Tom7 has thirteen motions and not one of them is an archer. Rather than
+// loose arrows out of an idle stance, the two arms are posed by hand after
+// the mixer has had its say: the bow arm comes up and out along the shot, the
+// string arm comes back to the chin. It is a long way short of a real clip —
+// if one ever gets exported, this should give way to it — but it is the
+// difference between aiming and standing about holding a stick.
+const BOW_ARM_BONES = ['leftshoulder', 'leftarm', 'leftforearm', 'lefthand',
+                       'rightshoulder', 'rightarm', 'rightforearm', 'righthand'];
+const bowBones = {};
+let armBlend = 0;
+
+const _boneA = new THREE.Vector3();
+const _boneB = new THREE.Vector3();
+const _boneDir = new THREE.Vector3();
+const _boneWant = new THREE.Vector3();
+const _boneTarget = new THREE.Vector3();
+const _boneQ = new THREE.Quaternion();
+const _boneOld = new THREE.Quaternion();
+const _boneParent = new THREE.Quaternion();
+const _boneIdent = new THREE.Quaternion();
+
+function findBowBones() {
+    if (!modelRoot) return;
+    modelRoot.traverse(o => {
+        if (!o.isBone) return;
+        const n = normName(o.name);
+        for (const want of BOW_ARM_BONES) {
+            if (!bowBones[want] && n.endsWith(want)) bowBones[want] = o;
+        }
+    });
+}
+
+// Swing a bone so the limb it starts runs along dirWorld. Works without
+// knowing anything about the bone's local axes: measure where the limb
+// points now, work out the rotation from there to where it should point, and
+// apply that on top of the pose the animation left behind.
+function aimLimb(bone, child, dirWorld, weight) {
+    if (!bone || !child || weight <= 0.001) return;
+    // Take a copy first. Every caller hands this its direction in the shared
+    // scratch vector, and the measurement below writes to that same scratch —
+    // so without the copy the target becomes the measurement and every bone
+    // gets rotated precisely onto where it already was.
+    _boneTarget.copy(dirWorld);
+
+    bone.updateWorldMatrix(true, false);
+    child.updateWorldMatrix(true, false);
+    bone.getWorldPosition(_boneA);
+    child.getWorldPosition(_boneB);
+    _boneDir.copy(_boneB).sub(_boneA);
+    if (_boneDir.lengthSq() < 1e-8) return;
+    _boneDir.normalize();
+
+    _boneQ.setFromUnitVectors(_boneDir, _boneTarget);
+    if (weight < 1) _boneQ.slerp(_boneIdent, 1 - weight);
+
+    bone.getWorldQuaternion(_boneOld);
+    _boneQ.multiply(_boneOld);                       // the new world rotation
+    if (bone.parent) {
+        bone.parent.getWorldQuaternion(_boneParent);
+        bone.quaternion.copy(_boneParent.invert()).multiply(_boneQ);
+    } else {
+        bone.quaternion.copy(_boneQ);
+    }
+    bone.updateMatrixWorld(true);
+}
+
+// Called after the mixer has written the frame, so these rotations survive it
+function poseBowArms(dt) {
+    const want = (BOW.out && !P.dead && !P.swimming) ? 1 : 0;
+    armBlend = THREE.MathUtils.damp(armBlend, want, 10, dt);
+    if (armBlend < 0.01) return;
+    if (!bowBones.leftarm) findBowBones();
+    const L = bowBones;
+    if (!L.leftarm || !L.leftforearm) return;
+
+    lookDirection(_boneWant);
+
+    // Bow arm: straight out along the shot, dropped a touch so the stave
+    // does not sit across the archer's own eyeline
+    _boneDir.copy(_boneWant);
+    _boneDir.y -= 0.08;
+    _boneDir.normalize();
+    aimLimb(L.leftarm, L.leftforearm, _boneDir, armBlend);
+    if (L.lefthand || bowBoneL) {
+        aimLimb(L.leftforearm, L.lefthand || bowBoneL, _boneDir, armBlend * 0.9);
+    }
+
+    // String arm: back and in, towards the chin
+    if (L.rightarm && L.rightforearm && L.righthand) {
+        const pull = 0.45 + 0.55 * Math.min(1, BOW.draw / BOW_DRAW_TIME);
+        _boneDir.copy(_boneWant).multiplyScalar(-0.55);
+        _boneDir.y += 0.25;
+        // out to the drawing side, square to the shot
+        _boneDir.x += -_boneWant.z * 0.78;
+        _boneDir.z += _boneWant.x * 0.78;
+        _boneDir.normalize();
+        aimLimb(L.rightarm, L.rightforearm, _boneDir, armBlend * 0.85);
+
+        _boneDir.copy(_boneWant).multiplyScalar(0.45 - pull * 0.5);
+        _boneDir.y += 0.1;
+        _boneDir.x += -_boneWant.z * -0.5;
+        _boneDir.z += _boneWant.x * -0.5;
+        _boneDir.normalize();
+        aimLimb(L.rightforearm, L.righthand, _boneDir, armBlend * 0.85);
+    }
+
+    levelBow();
+}
+
+const _bowQ = new THREE.Quaternion();
+const _bowParent = new THREE.Quaternion();
+const _bowRoll = new THREE.Quaternion();
+const _bowAxis = new THREE.Vector3();
+const _bowUp = new THREE.Vector3();
+const _bowWantUp = new THREE.Vector3();
+
+// Take the roll out of the bow. Aiming the arm chain leaves the wrist turned
+// to whatever angle fell out of the maths, which canted the stave over by a
+// good twenty degrees. The fit is reapplied from scratch each frame and then
+// rolled about the arrow's own axis until the stave stands up, so the arrow
+// still points exactly where it did.
+function levelBow() {
+    if (!bowGroup || !bowGroup.parent) return;
+    bowGroup.quaternion.set(BOW_FIT[0], BOW_FIT[1], BOW_FIT[2], BOW_FIT[3]);
+    bowGroup.updateMatrixWorld(true);
+
+    bowGroup.getWorldQuaternion(_bowQ);
+    _bowAxis.set(0, 0, 1).applyQuaternion(_bowQ);        // along the arrow
+    _bowUp.set(0, 1, 0).applyQuaternion(_bowQ);          // along the stave
+
+    // world up, with anything along the arrow taken out of it
+    _bowWantUp.set(0, 1, 0).addScaledVector(_bowAxis, -_bowAxis.y);
+    if (_bowWantUp.lengthSq() < 1e-5) return;            // aiming straight up
+    _bowWantUp.normalize();
+
+    _bowRoll.setFromUnitVectors(_bowUp, _bowWantUp);
+    if (armBlend < 1) _bowRoll.slerp(_boneIdent, 1 - armBlend);
+    _bowRoll.multiply(_bowQ);
+    bowGroup.parent.getWorldQuaternion(_bowParent);
+    bowGroup.quaternion.copy(_bowParent.invert()).multiply(_bowRoll);
+}
+
+function toggleBow() {
+    if (!INV.bow) return;
+    if (BOW.out) { stowBow(); return; }
+    if (!started || paused || overlay || siting.on || P.dead || P.swimming ||
+        SLEEP.phase || CHORE.kind) return;
+    if (INV.arrows < 1) { toast('No arrows. Three sticks and two stones make ten.', 3000); return; }
+    cancelHarvest();
+    BOW.out = true;
+    BOW.drawing = false;
+    BOW.draw = 0;
+    if (bowGroup) bowGroup.visible = true;
+    drawBowString(0);
+    toast(isTouch ? 'Bow out — hold SHOOT to draw' : 'Bow out — hold the mouse button to draw', 2800);
+}
+
+function stowBow() {
+    BOW.out = false;
+    BOW.drawing = false;
+    BOW.draw = 0;
+    if (bowGroup) bowGroup.visible = false;
+}
+
+function bowDrawStart() {
+    if (!BOW.out || BOW.cool > 0 || P.dead || INV.arrows < 1) return;
+    BOW.drawing = true;
+    BOW.draw = 0;
+    sfxBowDraw();
+}
+
+function bowRelease() {
+    if (!BOW.drawing) return;
+    BOW.drawing = false;
+    const power = Math.min(1, BOW.draw / BOW_DRAW_TIME);
+    BOW.draw = 0;
+    drawBowString(0);
+    if (power < BOW_MIN_POWER || INV.arrows < 1) return;
+    loose(power);
+}
+
+const _aimDir = new THREE.Vector3();
+const _aimAt = new THREE.Vector3();
+const _bowWorld = new THREE.Vector3();
+
+const AIM_RANGE = 140;            // how far out the crosshair is read
+const AIM_STEP = 1.6;             // how finely the ray is walked
+
+// What the player is aiming at: a foe if the line of sight passes through
+// one, otherwise the ground where it lands, otherwise a point far out for a
+// shot into the sky.
+//
+// The ray starts at the bow and runs along lookDirection — deliberately not
+// along the camera's own axis. The third-person camera's job is to keep the
+// player in frame, which points its axis at their head and onward into the
+// ground just past them; firing along it put every arrow in the dirt a few
+// metres ahead however level the shot looked on screen. Starting from the bow
+// also means the point found here is a point the arrow can actually be sent
+// to, with no parallax between the two.
+function aimPoint(out) {
+    lookDirection(_aimDir);
+    if (bowGroup && bowBoneL) bowGroup.getWorldPosition(_bowWorld);
+    else _bowWorld.set(player.position.x, player.position.y + 1.35, player.position.z);
+    const o = _bowWorld;
+
+    let nearestFoe = Infinity;
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const h = e.type.height || 1.9;
+        // distance along the ray to the foe's middle, then how far off it is
+        const cx = e.x - o.x, cy = (e.y + h * 0.55) - o.y, cz = e.z - o.z;
+        const along = cx * _aimDir.x + cy * _aimDir.y + cz * _aimDir.z;
+        if (along < 1 || along > AIM_RANGE || along >= nearestFoe) continue;
+        const ox = cx - _aimDir.x * along;
+        const oy = cy - _aimDir.y * along;
+        const oz = cz - _aimDir.z * along;
+        // a generous cylinder, so the crosshair does not have to be perfect
+        if (ox * ox + oy * oy + oz * oz > 0.9) continue;
+        nearestFoe = along;
+        out.set(e.x, e.y + h * 0.55, e.z);
+    }
+    if (nearestFoe < Infinity) return out;
+
+    // Walk the ray until it goes under the ground, then take the step before
+    let prev = 1;
+    for (let d = AIM_STEP; d <= AIM_RANGE; d += AIM_STEP) {
+        const x = o.x + _aimDir.x * d;
+        const y = o.y + _aimDir.y * d;
+        const z = o.z + _aimDir.z * d;
+        if (y <= groundHeight(x, z)) {
+            // split the last step a few times for a cleaner landing point
+            let lo = prev, hi = d;
+            for (let i = 0; i < 6; i++) {
+                const m = (lo + hi) / 2;
+                const mx = o.x + _aimDir.x * m;
+                const my = o.y + _aimDir.y * m;
+                const mz = o.z + _aimDir.z * m;
+                if (my <= groundHeight(mx, mz)) hi = m; else lo = m;
+            }
+            out.set(o.x + _aimDir.x * hi, o.y + _aimDir.y * hi, o.z + _aimDir.z * hi);
+            return out;
+        }
+        prev = d;
+    }
+    out.copy(o).addScaledVector(_aimDir, AIM_RANGE);
+    return out;
+}
+
+// The launch velocity that carries a shaft from one point to another at a
+// given speed: the flatter of the two arcs that do it. Out of reach, it
+// settles for the angle that throws furthest.
+function aimVelocity(from, to, speed, out) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.001) { out.set(0, speed, 0); return out; }
+
+    const g = ARROW_GRAVITY;
+    const v2 = speed * speed;
+    const disc = v2 * v2 - g * (g * d * d + 2 * dy * v2);
+    const angle = disc < 0 ? Math.PI / 4
+        : Math.atan((v2 - Math.sqrt(disc)) / (g * d));
+    const vh = speed * Math.cos(angle);
+    out.set(dx / d * vh, speed * Math.sin(angle), dz / d * vh);
+    return out;
+}
+
+function loose(power) {
+    INV.arrows = Math.max(0, INV.arrows - 1);
+    BOW.cool = BOW_COOLDOWN;
+    P.combatTimer = 5;
+
+    // aimPoint leaves the shot's origin in _bowWorld, so both ends of the
+    // trajectory come from the same place
+    aimPoint(_aimAt);
+
+    const speed = ARROW_SPEED * (0.55 + 0.45 * power);
+    const a = takeArrow();
+    a.pos.copy(_bowWorld);
+    aimVelocity(_bowWorld, _aimAt, speed, a.vel);
+    // Clear of the body, along the way it is actually going
+    _aimDir.copy(a.vel).normalize();
+    a.pos.addScaledVector(_aimDir, 0.5);
+    // A half-drawn bow still hits what you pointed it at, it just does less
+    a.damage = ARROW_DAMAGE * (0.5 + 0.5 * power);
+    a.life = ARROW_LIFE;
+    a.mesh.position.copy(a.pos);
+    a.mesh.visible = true;
+    arrowsFlying.push(a);
+
+    // Turn into the shot, as a melee swing does
+    P.faceTarget = Math.atan2(_aimDir.x, _aimDir.z);
+    P.faceTimer = 0.5;
+
+    sfxBowShoot();
+    camShake = Math.min(camShake + 0.06, 0.2);
+    updateRelicHud();
+    if (overlay === 'pack') drawPack();
+
+    if (INV.arrows < 1) {
+        toast('Out of arrows', 2600);
+        drawBowString(0);
+    }
+    writeSave();
+}
+
+function takeArrow() {
+    const spare = arrowPool.pop();
+    if (spare) return spare;
+    const mesh = new THREE.Mesh(arrowProto || arrowGeometry(),
+        new THREE.MeshStandardMaterial({ color: 0xbda278, roughness: 0.8 }));
+    mesh.castShadow = false;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    return { mesh, pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+             life: 0, damage: ARROW_DAMAGE };
+}
+
+function freeArrow(a) {
+    a.mesh.visible = false;
+    arrowPool.push(a);
+}
+
+const _arrowAim = new THREE.Vector3();
+const _arrowStep = new THREE.Vector3();
+
+// An arrow leaves the string at over fifty metres a second. On a frame that
+// took a fiftieth of a second that is a metre of travel; on a bad frame, with
+// dt clamped at 0.05, it is nearly three. Testing only the end of that jump
+// against a foe two thirds of a metre wide would put the shaft out the other
+// side without touching them, and the slower the machine the more often it
+// would happen. So the flight is walked in steps no longer than the target is
+// wide, and every step is tested.
+const ARROW_SUBSTEP = 0.3;
+
+function arrowHitsEnemy(a) {
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        const h = e.type.height || 1.9;
+        if (a.pos.y < e.y - 0.2 || a.pos.y > e.y + h + 0.15) continue;
+        const dx = a.pos.x - e.x;
+        const dz = a.pos.z - e.z;
+        if (dx * dx + dz * dz > 0.42) continue;          // about 0.65m across
+        const d = Math.max(0.001, Math.hypot(dx, dz));
+        damageEnemy(e, a.damage || ARROW_DAMAGE, dx / d, dz / d);
+        sfxArrowHit();
+        return true;
+    }
+    return false;
+}
+
+// 'fly' still going, 'hit' struck something living, 'stuck' in the ground,
+// 'gone' spent or lost
+function advanceArrow(a, dt) {
+    a.life -= dt;
+    const speed = a.vel.length();
+    const steps = Math.max(1, Math.min(48, Math.ceil(speed * dt / ARROW_SUBSTEP)));
+    const sub = dt / steps;
+
+    for (let s = 0; s < steps; s++) {
+        a.vel.y -= ARROW_GRAVITY * sub;
+        _arrowStep.copy(a.vel).multiplyScalar(sub);
+        a.pos.add(_arrowStep);
+
+        if (arrowHitsEnemy(a)) return 'hit';
+
+        const g = groundHeight(a.pos.x, a.pos.z);
+        if (a.pos.y <= g + 0.02) {
+            if (g < WATER_LEVEL - 0.1) return 'gone';    // into the water
+            a.pos.y = g;
+            return 'stuck';
+        }
+        if (Math.hypot(a.pos.x, a.pos.z) > WORLD_RADIUS + 20) return 'gone';
+    }
+    return a.life <= 0 ? 'gone' : 'fly';
+}
+
+function updateArrows(dt) {
+    BOW.cool -= dt;
+
+    // The bow comes down on its own if you can no longer use it
+    if (BOW.out && (P.dead || P.swimming || SLEEP.phase || CHORE.kind || siting.on || INV.arrows < 1)) {
+        if (INV.arrows < 1 && !P.dead) toast('Nothing left to shoot', 2200);
+        stowBow();
+    }
+
+    if (BOW.drawing) {
+        BOW.draw = Math.min(BOW.draw + dt, BOW_DRAW_TIME);
+        drawBowString(Math.min(1, BOW.draw / BOW_DRAW_TIME));
+        // Square up to the shot rather than loosing it over one shoulder
+        P.faceTarget = camYaw + Math.PI;
+        P.faceTimer = 0.25;
+    }
+
+    for (let i = arrowsFlying.length - 1; i >= 0; i--) {
+        const a = arrowsFlying[i];
+        const state = advanceArrow(a, dt);
+        if (state === 'fly') {
+            a.mesh.position.copy(a.pos);
+            _arrowAim.copy(a.vel).normalize().add(a.pos);
+            a.mesh.lookAt(_arrowAim);
+            continue;
+        }
+        arrowsFlying.splice(i, 1);
+        if (state === 'stuck') {
+            a.mesh.position.copy(a.pos);
+            _arrowAim.copy(a.vel).normalize().add(a.pos);
+            a.mesh.lookAt(_arrowAim);
+            a.life = ARROW_STUCK_LIFE;
+            arrowsStuck.push(a);
+            sfxArrowMiss();
+        } else {
+            freeArrow(a);
+        }
+    }
+
+    // Walk over a spent shaft and it goes back in the quiver
+    for (let i = arrowsStuck.length - 1; i >= 0; i--) {
+        const a = arrowsStuck[i];
+        a.life -= dt;
+        const near = Math.hypot(a.pos.x - player.position.x, a.pos.z - player.position.z) < ARROW_PICKUP &&
+            Math.abs(a.pos.y - player.position.y) < 2.4;
+        if (near && !P.dead) {
+            INV.arrows += 1;
+            sfxHandStone();
+            toast('Arrow recovered  ·  ' + INV.arrows + ' in the quiver', 1800);
+            updateRelicHud();
+            if (overlay === 'pack') drawPack();
+            writeSave();
+            if (BOW.out) drawBowString(BOW.drawing ? Math.min(1, BOW.draw / BOW_DRAW_TIME) : 0);
+        }
+        if (near || a.life <= 0) {
+            freeArrow(a);
+            arrowsStuck.splice(i, 1);
+        }
+    }
 }
 
 function buildLandmarks() {
@@ -3940,6 +4936,7 @@ function sfxWorkStrike(job) {
 function sfxWorkDone(job) {
     if (!job) return;
     if (job === JOBS.pull) { sfxRadishPull(); return; }
+    if (job === JOBS.leaves || job === JOBS.blades) { sfxLeafCut(); return; }
     if (job === JOBS.mine) sfxRockBreak();
     else if (job === JOBS.chip) sfxStoneChip();
     else if (job === JOBS.pebble) sfxHandStone();
@@ -3972,6 +4969,61 @@ function sfxPlant() {
     noiseBurst(0.18, 0.1, 'lowpass', 600, 0, 0.05);
     setTimeout(() => noiseBurst(0.14, 0.08, 'lowpass', 520, 0, 0.04), 200);
     setTimeout(() => blip('sine', 392, 523, 0.4, 0.05), 400);
+}
+
+// Flint on steel: a short bright scrape with nothing tonal in it
+function sfxFireScrape() {
+    noiseBurst(0.1, 0.075, 'bandpass', 3400 + Math.random() * 1400, 2.4, 0.04);
+    setTimeout(() => ring(5200 + Math.random() * 900, 14, 0.07, 0.03), 36);
+}
+
+// And then it takes: a soft whoomp under a crackle
+function sfxFireCatch() {
+    noiseBurst(0.55, 0.1, 'lowpass', 420, 0, 0.3);
+    for (let i = 0; i < 7; i++) {
+        setTimeout(() => noiseBurst(0.06, 0.045, 'bandpass', 1500 + Math.random() * 2600, 3, 0.05),
+            120 + i * 70 + Math.random() * 50);
+    }
+    setTimeout(() => blip('sine', 174, 220, 0.6, 0.045), 90);
+}
+
+// Pulling a blade off a yucca: a dry fibrous tear, no leafy rustle
+function sfxLeafCut() {
+    noiseBurst(0.26, 0.085, 'highpass', 1700, 0.8, 0.05);
+    setTimeout(() => noiseBurst(0.1, 0.05, 'bandpass', 2600, 1.4, 0.06), 150);
+}
+
+// Twisting fibre into cord
+function sfxRope() {
+    for (let i = 0; i < 4; i++) {
+        setTimeout(() => noiseBurst(0.12, 0.05, 'bandpass', 900 + i * 220, 1.8, 0.1), i * 95);
+    }
+    setTimeout(() => blip('triangle', 196, 294, 0.35, 0.05), 400);
+}
+
+// Drawing the string: the creak of a bending stave
+function sfxBowDraw() {
+    blip('sawtooth', 70, 128, 0.42, 0.028);
+    noiseBurst(0.4, 0.035, 'lowpass', 300, 0, 0.5);
+}
+
+// And the release: string slap, then the shaft going away from you
+function sfxBowShoot() {
+    noiseBurst(0.09, 0.13, 'bandpass', 1100, 2.2, 0.01);
+    ring(430, 9, 0.16, 0.07);
+    setTimeout(() => noiseBurst(0.3, 0.05, 'highpass', 2300, 0.7, 0.02), 25);
+}
+
+// A shaft going into a body — dull, close, no ring to it
+function sfxArrowHit() {
+    noiseBurst(0.14, 0.12, 'lowpass', 520, 0, 0.01);
+    ring(150, 4, 0.11, 0.06);
+}
+
+// Or into the ground, which is drier and shorter
+function sfxArrowMiss() {
+    noiseBurst(0.1, 0.07, 'bandpass', 1300, 1.2, 0.01);
+    ring(620, 7, 0.08, 0.03);
 }
 
 function sfxRockBreak() {
@@ -4446,7 +5498,17 @@ function updateAnimation(dt, horizontalSpeed, running) {
         } else if (CHORE.kind) {
             const clip = CHORE.kind === 'eat' ? 'eat' : 'pickup';
             playAction(clip, 0.18);
-            if (actions[clip]) actions[clip].setEffectiveTimeScale(1);
+            const act = actions[clip];
+            if (act) {
+                if (CHORE.kind === 'fire') {
+                    // Driven by hand, so the mixer is told to leave it alone
+                    const len = (act.userData && act.userData.duration) || 2.95;
+                    act.setEffectiveTimeScale(0);
+                    act.time = fireClipTime(CHORE.total - CHORE.timer, CHORE.total, len);
+                } else {
+                    act.setEffectiveTimeScale(1);
+                }
+            }
         } else if (SLEEP.phase && actions.sleep) {
             playAction('sleep', 0.4);
             if (actions.sleep) actions.sleep.setEffectiveTimeScale(1);
@@ -4578,7 +5640,12 @@ const JOBS = {
     fell:     { anim: 'chop', tool: 'axe', swings: 2, wood: 3, clears: true,
                 verb: 'Fell the tree' },
     branches: { anim: 'chop', tool: null, swings: 2, wood: 1, clears: false,
-                verb: 'Pull off a branch' }
+                verb: 'Pull off a branch' },
+    // A yucca survives being stripped, so neither of these clears it
+    leaves:   { anim: 'pickup', tool: null, swings: 1, leaf: 1, clears: false,
+                verb: 'Pull a yucca leaf' },
+    blades:   { anim: 'chop', tool: 'axe', swings: 1, leaf: 3, clears: false,
+                verb: 'Cut yucca leaves' }
 };
 
 // null means there is nothing you can do here yet; blockedBy says why
@@ -4588,6 +5655,7 @@ function jobFor(h) {
     if (h.kind === 'radish') return h.ripeness >= 1 ? JOBS.pull : null;
     if (h.kind === 'rock') return INV.pickaxe ? JOBS.mine : (INV.woodpick ? JOBS.chip : null);
     if (h.kind === 'tree') return INV.axe ? JOBS.fell : JOBS.branches;
+    if (h.kind === 'yucca') return INV.axe ? JOBS.blades : JOBS.leaves;
     return null;
 }
 
@@ -4833,6 +5901,11 @@ function finishHarvest() {
         INV.radish += job.radish;
         sfxWorkDone(job);
         toast('Radish pulled  ·  ' + INV.radish + ' in the pack', 2400);
+    } else if (job.leaf) {
+        INV.leaf += job.leaf;
+        sfxWorkDone(job);
+        toast('+' + job.leaf + ' yucca leaf' + (job.leaf > 1 ? 's' : '') +
+              '  ·  ' + INV.leaf + ' carried', 2200);
     } else if (job.stone) {
         INV.stone += job.stone;
         sfxWorkDone(job);
@@ -5624,7 +6697,7 @@ function setupInput() {
         // Lying down in daylight ends the moment you try to do anything
         if (SLEEP.phase === 'rest') {
             if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft',
-                 'ArrowRight', 'Space', 'KeyK', 'Escape'].includes(e.code)) {
+                 'ArrowRight', 'Space', 'KeyK', 'KeyG', 'KeyQ', 'Escape'].includes(e.code)) {
                 getUp();
                 return;
             }
@@ -5647,6 +6720,8 @@ function setupInput() {
             if (isNight()) beginSleep();
             else if (hutWithinReach()) lieDown(true);
         }
+        if (e.code === 'KeyG') beginChore('fire');
+        if (e.code === 'KeyQ') toggleBow();
         if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
         if (e.code === 'KeyB') { settings.flip = !settings.flip; syncMenu(); writeSave(); toast('Model facing flipped'); }
@@ -5672,6 +6747,9 @@ function setupInput() {
         if (pointerLocked) {
             if (siting.on) { confirmSiting(); return; }
             if (SLEEP.phase === 'rest') { getUp(); return; }
+            // With the bow out, the mouse button belongs to the draw, which
+            // pointerdown and pointerup below take care of
+            if (BOW.out) return;
             if (H.active) { cancelHarvest(); return; }
             if (!foeWithinSwing()) {
                 if (hutWithinReach() && lieDown(true)) return;
@@ -5695,8 +6773,16 @@ function setupInput() {
     let dragging = false;
     canvas.addEventListener('pointerdown', (e) => {
         if (e.pointerType === 'mouse' && !pointerLocked) dragging = true;
+        // Hold to draw, let go to loose
+        if (e.pointerType === 'mouse' && pointerLocked && BOW.out &&
+            started && !paused && !overlay) {
+            bowDrawStart();
+        }
     });
-    window.addEventListener('pointerup', () => { dragging = false; });
+    window.addEventListener('pointerup', (e) => {
+        dragging = false;
+        if (!e || e.pointerType !== 'touch') bowRelease();
+    });
 
     window.addEventListener('mousemove', (e) => {
         if (!started || paused) return;
@@ -5786,6 +6872,7 @@ function setupInput() {
         const moved = Math.hypot(e.clientX - touchState.tapX, e.clientY - touchState.tapY);
         if (held < 300 && moved < 14 && started && !paused && !overlay) {
             if (siting.on) return;          // the bar's own buttons decide
+            if (BOW.out) return;            // the SHOOT button is for the bow
             if (SLEEP.phase === 'rest') { getUp(); return; }
             if (H.active) { cancelHarvest(); return; }
             if (foeWithinSwing()) return;   // the HIT button is for fighting
@@ -5803,12 +6890,19 @@ function setupInput() {
     attackBtn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         initAudio();
+        if (BOW.out) { bowDrawStart(); return; }
         if (SLEEP.phase === 'rest') getUp();
         else if (H.active) cancelHarvest();
         else if (foeWithinSwing()) playerAttack();
         else if (hutWithinReach() && lieDown(true)) { /* lay down in the shelter */ }
         else if (!tryHarvest(pickHarvestable(0, 0))) playerAttack();
     });
+    // Letting go of the button looses the arrow. Cancel counts as letting go:
+    // a swallowed pointerup must not leave the string held back for ever.
+    const btnRelease = (e) => { if (e) e.preventDefault(); bowRelease(); };
+    attackBtn.addEventListener('pointerup', btnRelease);
+    attackBtn.addEventListener('pointercancel', btnRelease);
+    attackBtn.addEventListener('pointerleave', btnRelease);
 
     const jumpBtn = document.getElementById('btn-jump');
     jumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); P.jumpBuffer = 0.16; initAudio(); });
@@ -5838,6 +6932,8 @@ function setupInput() {
     document.getElementById('site-cancel').addEventListener('click', endSiting);
     sleepCueEl.addEventListener('click', beginSleep);
     sleepCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginSleep(); });
+    fireCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginChore('fire'); });
+    bowCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBow(); });
     // Several independent ways out of a full-screen panel: the button (by
     // click or touch), a tap on the backdrop, or Escape. No single quirk of
     // one input path can trap someone on these screens.
@@ -5925,11 +7021,14 @@ function updatePlayer(dt) {
         if (P.deadTimer <= 0) respawnPlayer();
     }
 
-    // Out of combat you mend slowly; the campfire patches you up properly
+    // A fire is what actually mends you — the one in camp or one you lit
+    // yourself. Away from one you creep back up to the ceiling and stall.
     if (!P.dead) {
-        const atCamp = Math.hypot(player.position.x, player.position.z) < 7.5;
-        if (atCamp) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 14 * dt);
-        else if (P.combatTimer <= 0) P.health = Math.min(PLAYER_MAX_HEALTH, P.health + 1.6 * dt);
+        if (nearAnyFire()) {
+            P.health = Math.min(PLAYER_MAX_HEALTH, P.health + FIRE_REGEN * dt);
+        } else if (P.combatTimer <= 0 && P.health < REGEN_CEILING) {
+            P.health = Math.min(REGEN_CEILING, P.health + REGEN_RATE * dt);
+        }
     }
 
     const input = (P.dead || H.active || SLEEP.phase || CHORE.kind)
@@ -6093,7 +7192,8 @@ function updatePlayer(dt) {
     // HUD state line
     let state = 'Exploring';
     if (P.dead) state = 'Down';
-    else if (CHORE.kind) state = CHORE.kind === 'eat' ? 'Eating' : 'Sowing';
+    else if (CHORE.kind) state = CHORE.kind === 'eat' ? 'Eating'
+        : (CHORE.kind === 'fire' ? 'Laying a fire' : 'Sowing');
     else if (SLEEP.phase) state = SLEEP.phase === 'rest' ? 'Resting' : 'Sleeping';
     else if (H.active && H.job) state = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
     else if (P.combatTimer > 0) state = 'In combat';
@@ -6115,23 +7215,40 @@ const _camDesired = new THREE.Vector3();
 const _focus = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 
+// Where the player is looking, from the two angles the mouse drives. This is
+// the one definition of it: first person has always used it, the aim camera
+// below uses it, and so does the bow, so all three agree by construction.
+// camPitch is how far the view tilts DOWN, which is the sense applyLook
+// already gives it.
+function lookDirection(out) {
+    const cp = Math.cos(camPitch);
+    return out.set(-Math.sin(camYaw) * cp, -Math.sin(camPitch), -Math.cos(camYaw) * cp);
+}
+
+const _aimLook = new THREE.Vector3();
+let aimBlend = 0;                 // 0 normal camera, 1 looking down the shot
+
 function updateCamera(dt, horizontalSpeed) {
     camDistance = THREE.MathUtils.damp(camDistance, camDistanceTarget, 8, dt);
+    aimBlend = THREE.MathUtils.damp(aimBlend, BOW.out ? 1 : 0, 9, dt);
 
     const headY = player.position.y + (P.swimming ? 1.1 : 1.52);
     _focus.set(player.position.x, headY, player.position.z);
 
+    // Step the view over the archer's shoulder while the bow is up, so their
+    // own back is not the thing in the middle of the screen
+    if (aimBlend > 0.001) {
+        _focus.x += Math.cos(camYaw) * 0.62 * aimBlend;
+        _focus.z -= Math.sin(camYaw) * 0.62 * aimBlend;
+        _focus.y += 0.12 * aimBlend;
+    }
+
     if (P.firstPerson) {
         modelRoot.visible = false;
-        const fx = -Math.sin(camYaw) * Math.cos(camPitch);
-        const fz = -Math.cos(camYaw) * Math.cos(camPitch);
-        _eye.set(_focus.x + fx * 0.18, _focus.y + 0.1, _focus.z + fz * 0.18);
+        lookDirection(_aimLook);
+        _eye.set(_focus.x + _aimLook.x * 0.18, _focus.y + 0.1, _focus.z + _aimLook.z * 0.18);
         camera.position.lerp(_eye, 1 - Math.exp(-20 * dt));
-        _camTarget.set(
-            camera.position.x + fx,
-            camera.position.y - Math.sin(camPitch),
-            camera.position.z + fz
-        );
+        _camTarget.copy(camera.position).add(_aimLook);
         camera.lookAt(_camTarget);
     } else {
         modelRoot.visible = true;
@@ -6170,7 +7287,18 @@ function updateCamera(dt, horizontalSpeed) {
         if (_camDesired.y < floor) _camDesired.y = floor;
 
         camera.position.lerp(_camDesired, 1 - Math.exp(-11 * dt));
-        camera.lookAt(_focus);
+
+        // Normally the camera looks AT the player, which is what keeps them
+        // framed — and what makes its own axis useless for aiming, since that
+        // axis runs through their head and on into the hillside behind them.
+        // With the bow up it looks along the shot instead.
+        if (aimBlend > 0.001) {
+            lookDirection(_aimLook);
+            _camTarget.copy(_focus).addScaledVector(_aimLook, 30 * aimBlend);
+            camera.lookAt(_camTarget);
+        } else {
+            camera.lookAt(_focus);
+        }
     }
 
     if (camShake > 0.001) {
@@ -6965,7 +8093,29 @@ function confirmSiting() {
 // Both are the same shape of thing: stand still, play a clip, and have
 // something happen partway through rather than the instant you press the
 // button. CHORE holds whichever one is running.
-const CHORE = { kind: null, timer: 0, total: 0, done: false };
+const CHORE = { kind: null, timer: 0, total: 0, done: false, spark: 0 };
+
+// Laying a fire is a long job done at a crouch, and the only crouching clip
+// there is lasts three seconds. Looping it would bob the body up and down
+// like a faulty toy, so the clip's time is driven by hand instead: down into
+// the stoop, back and forth across the stretch where the hands are genuinely
+// at the ground, then up at the end. The numbers are measured off the clip —
+// the hands are below 0.55m from 0.89s to 1.78s, the deepest crouch at 1.19s.
+const FIRE_CLIP_DOWN = 0.95;
+const FIRE_CLIP_A = 0.95;
+const FIRE_CLIP_B = 1.70;
+const FIRE_CLIP_OUT = 1.78;
+const FIRE_CLIP_RISE = 1.19;      // what standing up again takes
+
+function fireClipTime(elapsed, total, clipLen) {
+    const out = Math.min(FIRE_CLIP_OUT, clipLen);
+    if (elapsed < FIRE_CLIP_DOWN) return Math.min(elapsed, out);
+    const riseAt = Math.max(FIRE_CLIP_DOWN, total - FIRE_CLIP_RISE);
+    if (elapsed >= riseAt) return Math.min(out + (elapsed - riseAt), clipLen);
+    const span = FIRE_CLIP_B - FIRE_CLIP_A;
+    const saw = ((elapsed - FIRE_CLIP_DOWN) / span) % 2;
+    return FIRE_CLIP_A + (saw < 1 ? saw : 2 - saw) * span;
+}
 
 function choreLength(anim, fallback) {
     const a = actions && actions[anim];
@@ -6988,10 +8138,17 @@ function beginChore(kind) {
             return false;
         }
     }
+    if (kind === 'fire') {
+        const no = fireRefusal(player.position.x, player.position.z);
+        if (no) { toast(no, 2600); return false; }
+    }
     CHORE.kind = kind;
-    CHORE.total = choreLength(kind === 'eat' ? 'eat' : 'pickup', kind === 'eat' ? 2.45 : 2.95);
+    CHORE.total = kind === 'fire'
+        ? FIRE_LIGHT_TIME
+        : choreLength(kind === 'eat' ? 'eat' : 'pickup', kind === 'eat' ? 2.45 : 2.95);
     CHORE.timer = CHORE.total;
     CHORE.done = false;
+    CHORE.spark = 0;
     cancelHarvest();
     P.vel.x = 0;
     P.vel.z = 0;
@@ -7013,6 +8170,31 @@ function updateChore(dt) {
     if (!CHORE.kind) return;
     CHORE.timer -= dt;
     const elapsed = CHORE.total - CHORE.timer;
+
+    // A fire takes its ten seconds and catches as the player leans back off it
+    if (CHORE.kind === 'fire') {
+        CHORE.spark -= dt;
+        if (CHORE.spark <= 0 && CHORE.timer > FIRE_CLIP_RISE) {
+            CHORE.spark = 0.9 + Math.random() * 0.5;
+            sfxFireScrape();
+        }
+        if (!CHORE.done && elapsed >= CHORE.total - FIRE_CLIP_RISE) {
+            CHORE.done = true;
+            if (fireRefusal(player.position.x, player.position.z)) {
+                toast('The fire would not take there', 2600);
+            } else {
+                INV.wood = Math.max(0, INV.wood - FIRE_WOOD);
+                addFire(player.position.x, player.position.z);
+                sfxFireCatch();
+                toast('The fire catches. Sit by it to mend.', 3200);
+                updateRelicHud();
+                if (overlay === 'pack') drawPack();
+                writeSave();
+            }
+        }
+        if (CHORE.timer <= 0) { CHORE.kind = null; CHORE.timer = 0; }
+        return;
+    }
 
     // The pay-off lands with the motion, not when the button was pressed
     if (!CHORE.done && elapsed >= CHORE.total * 0.55) {
@@ -7175,9 +8357,17 @@ const packBtn = document.getElementById('btn-pack');
 const packCueEl = document.getElementById('pack-cue');
 const packCueKeyEl = document.getElementById('pack-cue-key');
 const sleepCueEl = document.getElementById('sleep-cue');
+const attackBtnEl = document.getElementById('btn-attack');
+const fireCueEl = document.getElementById('fire-cue');
+const fireCueLabelEl = document.getElementById('fire-cue-label');
+const bowCueEl = document.getElementById('bow-cue');
+const bowCueLabelEl = document.getElementById('bow-cue-label');
 
 const packWoodEl = document.getElementById('pack-wood');
 const packStoneEl = document.getElementById('pack-stone');
+const packLeafEl = document.getElementById('pack-leaf');
+const packRopeEl = document.getElementById('pack-rope');
+const packArrowsEl = document.getElementById('pack-arrows');
 const packRelicsEl = document.getElementById('pack-relics');
 const packRadishEl = document.getElementById('pack-radish');
 const larderEl = document.getElementById('larder');
@@ -7189,7 +8379,18 @@ const packHintEl = document.getElementById('pack-hint');
 
 function canCraft(r) {
     if (!r.repeatable && INV[r.id]) return false;
-    return INV.wood >= r.wood && INV.stone >= r.stone;
+    return INV.wood >= r.wood && INV.stone >= r.stone &&
+        INV.leaf >= (r.leaf || 0) && INV.rope >= (r.rope || 0);
+}
+
+// What one costs, as pairs of [what, how many], leaving out the nothings
+function recipeCost(r) {
+    const out = [];
+    if (r.wood) out.push(['wood', r.wood, INV.wood]);
+    if (r.stone) out.push(['stone', r.stone, INV.stone]);
+    if (r.leaf) out.push(['leaves', r.leaf, INV.leaf]);
+    if (r.rope) out.push(['rope', r.rope, INV.rope]);
+    return out;
 }
 
 // Anything you can afford that you have not already been shown counts as news.
@@ -7223,9 +8424,25 @@ function craft(id) {
     if (r.id === 'stickhouse') { beginSiting(); return; }
     INV.wood -= r.wood;
     INV.stone -= r.stone;
-    INV[r.id] = true;
-    sfxCraft();
-    toast(r.name + ' made', 2600);
+    INV.leaf -= (r.leaf || 0);
+    INV.rope -= (r.rope || 0);
+
+    // Rope and arrows stack up; everything else you either have or you don't
+    let made = r.name + ' made';
+    if (r.id === 'rope') {
+        INV.rope += 1;
+        sfxRope();
+        made = 'Rope twisted  ·  ' + INV.rope + ' coil' + (INV.rope === 1 ? '' : 's');
+    } else if (r.id === 'arrows') {
+        INV.arrows += (r.gives || 10);
+        sfxCraft();
+        made = (r.gives || 10) + ' arrows made  ·  ' + INV.arrows + ' in the quiver';
+    } else {
+        INV[r.id] = true;
+        sfxCraft();
+        if (r.id === 'bow') made = 'Bow strung. Press ' + (isTouch ? 'BOW' : 'Q') + ' to take it out.';
+    }
+    toast(made, 2800);
     updateRelicHud();
     drawPack();
     markCraftSeen();
@@ -7235,6 +8452,9 @@ function craft(id) {
 function drawPack() {
     packWoodEl.textContent = INV.wood;
     packStoneEl.textContent = INV.stone;
+    packLeafEl.textContent = INV.leaf;
+    packRopeEl.textContent = INV.rope;
+    packArrowsEl.textContent = INV.arrows;
     packRadishEl.textContent = INV.radish;
     packRelicsEl.textContent = collected;
 
@@ -7272,15 +8492,17 @@ function drawPack() {
         no.textContent = r.note;
         txt.appendChild(no);
 
-        // Whichever half you are short of turns red, so it is obvious at a
+        // Whichever part you are short of turns red, so it is obvious at a
         // glance which one to go and look for
         const cost = document.createElement('div');
         cost.className = 'cost';
-        const wood = document.createElement(INV.wood >= r.wood ? 'span' : 's');
-        wood.textContent = r.wood + ' wood';
-        const stone = document.createElement(INV.stone >= r.stone ? 'span' : 's');
-        stone.textContent = r.stone + ' stone';
-        cost.append(wood, document.createTextNode('  ·  '), stone);
+        const parts = recipeCost(r);
+        parts.forEach(([label, need, have], i) => {
+            if (i) cost.appendChild(document.createTextNode('  ·  '));
+            const el = document.createElement(have >= need ? 'span' : 's');
+            el.textContent = need + ' ' + label;
+            cost.appendChild(el);
+        });
         txt.appendChild(cost);
 
         row.appendChild(txt);
@@ -7288,7 +8510,8 @@ function drawPack() {
         const btn = document.createElement('button');
         btn.className = 'ghost';
         btn.textContent = made ? 'Made'
-            : (r.repeatable && INV[r.id] ? 'Build another' : 'Make');
+            : (r.counted ? (INV[r.id] > 0 ? 'Make more' : 'Make')
+            : (r.repeatable && INV[r.id] ? 'Build another' : 'Make'));
         btn.disabled = made || !canCraft(r);
         btn.addEventListener('click', () => craft(r.id));
         row.appendChild(btn);
@@ -7299,7 +8522,10 @@ function drawPack() {
     packHintEl.textContent = (!INV.axe && !INV.pickaxe)
         ? 'With nothing in your hands you can still pull a branch off a tree and prise a loose stone out of the ground. Start there.'
         : (!INV.axe ? 'An axe fells a whole tree instead of taking one branch.'
-        : (!INV.pickaxe ? 'A pickaxe opens the boulders, which hold far more stone.' : ''));
+        : (!INV.pickaxe ? 'A pickaxe opens the boulders, which hold far more stone.'
+        : (!INV.rope && INV.leaf < 4 ? 'Yucca grows on the dry high ground — spiky rosettes, some in flower. Its blades make rope.'
+        : (!INV.bow ? 'Rope and three sticks make a bow, which is the only thing here that kills at a distance.'
+        : (INV.arrows < 1 ? 'A bow with nothing to put on it. Arrows come ten at a time.' : '')))));
 }
 
 const bigMapCanvas = document.getElementById('big-map');
@@ -7775,14 +9001,22 @@ function resetProgress() {
     INV.stone = 0;
     INV.wood = 0;
     INV.radish = 0;
+    INV.leaf = 0;
+    INV.rope = 0;
+    INV.arrows = 0;
     INV.woodpick = false;
     INV.axe = false;
     INV.pickaxe = false;
+    INV.bow = false;
     INV.stickhouse = false;
     INV.whetstone = false;
     INV.honed = false;
     endSiting();
     removeAllHuts();
+    removeAllFires();
+    stowBow();
+    for (const a of arrowsFlying.splice(0)) freeArrow(a);
+    for (const a of arrowsStuck.splice(0)) freeArrow(a);
     cancelHarvest();
     for (const h of harvestables) {
         if (h.gone > 0) setHarvestablePartsVisible(h, true);
@@ -7815,6 +9049,9 @@ function buildControlsList() {
            ['Map', 'MAP button'], ['Pack and crafting', 'PACK button'],
            ['Sleep till dawn', 'SLEEP button, at night'],
            ['Lie down', 'Tap your stick house'],
+           ['Lay a fire', 'FIRE button'],
+           ['Bow out or away', 'BOW button'],
+           ['Draw and loose', 'Hold SHOOT, then let go'],
            ['Settings', '≡ button']]
         : [['Move', 'WASD / arrows'], ['Look', 'Mouse'], ['Zoom', 'Scroll wheel'],
            ['Strike', 'Click or E'], ['Gather', 'Click a rock or tree'],
@@ -7822,14 +9059,20 @@ function buildControlsList() {
            ['Map', 'M'], ['Pack and crafting', 'I or Tab'],
            ['Sleep till dawn', 'K, at night'],
            ['Lie down', 'Click your stick house'],
+           ['Lay a fire', 'G'],
+           ['Bow out or away', 'Q'],
+           ['Draw and loose', 'Hold the mouse button, then let go'],
            ['First person', 'V'], ['Hide HUD', 'F'],
            ['Flip model facing', 'B'], ['Skip time', 'T'], ['Settings', 'Esc']];
     document.getElementById('controls-list').innerHTML =
         rows.map(r => '<div><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('') +
-        '<div><span>Heal</span><b>Rest at the campfire</b></div>' +
+        '<div><span>Mending</span><b>Sit by a fire, or eat a radish</b></div>' +
+        '<div><span>On its own</span><b>Only back up to a fifth of your health</b></div>' +
         '<div><span>Tools</span><b>Made in the pack, not found</b></div>' +
         '<div><span>First tool</span><b>A wooden pickaxe, from wood alone</b></div>' +
         '<div><span>Food</span><b>Pull wild radishes; eat or sow from the pack</b></div>' +
+        '<div><span>Rope</span><b>Yucca leaves, from the dry high ground</b></div>' +
+        '<div><span>Bow</span><b>Rope and sticks; arrows from sticks and stone</b></div>' +
         '<div><span>Respawn point</span><b>Nearest waystone you woke</b></div>';
 }
 
@@ -8046,12 +9289,15 @@ function animate() {
 
         const result = updatePlayer(dt);
         if (mixer) mixer.update(dt);
+        poseBowArms(dt);
         updateCamera(dt, result.horizontalSpeed);
         updateSky(dt);
         updateEnemies(dt);
         updateHarvest(dt);
         updateRadishes(dt);
         updateChore(dt);
+        updateFires();
+        updateArrows(dt);
         updateSiting();
         updateSleep(dt);
         updateWaystones(dt);
@@ -8101,8 +9347,33 @@ function animate() {
 
         refreshCraftCue();
         sleepCueEl.classList.toggle('on', canSleep() && !hutWithinReach());
+        fireCueEl.classList.toggle('on', canLayFire() && !H.target);
+        fireCueLabelEl.textContent = 'Lay a fire · ' + FIRE_WOOD + ' wood';
+        bowCueEl.classList.toggle('on', INV.bow && !BOW.out && !H.target && !CHORE.kind &&
+            !SLEEP.phase && !P.dead);
+        bowCueLabelEl.textContent = INV.arrows > 0
+            ? 'Take out the bow · ' + INV.arrows + ' arrows'
+            : 'Take out the bow · no arrows';
 
-        if (H.active && H.job) {
+        if (attackBtnEl) {
+            attackBtnEl.textContent = BOW.out ? 'SHOOT' : 'HIT';
+            attackBtnEl.classList.toggle('bow', BOW.out);
+        }
+
+        if (BOW.out) {
+            // The bow owns the prompt line while it is out: what is left to
+            // shoot, and how far the string has come back
+            gatherEl.classList.add('on');
+            gatherBar.classList.toggle('on', BOW.drawing);
+            gatherLabel.textContent = BOW.drawing
+                ? 'Drawing'
+                : INV.arrows + ' arrow' + (INV.arrows === 1 ? '' : 's') + '  ·  ' +
+                  (isTouch ? 'hold SHOOT' : 'hold to draw') + ', ' +
+                  (isTouch ? 'BOW' : 'Q') + ' to put it away';
+            if (BOW.drawing) {
+                gatherFill.style.width = (Math.min(1, BOW.draw / BOW_DRAW_TIME) * 100).toFixed(0) + '%';
+            }
+        } else if (H.active && H.job) {
             gatherEl.classList.add('on');
             gatherBar.classList.add('on');
             gatherLabel.textContent = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
@@ -8110,7 +9381,8 @@ function animate() {
         } else if (CHORE.kind) {
             gatherEl.classList.add('on');
             gatherBar.classList.add('on');
-            gatherLabel.textContent = CHORE.kind === 'eat' ? 'Eating' : 'Sowing';
+            gatherLabel.textContent = CHORE.kind === 'eat' ? 'Eating'
+                : (CHORE.kind === 'fire' ? 'Lighting the fire' : 'Sowing');
             gatherFill.style.width = ((1 - CHORE.timer / CHORE.total) * 100).toFixed(0) + '%';
         } else if (SLEEP.phase === 'rest') {
             gatherEl.classList.add('on');
@@ -8226,6 +9498,9 @@ async function boot() {
         attachTools();
         // A hut raised in an earlier session goes back exactly where it stood
         for (const h of (save.huts || [])) placeHut(h[0], h[1], h[2] || 0);
+        buildFireLights();
+        for (const f of (save.fires || [])) addFire(f[0], f[1]);
+        buildBow();
         updateGrass(true);
 
         await progress(95, 'Rousing the hostiles');
