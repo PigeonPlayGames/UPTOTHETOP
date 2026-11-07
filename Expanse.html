@@ -671,6 +671,32 @@ body.siting #cues { display: none; }
     border-color: rgba(159, 227, 211, 0.75);
     animation: cuePulse 2s ease-in-out infinite;
 }
+/* The way back out of first person. It is the one control that has to be
+   findable without hunting for it, so it carries its own colour. */
+/* Only up with the bow. From behind the archer's own eyes there is nothing
+   else to say where the shot is going. */
+#reticle {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    margin: -3.5px 0 0 -3.5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45), 0 0 6px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    z-index: 6;
+}
+#reticle.on { opacity: 1; }
+#cues button.stow {
+    color: #ffe2b0;
+    border-color: rgba(255, 196, 120, 0.6);
+    background: rgba(66, 40, 16, 0.5);
+}
+#cues button.stow:hover { border-color: rgba(255, 196, 120, 0.9); }
 @keyframes cuePulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(159, 227, 211, 0); }
     50% { box-shadow: 0 0 14px 1px rgba(159, 227, 211, 0.38); }
@@ -1063,7 +1089,10 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
     <button id="sleep-cue" type="button"><kbd id="sleep-key">K</kbd><span>Sleep until dawn</span></button>
     <button id="fire-cue" type="button"><kbd>G</kbd><span id="fire-cue-label">Lay a fire</span></button>
     <button id="bow-cue" type="button"><kbd>Q</kbd><span id="bow-cue-label">Take out the bow</span></button>
+    <button id="net-cue" type="button"><kbd>N</kbd><span id="net-cue-label">Cast the net</span></button>
 </div>
+
+<div id="reticle"></div>
 
 <div id="vignette"></div>
 
@@ -1145,6 +1174,7 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
             <div><b id="pack-rope">0</b><span>rope</span></div>
             <div><b id="pack-arrows">0</b><span>arrows</span></div>
             <div><b id="pack-radish">0</b><span>radishes</span></div>
+            <div><b id="pack-fish">0</b><span>fish</span></div>
             <div><b id="pack-relics">0</b><span>relics</span></div>
         </div>
         <div id="larder">
@@ -1152,6 +1182,9 @@ body.touch #bl { bottom: calc(166px + env(safe-area-inset-bottom)); }
             <div class="row">
                 <button class="ghost" id="pack-eat">Eat one</button>
                 <button class="ghost" id="pack-plant">Sow one here</button>
+            </div>
+            <div class="row">
+                <button class="ghost" id="pack-fish-eat">Eat a fish</button>
             </div>
             <p class="pack-hint" id="larder-hint"></p>
         </div>
@@ -1487,10 +1520,12 @@ const INV = {
     leaf: 0,            // yucca blades, which is what rope is twisted from
     rope: 0,
     arrows: 0,
+    fish: 0,
     woodpick: false,
     axe: false,
     pickaxe: false,
     bow: false,
+    net: false,
     stickhouse: false,  // a shelter of your own, raised once
     whetstone: false,   // attacks hit harder
     honed: false        // tools bite deeper, so one swing does the work of two
@@ -1511,6 +1546,8 @@ const RECIPES = [
       note: 'A sprung stick and a strung cord. Reaches a great deal further than your fist.' },
     { id: 'arrows', name: 'Ten arrows', wood: 3, stone: 2, repeatable: true, counted: true, gives: 10,
       note: 'Shafts of stick, heads of stone, ten to a batch. Walk over spent ones to take them back.' },
+    { id: 'net', name: 'Fishing net', wood: 2, stone: 0, rope: 2,
+      note: 'Rope knotted into a mesh on a stick frame. Sweep it at the water\'s edge; it keeps, so it costs nothing to try again.' },
     { id: 'whetstone', name: 'Whetstone', wood: 1, stone: 4,
       note: 'A keener edge. Every blow you land does half again as much.' },
     { id: 'honed', name: 'Honed edges', wood: 6, stone: 6,
@@ -1549,6 +1586,11 @@ const RECIPE_ART = {
     rope:
         '<path d="M7 26 C15 16, 21 32, 29 22 C35 15, 40 20, 44 17" class="cord"/>' +
         '<path d="M7 31 C15 21, 21 37, 29 27 C35 20, 40 25, 44 22" class="cord"/>',
+    // A hoop on a handle with the mesh crossing it
+    net:
+        '<path d="M25 38 L25 27" class="haft"/>' +
+        '<path d="M25 27 C10 27, 8 6, 25 6 C42 6, 40 27, 25 27 Z" class="head thin"/>' +
+        '<path d="M14 11 L36 22 M14 22 L36 11 M25 7 L25 26" class="cord hair"/>',
     // A strung stave, drawn as the bow sits when it is braced
     bow:
         '<path d="M34 5 C12 16, 12 28, 34 39" class="haft"/>' +
@@ -1585,10 +1627,12 @@ function loadSave() {
             INV.leaf = Math.max(0, data.inv.leaf | 0);
             INV.rope = Math.max(0, data.inv.rope | 0);
             INV.arrows = Math.max(0, data.inv.arrows | 0);
+            INV.fish = Math.max(0, data.inv.fish | 0);
             INV.woodpick = !!data.inv.woodpick;
             INV.axe = !!data.inv.axe;
             INV.pickaxe = !!data.inv.pickaxe;
             INV.bow = !!data.inv.bow;
+            INV.net = !!data.inv.net;
             INV.stickhouse = !!data.inv.stickhouse;
             INV.whetstone = !!data.inv.whetstone;
             INV.honed = !!data.inv.honed;
@@ -1610,8 +1654,9 @@ function writeSave() {
             inv: {
                 stone: INV.stone, wood: INV.wood, radish: INV.radish,
                 leaf: INV.leaf, rope: INV.rope, arrows: INV.arrows,
+                fish: INV.fish,
                 woodpick: INV.woodpick, axe: INV.axe, pickaxe: INV.pickaxe,
-                bow: INV.bow,
+                bow: INV.bow, net: INV.net,
                 stickhouse: INV.stickhouse, whetstone: INV.whetstone, honed: INV.honed,
                 huts: huts.map(h => [+h.x.toFixed(2), +h.z.toFixed(2), +h.rot.toFixed(3)]),
                 fires: fires.map(f => [+f.x.toFixed(2), +f.z.toFixed(2)])
@@ -2596,6 +2641,174 @@ function updateRadishes(dt) {
 }
 
 /* ============================================================
+   FISH
+   ============================================================ */
+
+// Shoals in the shallows, where the water is still clear enough to see
+// through. They keep off the beach and out of the deep, which is both what
+// fish do and the only band where you can see one to aim at: the water runs
+// from a little over half transparent at the margin to very nearly solid
+// further out.
+const FISH_COUNT = 110;
+const FISH_MIN_DEPTH = 1.1;      // any shallower and they would be grounded
+// The water runs from a little over half transparent at the margin to very
+// nearly solid further out: its alpha is mixed from 0.58 to 0.94 across the
+// first seven metres of depth. Past about three metres a fish simply cannot
+// be seen, so there is no point putting one there — and keeping them in the
+// clear margin is what makes fishing something you do from the bank.
+const FISH_MAX_DEPTH = 3.1;
+const FISH_SWIM = 1.15;          // metres a second, give or take
+const FISH_ROAM = 16;            // how far one wanders from where it started
+const FISH_RETURN = 150;         // a taken fish is replaced after this long
+const FISH_RAW = 16;             // eating one raw
+const FISH_COOKED = 38;          // and the same fish cooked over a fire
+const FISH_ACTIVE = 150;         // only those near the player actually swim
+
+const fish = [];
+let fishMesh = null;
+const _fishSpin = new THREE.Euler();
+
+function waterDepthAt(x, z) {
+    return WATER_LEVEL - groundHeight(x, z);
+}
+
+// Long, narrow and flattened side to side, with a tail fin standing up at
+// the back. Merged into one geometry so the whole shoal is a single draw.
+function fishGeometry() {
+    const body = new THREE.SphereGeometry(0.17, 9, 7);
+    body.scale(0.55, 0.78, 2.0);
+    const tail = new THREE.ConeGeometry(0.13, 0.22, 3);
+    tail.rotateX(-Math.PI / 2);          // nose is +Z, so the fin goes back
+    tail.scale(0.5, 1.5, 1);
+    tail.translate(0, 0, -0.38);
+    const g = mergeGeometries([body.toNonIndexed(), tail.toNonIndexed()], false);
+    g.computeVertexNormals();
+    return g;
+}
+
+function buildFish() {
+    const rnd = mulberry32(SEED ^ 0x5f15);
+    // Pale and a little warm, which is what stands out against the blue-green
+    // the water tints everything below it
+    const mat = new THREE.MeshStandardMaterial({
+        color: 0xd9ddcf, roughness: 0.38, metalness: 0.14, flatShading: true
+    });
+
+    fishMesh = new THREE.InstancedMesh(fishGeometry(), mat, FISH_COUNT);
+    fishMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    fishMesh.castShadow = false;
+    fishMesh.receiveShadow = false;
+    fishMesh.count = 0;
+    scene.add(fishMesh);
+
+    let placed = 0, tries = 0;
+    while (placed < FISH_COUNT && tries < FISH_COUNT * 120) {
+        tries++;
+        const x = (rnd() * 2 - 1) * WORLD_RADIUS * 0.96;
+        const z = (rnd() * 2 - 1) * WORLD_RADIUS * 0.96;
+        const d = waterDepthAt(x, z);
+        if (d < FISH_MIN_DEPTH || d > FISH_MAX_DEPTH) continue;
+
+        fish.push({
+            index: placed,
+            x, z, homeX: x, homeZ: z,
+            y: WATER_LEVEL - 0.4,
+            dir: rnd() * Math.PI * 2,
+            speed: FISH_SWIM * (0.7 + rnd() * 0.6),
+            under: 0.28 + rnd() * 0.34,     // how far below the surface it holds
+            size: 1.0 + rnd() * 0.6,
+            phase: rnd() * 6.283,
+            wob: 0.5 + rnd() * 0.7,
+            gone: 0
+        });
+        placed++;
+    }
+    fishMesh.count = fish.length;
+    for (const f of fish) drawFish(f);
+}
+
+function drawFish(f) {
+    if (!fishMesh) return;
+    if (f.gone > 0) {
+        fishMesh.setMatrixAt(f.index, _zeroMatrix);
+    } else {
+        _fishSpin.set(0, f.dir, Math.sin(elapsed * 3 + f.phase) * 0.12);
+        _dummy.position.set(f.x, f.y, f.z);
+        _dummy.rotation.copy(_fishSpin);
+        _dummy.scale.setScalar(f.size);
+        _dummy.updateMatrix();
+        fishMesh.setMatrixAt(f.index, _dummy.matrix);
+    }
+    fishMesh.instanceMatrix.needsUpdate = true;
+}
+
+function updateFish(dt) {
+    if (!fishMesh) return;
+    let touched = false;
+    for (const f of fish) {
+        if (f.gone > 0) {
+            f.gone -= dt;
+            if (f.gone <= 0) {         // a new one drifts in where the last was
+                f.gone = 0;
+                f.x = f.homeX; f.z = f.homeZ;
+                drawFish(f);
+            }
+            continue;
+        }
+        // Only the ones near enough to see are worth swimming
+        if (Math.hypot(f.x - player.position.x, f.z - player.position.z) > FISH_ACTIVE) continue;
+
+        // a lazy weave, tightened into a turn for home when it strays or the
+        // water ahead runs out
+        f.dir += Math.sin(elapsed * f.wob + f.phase) * 1.1 * dt;
+
+        const ahead = 1.4;
+        const nx = f.x + Math.sin(f.dir) * ahead;
+        const nz = f.z + Math.cos(f.dir) * ahead;
+        const strayed = Math.hypot(f.x - f.homeX, f.z - f.homeZ) > FISH_ROAM;
+        if (strayed || waterDepthAt(nx, nz) < FISH_MIN_DEPTH * 0.8) {
+            const home = Math.atan2(f.homeX - f.x, f.homeZ - f.z);
+            let diff = home - f.dir;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            f.dir += diff * Math.min(1, dt * 2.4);
+        }
+
+        f.x += Math.sin(f.dir) * f.speed * dt;
+        f.z += Math.cos(f.dir) * f.speed * dt;
+
+        // hold just under the surface, rising and sinking as it goes
+        const bed = groundHeight(f.x, f.z);
+        const want = WATER_LEVEL - f.under + Math.sin(elapsed * 1.6 + f.phase) * 0.13;
+        f.y = Math.max(bed + 0.22, want);
+
+        drawFish(f);
+        touched = true;
+    }
+    if (touched) fishMesh.instanceMatrix.needsUpdate = true;
+}
+
+// The nearest fish swimming within reach of a point, or null. Pass y and a
+// vertical tolerance for a shaft in the water, which has to pass close to one
+// in all three directions; leave them out for a net, which sweeps a column.
+function fishNear(x, z, radius, y, vertical) {
+    let best = null, bestD = radius;
+    for (const f of fish) {
+        if (f.gone > 0) continue;
+        if (y !== undefined && Math.abs(f.y - y) > vertical) continue;
+        const d = Math.hypot(f.x - x, f.z - z);
+        if (d >= bestD) continue;
+        best = f; bestD = d;
+    }
+    return best;
+}
+
+function takeFish(f) {
+    f.gone = FISH_RETURN;
+    drawFish(f);
+}
+
+/* ============================================================
    YUCCA
    ============================================================ */
 
@@ -2921,6 +3134,7 @@ function buildVegetation() {
 
     buildRadishes();
     buildYuccas();
+    buildFish();
 
     // Grass
     if (Q.grassCells > 0) {
@@ -3245,6 +3459,48 @@ function canLayFire() {
         fireSiteOk(player.position.x, player.position.z);
 }
 
+/* ---- the net ---- */
+
+const NET_REACH = 7.5;        // how far out from the bank it will reach
+const NET_SWEEP = 3.2;        // how wide a bite it takes out of the shoal
+
+const _netLook = new THREE.Vector3();
+const _netSpot = { x: 0, z: 0, ok: false };
+
+// Water within reach of a cast, found by looking along the player's own line
+// of sight rather than hunting round them. Facing the water is then the whole
+// of the technique, which is both true to the thing and easy to say in a
+// prompt. The spot it finds is where the catch is looked for, so the net
+// fishes where it lands and not at the player's feet.
+function netSpot() {
+    _netSpot.ok = false;
+    if (!INV.net || !started) return _netSpot;
+    lookDirection(_netLook);
+    const hl = Math.hypot(_netLook.x, _netLook.z) || 1;
+    const hx = _netLook.x / hl, hz = _netLook.z / hl;
+    for (let r = 1.2; r <= NET_REACH; r += 0.55) {
+        const x = player.position.x + hx * r;
+        const z = player.position.z + hz * r;
+        if (waterDepthAt(x, z) >= FISH_MIN_DEPTH * 0.7) {
+            _netSpot.x = x; _netSpot.z = z; _netSpot.ok = true;
+            return _netSpot;
+        }
+    }
+    return _netSpot;
+}
+
+function netRefusal() {
+    if (!INV.net) return 'You have no net';
+    if (!netSpot().ok) return 'Face the water to cast';
+    return null;
+}
+
+function canNet() {
+    return started && !paused && !overlay && !siting.on && !CHORE.kind &&
+        !SLEEP.phase && !H.active && !P.dead && !P.swimming && P.grounded &&
+        !BOW.out && INV.net && netSpot().ok;
+}
+
 const _fireNight = { v: 0 };
 
 function updateFires() {
@@ -3300,6 +3556,7 @@ const ARROW_LIFE = 7;
 const ARROW_STUCK_LIFE = 150;     // how long a spent shaft waits to be picked up
 const ARROW_PICKUP = 1.7;
 const ARROW_LEN = 0.68;
+const ARROW_FISH_REACH = 0.7;     // how near a shaft has to pass to take a fish
 
 // Measured off the idle pose rather than guessed: this is the inverse of the
 // left hand bone's own rotation, so a bow parented to that bone comes out
@@ -3444,15 +3701,46 @@ function drawBowString(power) {
 // if one ever gets exported, this should give way to it — but it is the
 // difference between aiming and standing about holding a stick.
 const BOW_ARM_BONES = ['leftshoulder', 'leftarm', 'leftforearm', 'lefthand',
-                       'rightshoulder', 'rightarm', 'rightforearm', 'righthand'];
+                       'rightshoulder', 'rightarm', 'rightforearm', 'righthand',
+                       'head'];
 const bowBones = {};
 let armBlend = 0;
+
+// Behind the archer's own eyes the head is inside the camera, so it has to go
+// — but only the head. Collapsing the bone takes the skull with it and leaves
+// the arms, the bow and the rest of the body rendering as they were. The
+// original scale is kept so it comes back exactly, however the clip squashes
+// or stretches that bone.
+const WORLD_NEAR = 0.1;
+const BOW_NEAR = 0.32;        // just beyond the shoulder, just inside the hand
+function setNearPlane(n) {
+    if (!camera || camera.near === n) return;
+    camera.near = n;
+    camera.updateProjectionMatrix();
+}
+
+let headRestScale = null;
+function setHeadHidden(on) {
+    const h = bowBones.head;
+    if (!h) return;
+    if (on) {
+        if (!headRestScale) headRestScale = h.scale.clone();
+        h.scale.setScalar(0.0001);
+        h.updateMatrixWorld(true);
+    } else if (headRestScale) {
+        h.scale.copy(headRestScale);
+        h.updateMatrixWorld(true);
+        headRestScale = null;
+    }
+}
 
 const _boneA = new THREE.Vector3();
 const _boneB = new THREE.Vector3();
 const _boneDir = new THREE.Vector3();
 const _boneWant = new THREE.Vector3();
 const _boneTarget = new THREE.Vector3();
+const _boneSide = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
 const _boneQ = new THREE.Quaternion();
 const _boneOld = new THREE.Quaternion();
 const _boneParent = new THREE.Quaternion();
@@ -3514,10 +3802,19 @@ function poseBowArms(dt) {
 
     lookDirection(_boneWant);
 
-    // Bow arm: straight out along the shot, dropped a touch so the stave
-    // does not sit across the archer's own eyeline
+    // Bow arm: straight out along the shot and raised to bring the hand up
+    // near eye level, which is where it sits in life and the only place it
+    // can sit now that the bow puts the view behind the archer's own eyes.
+    // It used to be dropped instead, to keep the stave out of a third-person
+    // camera's way — but that camera is no longer the one looking.
     _boneDir.copy(_boneWant);
-    _boneDir.y -= 0.08;
+    _boneDir.y += 0.38;
+    // and brought in towards the line between the eye and the target, which
+    // is what an archer actually does. The shoulder sits off to one side and
+    // behind the eye, so an arm aimed straight down the shot leaves the bow
+    // out at the edge of vision rather than in front of it.
+    _boneSide.copy(_boneWant).cross(_worldUp).normalize();
+    _boneDir.addScaledVector(_boneSide, 0.48);
     _boneDir.normalize();
     aimLimb(L.leftarm, L.leftforearm, _boneDir, armBlend);
     if (L.lefthand || bowBoneL) {
@@ -3659,6 +3956,25 @@ function aimPoint(out) {
         out.set(e.x, e.y + h * 0.55, e.z);
     }
     if (nearestFoe < Infinity) return out;
+
+    // Fish get the same courtesy, and need it more. Without it the arc is
+    // solved to wherever the ray finally meets the bed, which can be eighty
+    // metres out and twenty down — and an arc aimed that far past a fish
+    // rides clear over the top of one only a few metres away.
+    let nearestFish = Infinity;
+    for (const f of fish) {
+        if (f.gone > 0) continue;
+        const cx = f.x - o.x, cy = f.y - o.y, cz = f.z - o.z;
+        const along = cx * _aimDir.x + cy * _aimDir.y + cz * _aimDir.z;
+        if (along < 1 || along > AIM_RANGE || along >= nearestFish) continue;
+        const ox = cx - _aimDir.x * along;
+        const oy = cy - _aimDir.y * along;
+        const oz = cz - _aimDir.z * along;
+        if (ox * ox + oy * oy + oz * oz > 0.75) continue;
+        nearestFish = along;
+        out.set(f.x, f.y, f.z);
+    }
+    if (nearestFish < Infinity) return out;
 
     // Walk the ray until it goes under the ground, then take the step before
     let prev = 1;
@@ -3804,6 +4120,14 @@ function advanceArrow(a, dt) {
 
         if (arrowHitsEnemy(a)) return 'hit';
 
+        // Under the surface the shaft is fishing. It keeps travelling until
+        // it finds one or reaches the bed, so a shot into the water is a shot
+        // down through the whole depth, not a test of the surface alone.
+        if (a.pos.y <= WATER_LEVEL && waterDepthAt(a.pos.x, a.pos.z) > 0.4) {
+            const f = fishNear(a.pos.x, a.pos.z, ARROW_FISH_REACH, a.pos.y, ARROW_FISH_REACH);
+            if (f) { a.fish = f; return 'fish'; }
+        }
+
         const g = groundHeight(a.pos.x, a.pos.z);
         if (a.pos.y <= g + 0.02) {
             if (g < WATER_LEVEL - 0.1) return 'gone';    // into the water
@@ -3849,6 +4173,18 @@ function updateArrows(dt) {
             a.life = ARROW_STUCK_LIFE;
             arrowsStuck.push(a);
             sfxArrowMiss();
+        } else if (state === 'fish') {
+            // The shaft comes back with the catch rather than being lost in
+            // the water, or fishing this way would cost an arrow a fish.
+            takeFish(a.fish);
+            INV.fish += 1;
+            INV.arrows += 1;
+            sfxFishCatch();
+            toast('Speared a fish  ·  ' + INV.fish + ' in the pack', 2400);
+            updateRelicHud();
+            if (overlay === 'pack') drawPack();
+            writeSave();
+            freeArrow(a);
         } else {
             freeArrow(a);
         }
@@ -5026,6 +5362,25 @@ function sfxArrowMiss() {
     ring(620, 7, 0.08, 0.03);
 }
 
+// A net going through water: a long wash with no edge to it
+function sfxNetCast() {
+    noiseBurst(0.5, 0.22, 'bandpass', 900, 0.6, 0.18);
+    setTimeout(() => noiseBurst(0.42, 0.18, 'bandpass', 1300, 0.8, 0.22), 420);
+}
+
+// Something alive coming up out of the water: a splash, then the slap of it
+function sfxFishCatch() {
+    noiseBurst(0.22, 0.26, 'bandpass', 1800, 0.9, 0.05);
+    setTimeout(() => noiseBurst(0.12, 0.2, 'lowpass', 700, 0, 0.06), 150);
+    setTimeout(() => blip('sine', 392, 587, 0.3, 0.05), 300);
+}
+
+// The net comes up with nothing but water in it
+function sfxNetEmpty() {
+    noiseBurst(0.3, 0.2, 'lowpass', 520, 0, 0.12);
+    setTimeout(() => blip('sine', 330, 247, 0.35, 0.04), 220);
+}
+
 function sfxRockBreak() {
     noiseBurst(0.07, 0.28, 'highpass', 2000, 0.7, 0.003);
     ring(440, 6, 0.42, 0.12);
@@ -5496,7 +5851,7 @@ function updateAnimation(dt, horizontalSpeed, running) {
         if (P.dead && actions.death) {
             playAction('death', 0.15);
         } else if (CHORE.kind) {
-            const clip = CHORE.kind === 'eat' ? 'eat' : 'pickup';
+            const clip = (CHORE.kind === 'eat' || CHORE.kind === 'fish') ? 'eat' : 'pickup';
             playAction(clip, 0.18);
             const act = actions[clip];
             if (act) {
@@ -6721,6 +7076,7 @@ function setupInput() {
             else if (hutWithinReach()) lieDown(true);
         }
         if (e.code === 'KeyG') beginChore('fire');
+        if (e.code === 'KeyN') beginChore('net');
         if (e.code === 'KeyQ') toggleBow();
         if (e.code === 'KeyF') { hudHidden = !hudHidden; document.getElementById('hud').classList.toggle('hidden', hudHidden); }
         if (e.code === 'KeyV') { P.firstPerson = !P.firstPerson; toast(P.firstPerson ? 'First person' : 'Third person'); }
@@ -6928,12 +7284,14 @@ function setupInput() {
     });
     packEatEl.addEventListener('click', () => { closeOverlay(); beginChore('eat'); });
     packPlantEl.addEventListener('click', () => { closeOverlay(); beginChore('plant'); });
+    packFishEatEl.addEventListener('click', () => { closeOverlay(); beginChore('fish'); });
     siteBuildEl.addEventListener('click', confirmSiting);
     document.getElementById('site-cancel').addEventListener('click', endSiting);
     sleepCueEl.addEventListener('click', beginSleep);
     sleepCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginSleep(); });
     fireCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginChore('fire'); });
     bowCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBow(); });
+    netCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginChore('net'); });
     // Several independent ways out of a full-screen panel: the button (by
     // click or touch), a tap on the backdrop, or Escape. No single quirk of
     // one input path can trap someone on these screens.
@@ -7192,8 +7550,9 @@ function updatePlayer(dt) {
     // HUD state line
     let state = 'Exploring';
     if (P.dead) state = 'Down';
-    else if (CHORE.kind) state = CHORE.kind === 'eat' ? 'Eating'
-        : (CHORE.kind === 'fire' ? 'Laying a fire' : 'Sowing');
+    else if (CHORE.kind) state = (CHORE.kind === 'eat' || CHORE.kind === 'fish') ? 'Eating'
+        : (CHORE.kind === 'fire' ? 'Laying a fire'
+            : (CHORE.kind === 'net' ? 'Fishing' : 'Sowing'));
     else if (SLEEP.phase) state = SLEEP.phase === 'rest' ? 'Resting' : 'Sleeping';
     else if (H.active && H.job) state = H.job.anim === 'mine' ? 'Mining' : 'Cutting';
     else if (P.combatTimer > 0) state = 'In combat';
@@ -7232,26 +7591,60 @@ function updateCamera(dt, horizontalSpeed) {
     camDistance = THREE.MathUtils.damp(camDistance, camDistanceTarget, 8, dt);
     aimBlend = THREE.MathUtils.damp(aimBlend, BOW.out ? 1 : 0, 9, dt);
 
+    // Taking the bow out drops the view behind the archer's own eyes, which
+    // is the only place a bow reads properly: the stave out in front of you,
+    // the string coming back past your cheek. The body still renders, because
+    // from here the arms holding it are most of what you see.
+    const bowEye = BOW.out;
+    const eyeView = P.firstPerson || bowEye;
+
     const headY = player.position.y + (P.swimming ? 1.1 : 1.52);
     _focus.set(player.position.x, headY, player.position.z);
 
     // Step the view over the archer's shoulder while the bow is up, so their
-    // own back is not the thing in the middle of the screen
-    if (aimBlend > 0.001) {
+    // own back is not the thing in the middle of the screen. From the eyes
+    // there is no back in the way, and the step would only shove the view
+    // sideways out of the head.
+    if (aimBlend > 0.001 && !eyeView) {
         _focus.x += Math.cos(camYaw) * 0.62 * aimBlend;
         _focus.z -= Math.sin(camYaw) * 0.62 * aimBlend;
         _focus.y += 0.12 * aimBlend;
     }
 
-    if (P.firstPerson) {
-        modelRoot.visible = false;
+    if (eyeView) {
         lookDirection(_aimLook);
-        _eye.set(_focus.x + _aimLook.x * 0.18, _focus.y + 0.1, _focus.z + _aimLook.z * 0.18);
+        // Sit in the actual head rather than at a guessed height above the
+        // feet. The guess is close enough when the body is not drawn, but
+        // with it drawn a few centimetres puts the view inside the chest,
+        // and from in there the shoulder is the whole screen.
+        const hb = bowEye ? bowBones.head : null;
+        if (hb) {
+            // barely forward of the head bone: the skull is collapsed and
+            // the near plane takes care of the rest, and every centimetre
+            // forward is a centimetre of reach lost in front of the bow
+            hb.getWorldPosition(_eye);
+            _eye.y += 0.04;
+            _eye.addScaledVector(_aimLook, 0.03);
+        } else {
+            _eye.set(_focus.x + _aimLook.x * 0.18, _focus.y + 0.1, _focus.z + _aimLook.z * 0.18);
+        }
         camera.position.lerp(_eye, 1 - Math.exp(-20 * dt));
+        // The view takes a moment to come in. Keep the head on until it has
+        // actually arrived, or that moment shows a headless archer.
+        const arrived = camera.position.distanceTo(_eye) < 0.45;
+        modelRoot.visible = bowEye;
+        setHeadHidden(bowEye && arrived);
+        // From inside the body the near shoulder is a wall across the screen.
+        // Pushing the near plane out cuts away everything closer than an arm
+        // and leaves the forearm, the hand and the bow, which are what the
+        // archer would actually see.
+        setNearPlane(bowEye && arrived ? BOW_NEAR : WORLD_NEAR);
         _camTarget.copy(camera.position).add(_aimLook);
         camera.lookAt(_camTarget);
     } else {
         modelRoot.visible = true;
+        setHeadHidden(false);
+        setNearPlane(WORLD_NEAR);
         const cp = Math.cos(camPitch);
         _camDesired.set(
             _focus.x + Math.sin(camYaw) * cp * camDistance,
@@ -8093,7 +8486,8 @@ function confirmSiting() {
 // Both are the same shape of thing: stand still, play a clip, and have
 // something happen partway through rather than the instant you press the
 // button. CHORE holds whichever one is running.
-const CHORE = { kind: null, timer: 0, total: 0, done: false, spark: 0 };
+const CHORE = { kind: null, timer: 0, total: 0, done: false, spark: 0,
+                netX: 0, netZ: 0 };
 
 // Laying a fire is a long job done at a crouch, and the only crouching clip
 // there is lasts three seconds. Looping it would bob the body up and down
@@ -8142,10 +8536,23 @@ function beginChore(kind) {
         const no = fireRefusal(player.position.x, player.position.z);
         if (no) { toast(no, 2600); return false; }
     }
+    if (kind === 'net') {
+        const no = netRefusal();
+        if (no) { toast(no, 2600); return false; }
+        CHORE.netX = _netSpot.x;
+        CHORE.netZ = _netSpot.z;
+        sfxNetCast();
+    }
+    if (kind === 'fish') {
+        if (INV.fish < 1) return false;
+    }
     CHORE.kind = kind;
+    // Netting and sowing are the same stoop, and eating a fish is the same
+    // motion as eating a radish, so each runs for as long as its clip does.
     CHORE.total = kind === 'fire'
         ? FIRE_LIGHT_TIME
-        : choreLength(kind === 'eat' ? 'eat' : 'pickup', kind === 'eat' ? 2.45 : 2.95);
+        : choreLength(kind === 'eat' || kind === 'fish' ? 'eat' : 'pickup',
+                      kind === 'eat' || kind === 'fish' ? 2.45 : 2.95);
     CHORE.timer = CHORE.total;
     CHORE.done = false;
     CHORE.spark = 0;
@@ -8205,6 +8612,29 @@ function updateChore(dt) {
             P.stamina = Math.min(100, P.stamina + 18);
             sfxEat();
             toast('Eaten  ·  ' + INV.radish + ' left', 2400);
+        } else if (CHORE.kind === 'fish') {
+            // Raw it is a poor meal. Over a fire it is the best one out here,
+            // which is the whole reason to carry wood to a riverbank.
+            const cooked = nearAnyFire();
+            INV.fish = Math.max(0, INV.fish - 1);
+            P.health = Math.min(PLAYER_MAX_HEALTH,
+                P.health + (cooked ? FISH_COOKED : FISH_RAW));
+            P.stamina = Math.min(100, P.stamina + (cooked ? 26 : 12));
+            sfxEat();
+            toast(cooked
+                ? 'Cooked over the fire  ·  ' + INV.fish + ' left'
+                : 'Eaten raw  ·  better cooked over a fire', 2600);
+        } else if (CHORE.kind === 'net') {
+            const caught = fishNear(CHORE.netX, CHORE.netZ, NET_SWEEP);
+            if (caught) {
+                takeFish(caught);
+                INV.fish += 1;
+                sfxFishCatch();
+                toast('Netted a fish  ·  ' + INV.fish + ' in the pack', 2400);
+            } else {
+                sfxNetEmpty();
+                toast('The net comes up empty', 2200);
+            }
         } else {
             INV.radish = Math.max(0, INV.radish - 1);
             addRadish(player.position.x, player.position.z, 0);
@@ -8362,6 +8792,8 @@ const fireCueEl = document.getElementById('fire-cue');
 const fireCueLabelEl = document.getElementById('fire-cue-label');
 const bowCueEl = document.getElementById('bow-cue');
 const bowCueLabelEl = document.getElementById('bow-cue-label');
+const netCueEl = document.getElementById('net-cue');
+const reticleEl = document.getElementById('reticle');
 
 const packWoodEl = document.getElementById('pack-wood');
 const packStoneEl = document.getElementById('pack-stone');
@@ -8370,10 +8802,12 @@ const packRopeEl = document.getElementById('pack-rope');
 const packArrowsEl = document.getElementById('pack-arrows');
 const packRelicsEl = document.getElementById('pack-relics');
 const packRadishEl = document.getElementById('pack-radish');
+const packFishEl = document.getElementById('pack-fish');
 const larderEl = document.getElementById('larder');
 const larderHintEl = document.getElementById('larder-hint');
 const packEatEl = document.getElementById('pack-eat');
 const packPlantEl = document.getElementById('pack-plant');
+const packFishEatEl = document.getElementById('pack-fish-eat');
 const packRecipesEl = document.getElementById('pack-recipes');
 const packHintEl = document.getElementById('pack-hint');
 
@@ -8456,16 +8890,25 @@ function drawPack() {
     packRopeEl.textContent = INV.rope;
     packArrowsEl.textContent = INV.arrows;
     packRadishEl.textContent = INV.radish;
+    packFishEl.textContent = INV.fish;
     packRelicsEl.textContent = collected;
 
     const has = INV.radish > 0;
-    packEatEl.disabled = !has || P.health >= PLAYER_MAX_HEALTH;
+    const hasFish = INV.fish > 0;
+    const full = P.health >= PLAYER_MAX_HEALTH;
+    packEatEl.disabled = !has || full;
     packPlantEl.disabled = !has;
-    larderHintEl.textContent = !has
-        ? 'Radishes grow wild in the open. Walk up to one and pull it.'
-        : (P.health >= PLAYER_MAX_HEALTH
-            ? 'Nothing to mend right now — sow one instead and come back to it.'
-            : 'Eating one mends you. Sowing one gives you more later.');
+    packFishEatEl.disabled = !hasFish || full;
+    packFishEatEl.textContent = hasFish && nearAnyFire()
+        ? 'Cook a fish on the fire'
+        : 'Eat a fish';
+    larderHintEl.textContent = !has && !hasFish
+        ? 'Radishes grow wild in the open. Fish are in the shallows — spear one or sweep a net through them.'
+        : (full
+            ? 'Nothing to mend right now — sow a radish instead and come back to it.'
+            : (hasFish && !nearAnyFire()
+                ? 'A fish raw is worth ' + FISH_RAW + '. Cooked on a fire it is worth ' + FISH_COOKED + '.'
+                : 'Eating mends you. Sowing a radish gives you more later.'));
 
     packRecipesEl.replaceChildren();
     for (const r of RECIPES) {
@@ -9004,16 +9447,26 @@ function resetProgress() {
     INV.leaf = 0;
     INV.rope = 0;
     INV.arrows = 0;
+    INV.fish = 0;
     INV.woodpick = false;
     INV.axe = false;
     INV.pickaxe = false;
     INV.bow = false;
+    INV.net = false;
     INV.stickhouse = false;
     INV.whetstone = false;
     INV.honed = false;
     endSiting();
     removeAllHuts();
     removeAllFires();
+    // the shoals come back too, rather than staying thinned out by a run
+    // the player has just walked away from
+    for (const f of fish) {
+        f.gone = 0;
+        f.x = f.homeX;
+        f.z = f.homeZ;
+        drawFish(f);
+    }
     stowBow();
     for (const a of arrowsFlying.splice(0)) freeArrow(a);
     for (const a of arrowsStuck.splice(0)) freeArrow(a);
@@ -9295,6 +9748,7 @@ function animate() {
         updateEnemies(dt);
         updateHarvest(dt);
         updateRadishes(dt);
+        updateFish(dt);
         updateChore(dt);
         updateFires();
         updateArrows(dt);
@@ -9349,11 +9803,19 @@ function animate() {
         sleepCueEl.classList.toggle('on', canSleep() && !hutWithinReach());
         fireCueEl.classList.toggle('on', canLayFire() && !H.target);
         fireCueLabelEl.textContent = 'Lay a fire · ' + FIRE_WOOD + ' wood';
-        bowCueEl.classList.toggle('on', INV.bow && !BOW.out && !H.target && !CHORE.kind &&
+        // The same button both ways round: it is the way back out of first
+        // person, so it has to be on screen while the bow is up, not only
+        // before it comes out.
+        bowCueEl.classList.toggle('on', INV.bow && !H.target && !CHORE.kind &&
             !SLEEP.phase && !P.dead);
-        bowCueLabelEl.textContent = INV.arrows > 0
-            ? 'Take out the bow · ' + INV.arrows + ' arrows'
-            : 'Take out the bow · no arrows';
+        bowCueEl.classList.toggle('stow', BOW.out);
+        netCueEl.classList.toggle('on', canNet() && !H.target);
+        reticleEl.classList.toggle('on', BOW.out && !paused && !overlay && !P.dead);
+        bowCueLabelEl.textContent = BOW.out
+            ? 'Put the bow away'
+            : (INV.arrows > 0
+                ? 'Take out the bow · ' + INV.arrows + ' arrows'
+                : 'Take out the bow · no arrows');
 
         if (attackBtnEl) {
             attackBtnEl.textContent = BOW.out ? 'SHOOT' : 'HIT';
@@ -9381,8 +9843,9 @@ function animate() {
         } else if (CHORE.kind) {
             gatherEl.classList.add('on');
             gatherBar.classList.add('on');
-            gatherLabel.textContent = CHORE.kind === 'eat' ? 'Eating'
-                : (CHORE.kind === 'fire' ? 'Lighting the fire' : 'Sowing');
+            gatherLabel.textContent = (CHORE.kind === 'eat' || CHORE.kind === 'fish') ? 'Eating'
+                : (CHORE.kind === 'fire' ? 'Lighting the fire'
+                    : (CHORE.kind === 'net' ? 'Working the net' : 'Sowing'));
             gatherFill.style.width = ((1 - CHORE.timer / CHORE.total) * 100).toFixed(0) + '%';
         } else if (SLEEP.phase === 'rest') {
             gatherEl.classList.add('on');
