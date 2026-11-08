@@ -724,6 +724,9 @@ body.touch #chat-log { bottom: calc(300px + env(safe-area-inset-bottom)); max-wi
     border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
 }
 #chat-input:focus { outline: none; border-color: rgba(159,227,211,0.8); }
+#chat-box .ghost { padding: 7px 12px; font-size: 13px; }
+body.touch #chat-box { bottom: 34%; }
+body.touch #chat-input { width: 46vw; }
 
 /* Only up with the bow. From behind the archer's own eyes there is nothing
    else to say where the shot is going. */
@@ -1158,6 +1161,7 @@ body.touch #cues {
     <button id="fire-cue" type="button"><kbd>G</kbd><span id="fire-cue-label">Lay a fire</span></button>
     <button id="bow-cue" type="button"><kbd>Q</kbd><span id="bow-cue-label">Take out the bow</span></button>
     <button id="net-cue" type="button"><kbd>N</kbd><span id="net-cue-label">Cast the net</span></button>
+    <button id="chat-cue" type="button"><kbd>&#8629;</kbd><span>Say something</span></button>
 </div>
 
 <div id="reticle"></div>
@@ -1167,6 +1171,8 @@ body.touch #cues {
     <span>Say</span>
     <input id="chat-input" type="text" maxlength="140" autocomplete="off"
            spellcheck="false" placeholder="type, then Enter">
+    <button class="ghost" id="chat-send" type="button">Send</button>
+    <button class="ghost" id="chat-cancel" type="button">Close</button>
 </div>
 
 <div id="vignette"></div>
@@ -4467,6 +4473,19 @@ const _arrowStep = new THREE.Vector3();
 const ARROW_SUBSTEP = 0.3;
 
 function arrowHitsEnemy(a) {
+    // Other players first: they are rarer than the wildlife and a shaft that
+    // passed through someone on its way to a boar would be hard to explain.
+    for (const [uid, q] of NET.peers) {
+        if (a.pos.y < q.pos.y - 0.2 || a.pos.y > q.pos.y + PLAYER_HEIGHT + 0.15) continue;
+        const dx = a.pos.x - q.pos.x;
+        const dz = a.pos.z - q.pos.z;
+        if (dx * dx + dz * dz > 0.42) continue;
+        const d = Math.max(0.001, Math.hypot(dx, dz));
+        netHit(uid, a.damage || ARROW_DAMAGE, dx / d, dz / d);
+        sfxArrowHit();
+        toast('Hit ' + q.name, 1600);
+        return true;
+    }
     for (const e of enemies) {
         if (e.state === 'dead') continue;
         const h = e.type.height || 1.9;
@@ -6476,6 +6495,10 @@ function loadTool(path, key) {
                     .multiplyScalar(fit.scale).applyEuler(root.rotation);
                 root.position.set(-grip.x, -grip.y, -grip.z);
                 root.visible = false;
+                // Named for the same reason the bow is: these hang off the
+                // hand bone, so every other player's cloned body arrives
+                // carrying a set of them.
+                root.name = 'toolRig_' + key;
                 tools[key] = root;
                 resolve(true);
             },
@@ -6507,7 +6530,9 @@ function attachTools() {
     console.info('[tools] attached to ' + (toolBone ? toolBone.name : 'the model root (no right-hand bone found)'));
 }
 
+let shownTool = '';
 function showTool(key) {
+    shownTool = key || '';
     for (const k of Object.keys(tools)) {
         if (tools[k]) tools[k].visible = (k === key);
     }
@@ -7349,6 +7374,19 @@ function playerAttack() {
         hits++;
     }
 
+    // The same swing, against anyone else out here
+    for (const [uid, q] of NET.peers) {
+        const dx = q.pos.x - px;
+        const dz = q.pos.z - pz;
+        const d = Math.hypot(dx, dz);
+        if (d > ATTACK_RANGE || d < 0.001) continue;
+        if (Math.abs(q.pos.y - player.position.y) > ATTACK_VERTICAL) continue;
+        if ((dx / d) * fx + (dz / d) * fz < minDot) continue;
+        netHit(uid, ATTACK_DAMAGE * (INV.whetstone ? 1.5 : 1), dx / d, dz / d);
+        toast('Hit ' + q.name, 1600);
+        hits++;
+    }
+
     if (hits > 0) camShake = Math.min(camShake + 0.13, 0.3);
 }
 
@@ -7704,6 +7742,10 @@ function setupInput() {
     // Say what the state actually is before anyone touches it, rather than
     // leaving the markup's hopeful default sitting there.
     updateNetPanel();
+    // Not every phone keyboard sends an Enter a page can see, so the two
+    // ways out of the chat line are also buttons.
+    chatSendEl.addEventListener('pointerdown', (e) => { e.preventDefault(); closeChatBox(true); });
+    chatCancelEl.addEventListener('pointerdown', (e) => { e.preventDefault(); closeChatBox(false); });
     chatInputEl.addEventListener('keydown', (e) => {
         e.stopPropagation();                       // the game must not read these keys
         if (e.key === 'Enter') closeChatBox(true);
@@ -7716,6 +7758,9 @@ function setupInput() {
     fireCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginChore('fire'); });
     bowCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBow(); });
     netCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); beginChore('net'); });
+    // Enter opens the chat line on a keyboard; on a phone there is no
+    // Enter, so the same thing needs a button.
+    chatCueEl.addEventListener('pointerdown', (e) => { e.preventDefault(); openChatBox(); });
     // Several independent ways out of a full-screen panel: the button (by
     // click or touch), a tap on the backdrop, or Escape. No single quirk of
     // one input path can trap someone on these screens.
@@ -7940,7 +7985,14 @@ function updatePlayer(dt) {
     P.faceTimer -= dt;
     let targetYaw = null;
     let turnRate = 14;
-    if (horizontalSpeed > 0.35) targetYaw = Math.atan2(P.vel.x, P.vel.z);
+    if (BOW.out && !P.dead) {
+        // An archer faces the shot, moving or not. Locally this is invisible
+        // — the view is behind their eyes — but to everybody else the body
+        // was still facing wherever it last walked, which is why a peer with
+        // a bow looked frozen in the direction they drew it from.
+        targetYaw = camYaw + Math.PI;
+        turnRate = 16;
+    } else if (horizontalSpeed > 0.35) targetYaw = Math.atan2(P.vel.x, P.vel.z);
     else if (P.faceTimer > 0) { targetYaw = P.faceTarget; turnRate = 18; }
 
     if (targetYaw !== null) {
@@ -9216,6 +9268,7 @@ const fireCueLabelEl = document.getElementById('fire-cue-label');
 const bowCueEl = document.getElementById('bow-cue');
 const bowCueLabelEl = document.getElementById('bow-cue-label');
 const netCueEl = document.getElementById('net-cue');
+const chatCueEl = document.getElementById('chat-cue');
 const reticleEl = document.getElementById('reticle');
 
 const packWoodEl = document.getElementById('pack-wood');
@@ -9235,6 +9288,8 @@ const netRoomEl = document.getElementById('net-room');
 const chatLogEl = document.getElementById('chat-log');
 const chatBoxEl = document.getElementById('chat-box');
 const chatInputEl = document.getElementById('chat-input');
+const chatSendEl = document.getElementById('chat-send');
+const chatCancelEl = document.getElementById('chat-cancel');
 const packCoconutNEl = document.getElementById('pack-coconut-n');
 const packFelledEl = document.getElementById('pack-felled');
 const packWhereEl = document.getElementById('pack-where');
@@ -10257,6 +10312,8 @@ function animate() {
             !SLEEP.phase && !P.dead);
         bowCueEl.classList.toggle('stow', BOW.out);
         netCueEl.classList.toggle('on', canNet() && !H.target);
+        chatCueEl.classList.toggle('on', NET.ready && !H.target && !CHORE.kind &&
+            !SLEEP.phase && !P.dead && !chatBoxOpen());
         reticleEl.classList.toggle('on', BOW.out && !paused && !overlay && !P.dead);
         bowCueLabelEl.textContent = BOW.out
             ? 'Put the bow away'
@@ -10501,9 +10558,9 @@ const NET_FAR = 260;           // peers further than this are not drawn
 const NET = {
     want: false, ready: false, status: 'offline', detail: '',
     db: null, uid: null, name: '', room: '',
-    ref: null, selfRef: null, offset: 0, base: '',
+    ref: null, selfRef: null, offset: 0, base: '', joinedAt: 0,
     peers: new Map(), builds: new Set(),
-    acc: 0, beat: 0, sent: { x: 0, y: 0, z: 0, r: 0, a: '', b: 0 },   // beat is a wall-clock stamp
+    acc: 0, beat: 0, sent: { x: 0, y: 0, z: 0, r: 0, a: '', b: 0, h: '' },   // beat is a wall-clock stamp
     chat: []
 };
 
@@ -10523,6 +10580,13 @@ function loadFirebase() {
     })), Promise.resolve()).then(() => true);
     fbPromise.catch(() => { fbPromise = null; });
     return fbPromise;
+}
+
+function netWrapAngle(a) {
+    let r = a % (Math.PI * 2);
+    if (r > Math.PI) r -= Math.PI * 2;
+    if (r < -Math.PI) r += Math.PI * 2;
+    return r;
 }
 
 function netServerNow() {
@@ -10586,15 +10650,23 @@ async function netConnect(code, name) {
         NET.ref.child('players').on('child_removed', s => netPeerRemoved(s.key));
 
         NET.ref.child('chat').limitToLast(NET_CHAT_KEEP).on('child_added', s => netChatIn(s.val()));
+        NET.ref.child('hits/' + NET.uid).on('child_added',
+            s => netHitIn(s.key, s.val(), NET.ref.child('hits/' + NET.uid + '/' + s.key)));
         NET.ref.child('builds').on('child_added', s => netBuildIn(s.key, s.val()));
 
         NET.beat = Date.now();
+        NET.joinedAt = Date.now();
         NET.ready = true;
         netStatus('online', '');
         try { localStorage.setItem('eon-expanse-name', NET.name); } catch (e) { /* private window */ }
         try { localStorage.setItem('eon-expanse-room', code || ''); } catch (e) { /* private window */ }
         toast('You are in the shared world as ' + NET.name, 3000);
-        netSayLocal('— ' + NET.name + ' arrived —');
+        // Pushed rather than said to ourselves, so the whole realm sees it.
+        // It comes back through our own chat listener, so there is no need
+        // to also print it locally.
+        try {
+            NET.ref.child('chat').push({ n: '', m: NET.name + ' arrived', s: 1, t: Date.now() });
+        } catch (e) { netSayLocal('— ' + NET.name + ' arrived —'); }
     } catch (err) {
         NET.want = false;
         NET.ready = false;
@@ -10621,11 +10693,17 @@ async function netConnect(code, name) {
 }
 
 function netDisconnect(quiet) {
+    if (NET.ready && NET.ref && NET.name) {
+        try {
+            NET.ref.child('chat').push({ n: '', m: NET.name + ' left', s: 1, t: Date.now() });
+        } catch (e) { /* on the way out anyway */ }
+    }
     if (NET.ref) {
         try {
             NET.ref.child('players').off();
             NET.ref.child('chat').off();
             NET.ref.child('builds').off();
+            if (NET.uid) NET.ref.child('hits/' + NET.uid).off();
         } catch (e) { /* already gone */ }
     }
     if (NET.selfRef) {
@@ -10648,9 +10726,12 @@ function netSelfRecord() {
         x: +player.position.x.toFixed(2),
         y: +player.position.y.toFixed(2),
         z: +player.position.z.toFixed(2),
-        r: +player.rotation.y.toFixed(3),
+        // wrapped, because rotation.y keeps climbing as you spin and an
+        // hour of turning would send ever larger numbers over the wire
+        r: +netWrapAngle(player.rotation.y).toFixed(3),
         a: currentActionName,
         b: BOW.out ? 1 : 0,
+        h: shownTool,
         t: Date.now()
     };
 }
@@ -10666,9 +10747,10 @@ function netPublish(dt) {
     const s = NET.sent;
     const moved = Math.abs(player.position.x - s.x) + Math.abs(player.position.y - s.y) +
                   Math.abs(player.position.z - s.z);
-    const turned = Math.abs(player.rotation.y - s.r);
+    const turned = Math.abs(netWrapAngle(player.rotation.y - s.r));
     const changed = moved > 0.03 || turned > 0.03 ||
-                    currentActionName !== s.a || (BOW.out ? 1 : 0) !== s.b;
+                    currentActionName !== s.a || (BOW.out ? 1 : 0) !== s.b ||
+                    shownTool !== s.h;
     // The heartbeat is counted on the wall clock, not in frames. Everyone
     // else drops a player who has been quiet for NET_STALE seconds of real
     // time, so the promise to keep speaking has to be made in the same
@@ -10681,7 +10763,7 @@ function netPublish(dt) {
 
     const rec = netSelfRecord();
     s.x = player.position.x; s.y = player.position.y; s.z = player.position.z;
-    s.r = player.rotation.y; s.a = rec.a; s.b = rec.b;
+    s.r = rec.r; s.a = rec.a; s.b = rec.b; s.h = rec.h;
     try { NET.selfRef.update(rec); } catch (e) { /* a dropped packet is not worth a crash */ }
 }
 
@@ -10729,17 +10811,30 @@ function netPeerAdded(uid, v) {
         anim: v.a || 'idle',
         seen: Date.now(),
         group: new THREE.Group(),
-        body: null, mixer: null, actions: null, current: null, tag: null, bow: null
+        body: null, mixer: null, actions: null, current: null, tag: null,
+        bow: null, rigs: {}, tool: ''
     };
 
     if (modelRoot && playerClips && hasClips && typeof cloneSkinned === 'function') {
         p.body = cloneSkinned(modelRoot);
+        // Only the root is ever hidden locally (first person), so lifting that
+        // one flag is enough. Forcing every descendant visible — which is what
+        // this used to do — switched on the axe, the pickaxe and the bow that
+        // ride along on the hand bone, and handed every peer a full toolkit
+        // they had not even crafted.
+        p.body.visible = true;
         p.body.traverse(o => {
-            o.visible = true;                 // the local body may be hidden in first person
             if (o.isMesh || o.isSkinnedMesh) {
                 o.castShadow = settings.shadows;
                 o.receiveShadow = true;
                 o.frustumCulled = false;
+            }
+        });
+        p.rigs = {};
+        p.body.traverse(o => {
+            if (o.name && o.name.indexOf('toolRig_') === 0) {
+                p.rigs[o.name.slice(8)] = o;
+                o.visible = false;            // nothing in hand until they say so
             }
         });
         p.mixer = new THREE.AnimationMixer(p.body);
@@ -10748,6 +10843,7 @@ function netPeerAdded(uid, v) {
         // say they have it out, or everyone walks around armed.
         p.bow = p.body.getObjectByName('bowRig');
         if (p.bow) p.bow.visible = !!v.b;
+        netSetPeerTool(p, v.h || '');
     } else {
         // No model yet, or no clips: a plain figure is better than nobody
         const g = new THREE.Group();
@@ -10789,6 +10885,7 @@ function netPeerChanged(uid, v) {
     }
     if (v.a && v.a !== p.anim) netSetPeerAnim(p, v.a, 0.2);
     if (p.bow && v.b !== undefined) p.bow.visible = !!v.b;
+    if (v.h !== undefined) netSetPeerTool(p, v.h || '');
 }
 
 function netPeerRemoved(uid) {
@@ -10802,6 +10899,15 @@ function netPeerRemoved(uid) {
     }
     NET.peers.delete(uid);
     updateNetPanel();
+}
+
+// Only what they say is in their hand, and nothing when that is nothing.
+function netSetPeerTool(p, key) {
+    p.tool = key || '';
+    if (!p.rigs) return;
+    for (const k of Object.keys(p.rigs)) {
+        if (p.rigs[k]) p.rigs[k].visible = (k === p.tool);
+    }
 }
 
 function netSetPeerAnim(p, name, fade) {
@@ -10844,7 +10950,12 @@ function updatePeers(dt) {
 
 function netChatIn(v) {
     if (!v || !v.m) return;
-    netSayLocal((v.n ? v.n + ': ' : '') + String(v.m).slice(0, 140));
+    // The last two dozen messages replay on arrival, which is welcome for
+    // conversation and not for "so-and-so arrived" from an hour ago.
+    if (v.s && v.t && v.t < NET.joinedAt - 2000) return;
+    const line = v.s ? '— ' + String(v.m).slice(0, 140) + ' —'
+                     : (v.n ? v.n + ': ' : '') + String(v.m).slice(0, 140);
+    netSayLocal(line);
 }
 
 function netSayLocal(line) {
@@ -10862,6 +10973,34 @@ function netSay(text) {
     } catch (e) {
         netSayLocal('(could not send) ' + m);
     }
+}
+
+/* ---- hitting each other ---- */
+
+// A blow cannot be applied to someone else's body: their record is writable
+// only by them, which is what stops anyone teleporting anyone else. So it is
+// posted to a branch of their own that they watch, and they apply it to
+// themselves and clear it. Worst case a dropped packet means a missed hit,
+// which is a far better failure than a stranger being able to edit you.
+function netHit(uid, dmg, nx, nz) {
+    if (!NET.ready || !NET.ref || !uid || uid === NET.uid) return;
+    try {
+        NET.ref.child('hits/' + uid).push({
+            by: NET.uid, n: NET.name,
+            d: Math.round(dmg),
+            nx: +(nx || 0).toFixed(2), nz: +(nz || 0).toFixed(2),
+            t: Date.now()
+        });
+    } catch (e) { /* a missed blow is not worth a crash */ }
+}
+
+function netHitIn(key, v, ref) {
+    try { if (ref) ref.remove(); } catch (e) { /* already gone */ }
+    if (!v || P.dead) return;
+    // Anything from before this session is somebody else's old fight
+    if (v.t && v.t < NET.joinedAt - 5000) return;
+    damagePlayer(v.d || 0, v.nx || 0, v.nz || 0);
+    if (P.dead) netSayLocal('— ' + (v.n || 'someone') + ' finished you —');
 }
 
 /* ---- things people build ---- */
