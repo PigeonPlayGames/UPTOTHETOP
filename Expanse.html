@@ -673,6 +673,57 @@ body.siting #cues { display: none; }
 }
 /* The way back out of first person. It is the one control that has to be
    findable without hunting for it, so it carries its own colour. */
+/* ---- playing together ---- */
+#net-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 4px 0 10px;
+    flex-wrap: wrap;
+}
+.net-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #6b7580; flex: none;
+}
+.net-dot.online { background: #6fe3a8; box-shadow: 0 0 8px rgba(111,227,168,0.8); }
+.net-dot.connecting { background: #ffd27a; animation: cuePulse 1.4s ease-in-out infinite; }
+.net-dot.failed { background: #ff8b7a; }
+#net-count { font-size: 13px; opacity: 0.85; }
+#net-who { font-size: 12px; opacity: 0.6; width: 100%; }
+#net-name, #net-room {
+    width: 112px; padding: 6px 8px; font: inherit; font-size: 13px;
+    color: var(--ink); background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 7px;
+}
+#chat-log {
+    position: fixed; left: 16px; bottom: 112px;
+    max-width: min(46vw, 420px);
+    display: none; flex-direction: column; gap: 2px;
+    pointer-events: none; z-index: 5;
+    font-size: 13px; line-height: 1.35;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.75);
+    color: #e8f1ec;
+}
+#chat-log.on { display: flex; }
+body.touch #chat-log { bottom: calc(300px + env(safe-area-inset-bottom)); max-width: 70vw; }
+#chat-box {
+    position: fixed; left: 50%; bottom: 22%;
+    transform: translateX(-50%);
+    display: none; align-items: center; gap: 8px;
+    padding: 9px 12px; border-radius: 11px;
+    background: rgba(10,14,18,0.82);
+    border: 1px solid rgba(255,255,255,0.18);
+    z-index: 30;
+}
+#chat-box.on { display: flex; }
+#chat-box span { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6; }
+#chat-input {
+    width: min(52vw, 420px); padding: 7px 10px; font: inherit; font-size: 14px;
+    color: var(--ink); background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+}
+#chat-input:focus { outline: none; border-color: rgba(159,227,211,0.8); }
+
 /* Only up with the bow. From behind the archer's own eyes there is nothing
    else to say where the shot is going. */
 #reticle {
@@ -1110,6 +1161,13 @@ body.touch #cues {
 
 <div id="reticle"></div>
 
+<div id="chat-log"></div>
+<div id="chat-box">
+    <span>Say</span>
+    <input id="chat-input" type="text" maxlength="140" autocomplete="off"
+           spellcheck="false" placeholder="type, then Enter">
+</div>
+
 <div id="vignette"></div>
 
 <div id="sleep-fade"></div>
@@ -1183,6 +1241,16 @@ body.touch #cues {
 <div id="pack-screen">
     <div class="sheet">
         <h2>Pack</h2>
+        <div id="net-row">
+            <span class="net-dot" id="net-dot"></span>
+            <span id="net-count">Playing on your own</span>
+            <input id="net-name" type="text" maxlength="16" placeholder="your name"
+                   autocomplete="off" spellcheck="false">
+            <input id="net-room" type="text" maxlength="18" placeholder="room (optional)"
+                   autocomplete="off" spellcheck="false">
+            <button class="ghost" id="net-join">Go online</button>
+            <span id="net-who"></span>
+        </div>
         <div class="carry">
             <div><b id="pack-wood">0</b><span>wood</span></div>
             <div><b id="pack-stone">0</b><span>stone</span></div>
@@ -3860,6 +3928,9 @@ function buildBow() {
     grip.position.set(0, 0, -0.001);
 
     bowGroup = new THREE.Group();
+    // Named so a cloned body can find its own copy: the rig hangs off the
+    // hand bone, so every other player's model arrives carrying one.
+    bowGroup.name = 'bowRig';
     bowGroup.add(stave, grip);
 
     // The string. A Line would be a single pixel and vanish at any distance,
@@ -5723,6 +5794,8 @@ let player, modelRoot, mixer;
 let fallbackRig = null;
 const actions = {};
 let currentAction = null;
+let currentActionName = 'idle';
+let playerClips = null;      // kept so another player's body can reuse them
 let hasClips = false;
 
 const P = {
@@ -5939,6 +6012,9 @@ function buildActions(mixer, clips, names, opts) {
     // the names inside the .glb is otherwise invisible — the character simply
     // stands still and there is nothing to go on.
     const label = options.label || 'model';
+    // Every other player who joins builds the same action map, and saying so
+    // once per arrival would bury everything else in the console.
+    if (options.quiet) return map;
     if (!clips.length) {
         console.warn('[' + label + '] this .glb contains no animation clips at all — ' +
             'it will not animate. Re-export it with the animations included.');
@@ -6007,6 +6083,7 @@ function loadPlayerModel() {
 
                 if (gltf.animations && gltf.animations.length) {
                     hasClips = true;
+                    playerClips = gltf.animations;
                     mixer = new THREE.AnimationMixer(modelRoot);
                     Object.assign(actions, buildActions(mixer, gltf.animations, PLAYER_CLIP_NAMES, { label: 'player' }));
                 }
@@ -6045,6 +6122,9 @@ function playAction(name, fadeTime) {
     if (currentAction) currentAction.fadeOut(fade);
     next.reset().fadeIn(fade).play();
     currentAction = next;
+    // Remembered by name as well as by action, because what goes over the
+    // wire to the other players is the name.
+    currentActionName = name;
 }
 
 // Put the lying body on the ground, measured rather than assumed. The clip is
@@ -7312,9 +7392,17 @@ const touchState = { moveX: 0, moveY: 0, run: false, lookId: null, lookX: 0, loo
 
 function setupInput() {
     window.addEventListener('keydown', (e) => {
+        // While the chat line is open the keyboard belongs to it, and WASD
+        // must type rather than walk.
+        if (chatBoxOpen()) return;
         if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
         if (e.repeat) { return; }
         keys[e.code] = true;
+
+        if (e.code === 'Enter' && started && !paused && !overlay && !siting.on && NET.ready) {
+            openChatBox();
+            return;
+        }
 
         if (e.code === 'Space') P.jumpBuffer = 0.16;
 
@@ -7564,6 +7652,24 @@ function setupInput() {
     packPlantEl.addEventListener('click', () => { closeOverlay(); beginChore('plant'); });
     packFishEatEl.addEventListener('click', () => { closeOverlay(); beginChore('fish'); });
     packCoconutEl.addEventListener('click', () => { closeOverlay(); beginChore('coconut'); });
+
+    try {
+        netNameEl.value = localStorage.getItem('eon-expanse-name') || '';
+        netRoomEl.value = localStorage.getItem('eon-expanse-room') || '';
+    } catch (e) { /* private window */ }
+    netJoinEl.addEventListener('click', () => {
+        if (NET.ready || NET.want) { netDisconnect(); return; }
+        const name = (netNameEl.value || '').trim() ||
+            'traveller' + (100 + Math.floor(Math.random() * 900));
+        netNameEl.value = name;
+        netConnect((netRoomEl.value || '').trim(), name);
+        updateNetPanel();
+    });
+    chatInputEl.addEventListener('keydown', (e) => {
+        e.stopPropagation();                       // the game must not read these keys
+        if (e.key === 'Enter') closeChatBox(true);
+        else if (e.key === 'Escape') closeChatBox(false);
+    });
     siteBuildEl.addEventListener('click', confirmSiting);
     document.getElementById('site-cancel').addEventListener('click', endSiting);
     sleepCueEl.addEventListener('click', beginSleep);
@@ -7991,7 +8097,12 @@ const CLOUD_SHADE = new THREE.Color(0x6b7f94);
 const _cloudLit = new THREE.Color();
 
 function updateSky(dt) {
-    if (!settings.freeze) {
+    if (NET.ready) {
+        // One sun for everybody. Run off the server's clock rather than each
+        // player's own, or one of you is at noon while the other is feeling
+        // about in the dark in what is supposed to be the same place.
+        timeOfDay = ((netServerNow() / 1000) / (NET_ONLINE_DAY * 60)) % 1;
+    } else if (!settings.freeze) {
         timeOfDay = (timeOfDay + dt / (settings.dayMinutes * 60)) % 1;
     }
 
@@ -8731,6 +8842,7 @@ function confirmSiting() {
     INV.wood -= HUT_COST_WOOD;
     INV.stickhouse = true;
     placeHut(siting.spot.x, siting.spot.z, siting.spot.rot);
+    netShareBuild('hut', siting.spot.x, siting.spot.z, siting.spot.rot);
     sfxCraft();
     toast('Shelter raised  ·  ' + INV.wood + ' wood left', 3000);
     updateRelicHud();
@@ -8854,6 +8966,7 @@ function updateChore(dt) {
             } else {
                 INV.wood = Math.max(0, INV.wood - FIRE_WOOD);
                 addFire(player.position.x, player.position.z);
+                netShareBuild('fire', player.position.x, player.position.z, 0);
                 sfxFireCatch();
                 toast('The fire catches. Sit by it to mend.', 3200);
                 updateRelicHud();
@@ -9021,7 +9134,10 @@ function updateSleep(dt) {
         }
         sleepFadeEl.style.opacity = Math.min(1, SLEEP.t / SLEEP_DOWN).toFixed(3);
         if (SLEEP.t >= SLEEP_DOWN) {
-            timeOfDay = DAWN;
+            // Online the sun belongs to everyone, so one person turning in
+            // cannot wind it forward for the rest. The rest still counts.
+            if (NET.ready) toast('Rested — but the sun is shared out here', 3000);
+            else timeOfDay = DAWN;
             P.health = PLAYER_MAX_HEALTH;
             P.stamina = 100;
             SLEEP.phase = 'up';
@@ -9071,6 +9187,15 @@ const packArrowsEl = document.getElementById('pack-arrows');
 const packRelicsEl = document.getElementById('pack-relics');
 const packRadishEl = document.getElementById('pack-radish');
 const packFishEl = document.getElementById('pack-fish');
+const netDotEl = document.getElementById('net-dot');
+const netCountEl = document.getElementById('net-count');
+const netWhoEl = document.getElementById('net-who');
+const netJoinEl = document.getElementById('net-join');
+const netNameEl = document.getElementById('net-name');
+const netRoomEl = document.getElementById('net-room');
+const chatLogEl = document.getElementById('chat-log');
+const chatBoxEl = document.getElementById('chat-box');
+const chatInputEl = document.getElementById('chat-input');
 const packCoconutNEl = document.getElementById('pack-coconut-n');
 const packFelledEl = document.getElementById('pack-felled');
 const packWhereEl = document.getElementById('pack-where');
@@ -10030,6 +10155,8 @@ function animate() {
         updateFish(dt);
         updateFloatingFish(dt);
         updateArrowTip();
+        updatePeers(dt);
+        netPublish(dt);
         updateChore(dt);
         updateFires();
         updateArrows(dt);
@@ -10303,7 +10430,481 @@ async function boot() {
     }
 }
 
-window.addEventListener('beforeunload', writeSave);
+
+/* ============================================================
+   PLAYING TOGETHER
+   ============================================================
+
+   The world is grown from a single seed, so every copy of this file
+   already builds the identical island down to the last rock. Nothing
+   about the terrain has to travel: all that goes over the wire is where
+   each person is, which animation they are in, what they say, and the
+   handful of things they build. That is why this costs so little.
+
+   Firebase is only fetched when someone actually goes online. Offline
+   the game is exactly what it was, and every failure here falls back to
+   that rather than stopping play.
+   ============================================================ */
+
+// This is the same Realtime Database the other Eon games use. A Firebase
+// web key is not a secret — it identifies the project, and the database
+// rules are what guard it — so it lives in the file like the rest.
+const firebaseConfig = {
+  apiKey: "AIzaSyDfCGu6MTcxzrUbk4HqFBJdSornVNuXv40",
+  authDomain: "expanse-35896.firebaseapp.com",
+  databaseURL: "https://expanse-35896-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "expanse-35896",
+  storageBucket: "expanse-35896.firebasestorage.app",
+  messagingSenderId: "569016918874",
+  appId: "1:569016918874:web:8896d4e8d52e20d16dc963",
+  measurementId: "G-3NXVFFZ9R0"
+};
+
+const FB_SDK = [
+    'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js'
+];
+
+const NET_HZ = 10;             // position updates a second
+const NET_BEAT = 2.5;          // a heartbeat even when standing still
+const NET_STALE = 30;          // drop a peer gone quiet this long
+const NET_CHAT_KEEP = 24;
+const NET_ONLINE_DAY = 8;      // minutes per day while online, shared by all
+const NET_FAR = 260;           // peers further than this are not drawn
+
+const NET = {
+    want: false, ready: false, status: 'offline', detail: '',
+    db: null, uid: null, name: '', room: '',
+    ref: null, selfRef: null, offset: 0,
+    peers: new Map(), builds: new Set(),
+    acc: 0, beat: 0, sent: { x: 0, y: 0, z: 0, r: 0, a: '', b: 0 },   // beat is a wall-clock stamp
+    chat: []
+};
+
+let fbPromise = null;
+function loadFirebase() {
+    if (typeof firebase !== 'undefined') return Promise.resolve(true);
+    if (fbPromise) return fbPromise;
+    // Loaded in order and only on demand: three bundles is a lot to put in
+    // front of someone who only ever plays alone.
+    fbPromise = FB_SDK.reduce((chain, url) => chain.then(() => new Promise((ok, fail) => {
+        const el = document.createElement('script');
+        el.src = url;
+        el.async = false;
+        el.onload = ok;
+        el.onerror = () => fail(new Error('could not reach www.gstatic.com'));
+        document.head.appendChild(el);
+    })), Promise.resolve()).then(() => true);
+    fbPromise.catch(() => { fbPromise = null; });
+    return fbPromise;
+}
+
+function netServerNow() {
+    return Date.now() + NET.offset;
+}
+
+function netRoomKey(code) {
+    const room = (code || 'open').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 18) || 'open';
+    // The seed is part of the key, so a world grown from a different seed is
+    // a different place and nobody lands in it by accident.
+    return 'w' + SEED + '_' + room;
+}
+
+function netStatus(status, detail) {
+    NET.status = status;
+    NET.detail = detail || '';
+    updateNetPanel();
+}
+
+async function netConnect(code, name) {
+    if (NET.want) return;
+    NET.want = true;
+    NET.name = (name || NET.name || 'traveller').slice(0, 16);
+    try {
+        netStatus('connecting', 'fetching Firebase');
+        await loadFirebase();
+        if (typeof firebase === 'undefined') throw new Error('Firebase did not load');
+
+        if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        NET.db = firebase.database();
+
+        netStatus('connecting', 'signing in');
+        const cred = await firebase.auth().signInAnonymously();
+        NET.uid = cred.user.uid;
+
+        try {
+            const off = await NET.db.ref('.info/serverTimeOffset').once('value');
+            NET.offset = off.val() || 0;
+        } catch (e) { NET.offset = 0; }
+
+        NET.room = netRoomKey(code);
+        NET.ref = NET.db.ref('expanse/' + NET.room);
+        NET.selfRef = NET.ref.child('players/' + NET.uid);
+
+        await NET.selfRef.set(netSelfRecord());
+        NET.selfRef.onDisconnect().remove();
+
+        NET.ref.child('players').on('child_added', s => netPeerAdded(s.key, s.val()));
+        NET.ref.child('players').on('child_changed', s => netPeerChanged(s.key, s.val()));
+        NET.ref.child('players').on('child_removed', s => netPeerRemoved(s.key));
+
+        NET.ref.child('chat').limitToLast(NET_CHAT_KEEP).on('child_added', s => netChatIn(s.val()));
+        NET.ref.child('builds').on('child_added', s => netBuildIn(s.key, s.val()));
+
+        NET.beat = Date.now();
+        NET.ready = true;
+        netStatus('online', '');
+        try { localStorage.setItem('eon-expanse-name', NET.name); } catch (e) { /* private window */ }
+        try { localStorage.setItem('eon-expanse-room', code || ''); } catch (e) { /* private window */ }
+        toast('You are in the shared world as ' + NET.name, 3000);
+        netSayLocal('— ' + NET.name + ' arrived —');
+    } catch (err) {
+        NET.want = false;
+        NET.ready = false;
+        const why = String((err && err.message) || err || '');
+        // The one failure worth naming precisely: the database will refuse
+        // every write until its rules have an entry for this game's branch,
+        // and "could not connect" would send someone hunting the wrong fault.
+        const denied = /permission|denied|PERMISSION/.test(why);
+        netStatus('failed', denied ? 'the database rules have no "expanse" branch yet' : why);
+        toast(denied
+            ? 'The database refused it — add an "expanse" rule (see the notes) '
+              + '· playing on your own'
+            : 'Could not go online — playing on your own', 4200);
+    }
+}
+
+function netDisconnect(quiet) {
+    if (NET.ref) {
+        try {
+            NET.ref.child('players').off();
+            NET.ref.child('chat').off();
+            NET.ref.child('builds').off();
+        } catch (e) { /* already gone */ }
+    }
+    if (NET.selfRef) {
+        try { NET.selfRef.onDisconnect().cancel(); } catch (e) { /* fine */ }
+        try { NET.selfRef.remove(); } catch (e) { /* fine */ }
+    }
+    for (const uid of Array.from(NET.peers.keys())) netPeerRemoved(uid);
+    NET.ready = false;
+    NET.want = false;
+    NET.ref = null;
+    NET.selfRef = null;
+    NET.builds.clear();
+    netStatus('offline', '');
+    if (!quiet) toast('Back to playing on your own', 2400);
+}
+
+function netSelfRecord() {
+    return {
+        n: NET.name,
+        x: +player.position.x.toFixed(2),
+        y: +player.position.y.toFixed(2),
+        z: +player.position.z.toFixed(2),
+        r: +player.rotation.y.toFixed(3),
+        a: currentActionName,
+        b: BOW.out ? 1 : 0,
+        t: Date.now()
+    };
+}
+
+// Only what changed, and only when it is worth a packet. Standing still
+// costs one small write every few seconds instead of ten a second.
+function netPublish(dt) {
+    if (!NET.ready || !NET.selfRef) return;
+    NET.acc += dt;
+    if (NET.acc < 1 / NET_HZ) return;
+    NET.acc = 0;
+
+    const s = NET.sent;
+    const moved = Math.abs(player.position.x - s.x) + Math.abs(player.position.y - s.y) +
+                  Math.abs(player.position.z - s.z);
+    const turned = Math.abs(player.rotation.y - s.r);
+    const changed = moved > 0.03 || turned > 0.03 ||
+                    currentActionName !== s.a || (BOW.out ? 1 : 0) !== s.b;
+    // The heartbeat is counted on the wall clock, not in frames. Everyone
+    // else drops a player who has been quiet for NET_STALE seconds of real
+    // time, so the promise to keep speaking has to be made in the same
+    // units — on a machine running at a few frames a second, a heartbeat
+    // measured in game time can stretch past the cutoff and leave a
+    // motionless player flickering in and out of everyone else's world.
+    const quiet = Date.now() - NET.beat;
+    if (!changed && quiet < NET_BEAT * 1000) return;
+    NET.beat = Date.now();
+
+    const rec = netSelfRecord();
+    s.x = player.position.x; s.y = player.position.y; s.z = player.position.z;
+    s.r = player.rotation.y; s.a = rec.a; s.b = rec.b;
+    try { NET.selfRef.update(rec); } catch (e) { /* a dropped packet is not worth a crash */ }
+}
+
+/* ---- the other people ---- */
+
+function netNameTag(text) {
+    const pad = 16;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '600 44px system-ui, sans-serif';
+    const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+    canvas.width = Math.max(64, w);
+    canvas.height = 72;
+    const c = canvas.getContext('2d');
+    c.font = '600 44px system-ui, sans-serif';
+    c.textBaseline = 'middle';
+    c.fillStyle = 'rgba(12,16,20,0.55)';
+    c.beginPath();
+    const r = 18;
+    c.moveTo(r, 0); c.arcTo(canvas.width, 0, canvas.width, canvas.height, r);
+    c.arcTo(canvas.width, canvas.height, 0, canvas.height, r);
+    c.arcTo(0, canvas.height, 0, 0, r); c.arcTo(0, 0, canvas.width, 0, r);
+    c.closePath(); c.fill();
+    c.fillStyle = '#eaf4ef';
+    c.fillText(text, pad, canvas.height / 2 + 2);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, depthTest: false, transparent: true
+    }));
+    sprite.scale.set(canvas.width / canvas.height * 0.42, 0.42, 1);
+    sprite.renderOrder = 10;
+    return sprite;
+}
+
+function netPeerAdded(uid, v) {
+    if (!v || uid === NET.uid || NET.peers.has(uid)) return;
+    const p = {
+        uid,
+        name: (v.n || 'traveller').slice(0, 16),
+        pos: new THREE.Vector3(v.x || 0, v.y || 0, v.z || 0),
+        to: new THREE.Vector3(v.x || 0, v.y || 0, v.z || 0),
+        yaw: v.r || 0, toYaw: v.r || 0,
+        anim: v.a || 'idle',
+        seen: Date.now(),
+        group: new THREE.Group(),
+        body: null, mixer: null, actions: null, current: null, tag: null, bow: null
+    };
+
+    if (modelRoot && playerClips && hasClips && typeof cloneSkinned === 'function') {
+        p.body = cloneSkinned(modelRoot);
+        p.body.traverse(o => {
+            o.visible = true;                 // the local body may be hidden in first person
+            if (o.isMesh || o.isSkinnedMesh) {
+                o.castShadow = settings.shadows;
+                o.receiveShadow = true;
+                o.frustumCulled = false;
+            }
+        });
+        p.mixer = new THREE.AnimationMixer(p.body);
+        p.actions = buildActions(p.mixer, playerClips, PLAYER_CLIP_NAMES, { label: 'peer', quiet: true });
+        // The bow rig came along with the hand bone. Show it only when they
+        // say they have it out, or everyone walks around armed.
+        p.bow = p.body.getObjectByName('bowRig');
+        if (p.bow) p.bow.visible = !!v.b;
+    } else {
+        // No model yet, or no clips: a plain figure is better than nobody
+        const g = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9aa7b4, roughness: 0.8 });
+        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.75, 4, 8), mat);
+        torso.position.y = 1.05;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat);
+        head.position.y = 1.68;
+        g.add(torso, head);
+        p.body = g;
+    }
+    p.group.add(p.body);
+    p.group.position.copy(p.pos);
+    p.group.rotation.y = p.yaw;
+
+    p.tag = netNameTag(p.name);
+    p.tag.position.y = PLAYER_HEIGHT + 0.35;
+    p.group.add(p.tag);
+
+    scene.add(p.group);
+    NET.peers.set(uid, p);
+    netSetPeerAnim(p, p.anim, 0);
+    updateNetPanel();
+}
+
+function netPeerChanged(uid, v) {
+    if (!v || uid === NET.uid) return;
+    const p = NET.peers.get(uid);
+    if (!p) { netPeerAdded(uid, v); return; }
+    p.to.set(v.x || 0, v.y || 0, v.z || 0);
+    p.toYaw = v.r || 0;
+    p.seen = Date.now();
+    if (v.n && v.n !== p.name) {
+        p.name = v.n.slice(0, 16);
+        p.group.remove(p.tag);
+        p.tag = netNameTag(p.name);
+        p.tag.position.y = PLAYER_HEIGHT + 0.35;
+        p.group.add(p.tag);
+    }
+    if (v.a && v.a !== p.anim) netSetPeerAnim(p, v.a, 0.2);
+    if (p.bow && v.b !== undefined) p.bow.visible = !!v.b;
+}
+
+function netPeerRemoved(uid) {
+    const p = NET.peers.get(uid);
+    if (!p) return;
+    scene.remove(p.group);
+    if (p.mixer) p.mixer.stopAllAction();
+    if (p.tag && p.tag.material) {
+        if (p.tag.material.map) p.tag.material.map.dispose();
+        p.tag.material.dispose();
+    }
+    NET.peers.delete(uid);
+    updateNetPanel();
+}
+
+function netSetPeerAnim(p, name, fade) {
+    p.anim = name;
+    if (!p.actions) return;
+    const next = p.actions[name] || p.actions.idle;
+    if (!next || next === p.current) return;
+    if (p.current) p.current.fadeOut(fade || 0.2);
+    next.reset().fadeIn(fade || 0.2).play();
+    p.current = next;
+}
+
+function updatePeers(dt) {
+    if (!NET.peers.size) return;
+    const now = Date.now();
+    for (const [uid, p] of NET.peers) {
+        // A browser tab closed without warning leaves its record behind until
+        // the server notices. Quietly drop anyone who has stopped speaking.
+        if (now - p.seen > NET_STALE * 1000) { netPeerRemoved(uid); continue; }
+
+        // Eased towards the last place they reported rather than snapped, so
+        // ten packets a second read as continuous movement.
+        const k = 1 - Math.exp(-11 * dt);
+        p.pos.lerp(p.to, k);
+        let d = p.toYaw - p.yaw;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        p.yaw += d * k;
+        p.group.position.copy(p.pos);
+        p.group.rotation.y = p.yaw;
+
+        const far = p.pos.distanceTo(player.position);
+        p.group.visible = far < NET_FAR;
+        if (p.tag) p.tag.visible = far < 55;
+        if (p.mixer && p.group.visible) p.mixer.update(dt);
+    }
+}
+
+/* ---- saying something ---- */
+
+function netChatIn(v) {
+    if (!v || !v.m) return;
+    netSayLocal((v.n ? v.n + ': ' : '') + String(v.m).slice(0, 140));
+}
+
+function netSayLocal(line) {
+    NET.chat.push({ line, at: performance.now() });
+    while (NET.chat.length > NET_CHAT_KEEP) NET.chat.shift();
+    drawChat();
+}
+
+function netSay(text) {
+    const m = String(text || '').trim().slice(0, 140);
+    if (!m) return;
+    if (!NET.ready || !NET.ref) { netSayLocal('(not online) ' + m); return; }
+    try {
+        NET.ref.child('chat').push({ n: NET.name, m, t: Date.now() });
+    } catch (e) {
+        netSayLocal('(could not send) ' + m);
+    }
+}
+
+/* ---- things people build ---- */
+
+// Fires and stick houses are the only pieces of the world a player makes,
+// and a camp nobody else can see is a poor sort of camp. They are small,
+// rare and permanent, so each one is a single record everybody replays.
+function netShareBuild(kind, x, z, rot) {
+    if (!NET.ready || !NET.ref) return;
+    try {
+        const ref = NET.ref.child('builds').push();
+        NET.builds.add(ref.key);          // ours already stands; do not build it twice
+        ref.set({ k: kind, x: +x.toFixed(2), z: +z.toFixed(2),
+                  r: +(rot || 0).toFixed(3), by: NET.uid, t: Date.now() });
+    } catch (e) { /* the camp is still there locally */ }
+}
+
+function netBuildIn(key, v) {
+    if (!v || NET.builds.has(key)) return;
+    NET.builds.add(key);
+    if (v.by === NET.uid) return;         // our own, already standing
+    try {
+        if (v.k === 'fire') addFire(v.x, v.z);
+        else if (v.k === 'hut') placeHut(v.x, v.z, v.r || 0);
+    } catch (e) { /* a build we cannot place is not worth a crash */ }
+}
+
+/* ---- the panel ---- */
+
+function updateNetPanel() {
+    if (!netDotEl) return;
+    const n = NET.peers.size;
+    netDotEl.className = 'net-dot ' + NET.status;
+    if (NET.status === 'online') {
+        netCountEl.textContent = n === 0 ? 'Online · nobody else here yet'
+            : 'Online · ' + n + (n === 1 ? ' other player' : ' other players');
+    } else if (NET.status === 'connecting') {
+        netCountEl.textContent = 'Connecting… ' + NET.detail;
+    } else if (NET.status === 'failed') {
+        netCountEl.textContent = 'Offline — ' + NET.detail;
+    } else {
+        netCountEl.textContent = 'Playing on your own';
+    }
+    netJoinEl.textContent = NET.ready ? 'Leave' : 'Go online';
+    if (netWhoEl) {
+        const names = [NET.name || 'you'].concat(Array.from(NET.peers.values()).map(p => p.name));
+        netWhoEl.textContent = NET.ready ? names.join(' · ') : '';
+    }
+}
+
+function drawChat() {
+    if (!chatLogEl) return;
+    chatLogEl.innerHTML = NET.chat.slice(-8)
+        .map(c => '<div>' + escapeHtml(c.line) + '</div>').join('');
+    chatLogEl.classList.toggle('on', NET.chat.length > 0);
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+}
+
+function openChatBox() {
+    if (!NET.ready || !chatBoxEl) return;
+    chatBoxEl.classList.add('on');
+    chatInputEl.value = '';
+    chatInputEl.focus();
+}
+
+function closeChatBox(send) {
+    if (!chatBoxEl) return;
+    const text = chatInputEl.value;
+    chatBoxEl.classList.remove('on');
+    chatInputEl.blur();
+    if (send) netSay(text);
+}
+
+function chatBoxOpen() {
+    return !!(chatBoxEl && chatBoxEl.classList.contains('on'));
+}
+
+window.addEventListener('beforeunload', () => {
+    writeSave();
+    // Best effort: onDisconnect covers a dropped connection, this
+    // just makes a deliberate close instant for everyone else.
+    if (NET.ready) { try { netDisconnect(true); } catch (e) { /* leaving anyway */ } }
+});
 
 startIntro();   // runs over the loading screen
 boot();
