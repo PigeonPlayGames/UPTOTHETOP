@@ -688,6 +688,7 @@ body.siting #cues { display: none; }
 .net-dot.online { background: #6fe3a8; box-shadow: 0 0 8px rgba(111,227,168,0.8); }
 .net-dot.connecting { background: #ffd27a; animation: cuePulse 1.4s ease-in-out infinite; }
 .net-dot.failed { background: #ff8b7a; }
+.net-dot.unset { background: #c8b48a; }
 #net-count { font-size: 13px; opacity: 0.85; }
 #net-who { font-size: 12px; opacity: 0.6; width: 100%; }
 #net-name, #net-room {
@@ -1339,6 +1340,41 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 /* ============================================================
    CONFIG
    ============================================================ */
+
+/* ---- Firebase, for playing together ---------------------------------
+   Expanse has a Firebase project of its own. Paste that project's web
+   config here and nothing else about multiplayer needs touching:
+
+     Firebase console -> Project settings -> General
+       -> Your apps -> SDK setup and configuration -> Config
+
+   Until it is filled in the game plays exactly as it always has, on your
+   own, and the pack says so rather than failing with something cryptic.
+
+   A web API key is not a secret: it names the project, and the database
+   rules are what actually guard it. The rules to publish are in
+   expanse-firebase-rules.txt.
+   -------------------------------------------------------------------- */
+const firebaseConfig = {
+    apiKey: 'AIzaSyDfCGu6MTcxzrUbk4HqFBJdSornVNuXv40',
+    authDomain: 'expanse-35896.firebaseapp.com',
+    databaseURL: 'https://expanse-35896-default-rtdb.europe-west1.firebasedatabase.app',
+    projectId: 'expanse-35896',
+    storageBucket: 'expanse-35896.firebasestorage.app',
+    messagingSenderId: '569016918874',
+    appId: '1:569016918874:web:8896d4e8d52e20d16dc963',
+    measurementId: 'G-3NXVFFZ9R0'
+};
+
+// Half-filled is worse than empty, so this checks the two fields nothing
+// can work without rather than merely that an object exists.
+function configLooksReal() {
+    return !!firebaseConfig &&
+        typeof firebaseConfig.apiKey === 'string' &&
+        firebaseConfig.apiKey.indexOf('PASTE') === -1 &&
+        typeof firebaseConfig.databaseURL === 'string' &&
+        firebaseConfig.databaseURL.indexOf('PASTE') === -1;
+}
 
 const params = new URLSearchParams(location.search);
 const MODEL_PATH = params.get('model') || './Tom7.glb';
@@ -7665,6 +7701,9 @@ function setupInput() {
         netConnect((netRoomEl.value || '').trim(), name);
         updateNetPanel();
     });
+    // Say what the state actually is before anyone touches it, rather than
+    // leaving the markup's hopeful default sitting there.
+    updateNetPanel();
     chatInputEl.addEventListener('keydown', (e) => {
         e.stopPropagation();                       // the game must not read these keys
         if (e.key === 'Enter') closeChatBox(true);
@@ -10446,20 +10485,6 @@ async function boot() {
    that rather than stopping play.
    ============================================================ */
 
-// This is the same Realtime Database the other Eon games use. A Firebase
-// web key is not a secret — it identifies the project, and the database
-// rules are what guard it — so it lives in the file like the rest.
-const firebaseConfig = {
-  apiKey: "AIzaSyDfCGu6MTcxzrUbk4HqFBJdSornVNuXv40",
-  authDomain: "expanse-35896.firebaseapp.com",
-  databaseURL: "https://expanse-35896-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "expanse-35896",
-  storageBucket: "expanse-35896.firebasestorage.app",
-  messagingSenderId: "569016918874",
-  appId: "1:569016918874:web:8896d4e8d52e20d16dc963",
-  measurementId: "G-3NXVFFZ9R0"
-};
-
 const FB_SDK = [
     'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
@@ -10476,7 +10501,7 @@ const NET_FAR = 260;           // peers further than this are not drawn
 const NET = {
     want: false, ready: false, status: 'offline', detail: '',
     db: null, uid: null, name: '', room: '',
-    ref: null, selfRef: null, offset: 0,
+    ref: null, selfRef: null, offset: 0, base: '',
     peers: new Map(), builds: new Set(),
     acc: 0, beat: 0, sent: { x: 0, y: 0, z: 0, r: 0, a: '', b: 0 },   // beat is a wall-clock stamp
     chat: []
@@ -10519,6 +10544,12 @@ function netStatus(status, detail) {
 
 async function netConnect(code, name) {
     if (NET.want) return;
+    if (!configLooksReal()) {
+        netStatus('unset', 'paste your Firebase config into the top of this file');
+        toast('Multiplayer is not set up yet — the Firebase config at the top of '
+            + 'Expanse.html still has its placeholders', 5000);
+        return;
+    }
     NET.want = true;
     NET.name = (name || NET.name || 'traveller').slice(0, 16);
     try {
@@ -10539,7 +10570,12 @@ async function netConnect(code, name) {
         } catch (e) { NET.offset = 0; }
 
         NET.room = netRoomKey(code);
-        NET.ref = NET.db.ref('expanse/' + NET.room);
+        NET.base = 'worlds/' + NET.room;
+        // Said out loud, because the single most likely thing to go wrong is
+        // the rules guarding a different branch than the one being written
+        // to, and comparing the two is then a glance rather than a guess.
+        console.info('[net] joining ' + NET.base + ' on ' + firebaseConfig.projectId);
+        NET.ref = NET.db.ref(NET.base);
         NET.selfRef = NET.ref.child('players/' + NET.uid);
 
         await NET.selfRef.set(netSelfRecord());
@@ -10567,11 +10603,20 @@ async function netConnect(code, name) {
         // every write until its rules have an entry for this game's branch,
         // and "could not connect" would send someone hunting the wrong fault.
         const denied = /permission|denied|PERMISSION/.test(why);
-        netStatus('failed', denied ? 'the database rules have no "expanse" branch yet' : why);
+        // Name the exact path that was refused rather than guessing at the
+        // cause. An earlier version of this message named a branch this file
+        // no longer writes to, which sent the reader looking in the wrong
+        // place; the path it actually tried cannot be wrong in that way.
+        const where = NET.base || 'worlds/…';
+        netStatus('failed', denied
+            ? 'the database refused a write to ' + where
+            : why);
         toast(denied
-            ? 'The database refused it — add an "expanse" rule (see the notes) '
-              + '· playing on your own'
-            : 'Could not go online — playing on your own', 4200);
+            ? 'Refused writing to ' + where + ' — check the rules for "worlds" '
+              + 'are published on ' + firebaseConfig.projectId + ' · playing on your own'
+            : 'Could not go online — playing on your own', 5200);
+        console.warn('[net] refused at ' + where + ' on project ' +
+            firebaseConfig.projectId + ': ' + why);
     }
 }
 
@@ -10857,6 +10902,8 @@ function updateNetPanel() {
         netCountEl.textContent = 'Connecting… ' + NET.detail;
     } else if (NET.status === 'failed') {
         netCountEl.textContent = 'Offline — ' + NET.detail;
+    } else if (!configLooksReal()) {
+        netCountEl.textContent = 'Multiplayer not set up — add your Firebase config';
     } else {
         netCountEl.textContent = 'Playing on your own';
     }
