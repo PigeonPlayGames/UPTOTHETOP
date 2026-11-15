@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Boostball — Eon Games</title>
-<meta name="description" content="Boostball: rocket-powered 3D car football against AI bots. An Eon Games original.">
+<title>Eon League — Eon Games</title>
+<meta name="description" content="Eon League: rocket-powered 3D car football — play the bots or your friends online. An Eon Games original.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,700;1,600;1,700&display=swap" rel="stylesheet">
@@ -53,6 +53,15 @@
   #cam-tag b { color: var(--text); }
   #hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); font-size: 12px; letter-spacing: 0.12em; color: var(--muted); background: var(--panel); padding: 7px 14px; border-radius: 6px; transition: opacity 0.6s; white-space: nowrap; }
   #hint kbd { color: var(--text); }
+  #ball-arrow { position: absolute; left: -20px; top: -20px; width: 40px; height: 40px; will-change: transform; }
+  #ball-arrow svg { width: 100%; height: 100%; fill: #fff; filter: drop-shadow(0 0 6px rgba(124, 192, 255, 0.9)); opacity: 0.85; }
+  #replay-tag { position: absolute; left: max(22px, env(safe-area-inset-left)); top: max(18px, env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 4px; padding: 8px 16px 9px; background: var(--panel); border-left: 4px solid var(--amber); border-radius: 4px 8px 8px 4px; }
+  #replay-tag b { font-size: 22px; font-style: italic; letter-spacing: 0.22em; color: var(--amber); animation: blink 1.1s steps(2, start) infinite; }
+  #replay-tag span { font-size: 11px; letter-spacing: 0.18em; color: var(--muted); }
+  #replay-tag .skip-touch, body.touch #replay-tag .skip-keys { display: none; } body.touch #replay-tag .skip-touch { display: inline; }
+  body.touch #replay-tag { left: calc(max(22px, env(safe-area-inset-left)) + 64px); }
+  @keyframes blink { to { opacity: 0.45; } }
+  #clock.free { font-size: 18px; letter-spacing: 0.12em; }
 
   #banner { position: absolute; left: 0; right: 0; top: 24%; text-align: center; opacity: 0; }
   #banner.show { animation: slam 0.45s cubic-bezier(.2, 1.4, .3, 1) forwards; }
@@ -106,6 +115,44 @@
   table.stats td { padding: 8px 16px; text-align: right; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
   table.stats tr.t0 td:first-child { box-shadow: inset 3px 0 0 var(--blue); } table.stats tr.t1 td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
   table.stats tr.me td { color: #fff; font-weight: 700; }
+  table.stats td.pts { color: var(--amber); font-weight: 700; }
+  table.stats .mvp { font-size: 9px; letter-spacing: 0.2em; color: #1b0d00; background: var(--amber); border-radius: 4px; padding: 2px 5px; margin-left: 8px; vertical-align: middle; }
+
+  /* ---------- Points ---------- */
+  #points { position: absolute; top: calc(max(14px, env(safe-area-inset-top)) + 62px); left: 50%; transform: translateX(-50%); font-size: 11px; letter-spacing: 0.3em; font-weight: 700; color: var(--muted); background: var(--panel); padding: 4px 14px 4px 16px; border-radius: 0 0 8px 8px; border: 1px solid var(--line); border-top: 0; }
+  #points b { color: var(--amber); font-size: 14px; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+  #feed { position: absolute; left: max(26px, env(safe-area-inset-left)); bottom: calc(max(26px, env(safe-area-inset-bottom)) + 48px); display: flex; flex-direction: column-reverse; gap: 6px; align-items: flex-start; }
+  .award { display: flex; align-items: baseline; gap: 10px; padding: 6px 14px 6px 12px; background: linear-gradient(90deg, rgba(255, 178, 26, 0.28), rgba(8, 13, 28, 0.6)); border-left: 3px solid var(--amber); border-radius: 0 6px 6px 0; font-weight: 700; font-style: italic; letter-spacing: 0.14em; font-size: 15px; animation: award 2.6s ease forwards; }
+  .award b { color: var(--amber); font-size: 20px; letter-spacing: 0.02em; }
+  .award.note { border-left-color: var(--blue-hi); background: linear-gradient(90deg, rgba(124, 192, 255, 0.24), rgba(8, 13, 28, 0.6)); font-style: normal; font-size: 13px; letter-spacing: 0.08em; animation-duration: 4.2s; }
+  @keyframes award { 0% { opacity: 0; transform: translateX(-24px) scale(1.15); } 9% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+
+  /* ---------- Online ---------- */
+  .card.narrow { width: min(560px, 100%); }
+  .form { display: grid; gap: 12px; justify-items: center; margin-top: 18px; }
+  .field { display: flex; align-items: center; gap: 12px; }
+  .field span { font-size: 11px; letter-spacing: 0.28em; color: var(--muted); font-weight: 700; }
+  input.text { all: unset; box-sizing: border-box; width: 220px; padding: 11px 14px; font: 700 18px var(--display); letter-spacing: 0.08em; color: #fff; background: rgba(8, 13, 28, 0.8); border: 1px solid var(--line); border-radius: 8px; text-align: center; -webkit-user-select: text; user-select: text; }
+  input.text:focus { border-color: var(--blue-hi); box-shadow: 0 0 0 2px rgba(124, 192, 255, 0.25); }
+  input.text::placeholder { color: rgba(143, 163, 199, 0.5); }
+  input.code { width: 130px; letter-spacing: 0.4em; text-transform: uppercase; text-indent: 0.4em; }
+  .joinrow { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  .status { min-height: 20px; font-size: 13px; letter-spacing: 0.06em; color: var(--muted); max-width: 520px; }
+  .status.error { color: #ff9a9a; }
+  h1.title.code { font-size: clamp(54px, 10vw, 104px); letter-spacing: 0.16em; margin-right: -0.16em; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px auto 12px; max-width: 620px; }
+  .team-col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; min-height: 104px; }
+  .team-col h3 { font-size: 12px; letter-spacing: 0.3em; margin-bottom: 8px; }
+  .team-col.blue { border-top: 3px solid var(--blue); } .team-col.blue h3 { color: var(--blue-hi); }
+  .team-col.orange { border-top: 3px solid var(--orange); } .team-col.orange h3 { color: var(--orange-hi); }
+  .team-col ul { list-style: none; display: grid; gap: 6px; }
+  .team-col li { font-size: 15px; font-weight: 700; letter-spacing: 0.04em; padding: 7px 10px; border-radius: 7px; background: rgba(255, 255, 255, 0.07); display: flex; justify-content: space-between; gap: 8px; }
+  .team-col li small { font-size: 10px; letter-spacing: 0.2em; color: var(--muted); align-self: center; }
+  .team-col li.me { background: rgba(124, 192, 255, 0.2); box-shadow: inset 0 0 0 1px rgba(124, 192, 255, 0.5); }
+  .team-col li.empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-weight: 500; }
+  .opts.locked .seg { opacity: 0.55; pointer-events: none; }
+  #btn-online, #btn-free { margin-left: 14px; }
+  @media (max-width: 760px) { #btn-online, #btn-free { margin: 12px 6px 0; } }
 
   /* ---------- Touch controls ---------- */
   #touch { position: fixed; inset: 0; pointer-events: none; }
@@ -121,6 +168,8 @@
   body.touch #boost { width: 96px; height: 96px; bottom: calc(max(26px, env(safe-area-inset-bottom)) + 170px); right: max(14px, env(safe-area-inset-right)); }
   body.touch #boost-num { font-size: 30px; } body.touch #boost .lbl { display: none; }
   body.touch #speed-tag, body.touch #cam-tag, body.touch #hint { display: none; }
+  body.touch #feed { left: max(18px, env(safe-area-inset-left)); bottom: auto; top: calc(max(14px, env(safe-area-inset-top)) + 60px); flex-direction: column; }
+  body.touch .award { font-size: 12px; padding: 4px 10px; } body.touch .award b { font-size: 15px; }
   body.touch .keys { display: none; }
   .touch-help { display: none; margin-top: 22px; font-size: 13px; letter-spacing: 0.06em; color: var(--muted); }
   .touch-help b { color: var(--text); }
@@ -130,7 +179,9 @@
   @media (max-height: 480px) {   /* phones in landscape: tighten the menus so everything fits */
     .overlay { padding: 10px 20px; }
     h1.title { font-size: clamp(40px, 9.5vw, 76px); margin: 2px 0; } .tagline { font-size: 12px; margin-bottom: 12px; }
-    .opts { gap: 8px; margin-bottom: 12px; } .seg button { padding: 7px 18px; font-size: 13px; }
+    h1.title.code { font-size: clamp(36px, 8vw, 60px); } .teams { margin: 8px auto; } .team-col { min-height: 0; padding: 6px 10px 8px; } .team-col li { padding: 4px 9px; font-size: 13px; }
+    .form { gap: 8px; margin-top: 8px; } input.text { padding: 8px 12px; font-size: 16px; }
+    .opts { gap: 8px; margin-bottom: 12px; } .seg button { padding: 7px 18px; font-size: 13px; } #lobby .seg button { padding: 7px 12px; } #lobby .opts { margin-bottom: 8px; }
     .btn { padding: 11px 54px; font-size: 22px; } .btn.ghost { padding: 9px 22px; font-size: 14px; }
     .touch-help { margin-top: 12px; font-size: 12px; } .fine { margin-top: 8px; }
     h2.big { font-size: clamp(36px, 8vw, 64px); } .final { font-size: 24px; margin-bottom: 8px; }
@@ -163,7 +214,9 @@
     <div class="clock"><span id="clock">3:00</span><span id="ot-tag">OVERTIME</span></div>
     <div class="team orange"><span class="score" id="score-orange">0</span><span class="tname">ORANGE</span></div>
   </div>
+  <div id="points"><b id="points-num">0</b> PTS</div>
   <div id="banner"><div id="banner-main"></div><div id="banner-sub"></div></div>
+  <div id="feed"></div>
   <div id="speed-tag">SUPERSONIC</div>
   <div id="boost">
     <svg viewBox="0 0 100 100" aria-hidden="true">
@@ -173,7 +226,9 @@
     <div class="readout"><span id="boost-num">33</span><span class="lbl">BOOST</span></div>
   </div>
   <div id="cam-tag"><b id="cam-mode">BALL CAM</b> · C</div>
-  <div id="hint"><kbd>ESC</kbd> pause &nbsp; <kbd>C</kbd> camera &nbsp; <kbd>M</kbd> sound</div>
+  <div id="ball-arrow" class="hidden"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 7 L34 20 L8 33 L14 20 Z"/></svg></div>
+  <div id="replay-tag" class="hidden"><b>REPLAY</b><span class="skip-keys">SPACE · CLICK · A TO SKIP</span><span class="skip-touch">TAP TO SKIP</span></div>
+  <div id="hint"><kbd>ESC</kbd> pause &nbsp; <kbd>C</kbd> camera &nbsp; <kbd>M</kbd> sound &nbsp; <kbd>N</kbd> music</div>
 </div>
 
 <!-- Touch controls (shown on touch devices only) -->
@@ -190,13 +245,13 @@
 <div id="menu" class="overlay hidden">
   <div class="card">
     <div class="brand">EON GAMES</div>
-    <h1 class="title" id="title">BOOSTBALL</h1>
+    <h1 class="title" id="title">EON LEAGUE</h1>
     <div class="tagline">Rocket-powered car football</div>
     <div class="opts">
       <div class="opt"><span>MODE</span><div class="seg" id="opt-mode"><button data-v="1v1" class="on">1 v 1</button><button data-v="2v2">2 v 2</button></div></div>
       <div class="opt"><span>BOTS</span><div class="seg" id="opt-skill"><button data-v="rookie">ROOKIE</button><button data-v="pro" class="on">PRO</button><button data-v="allstar">ALL-STAR</button></div></div>
     </div>
-    <button class="btn" id="btn-play">PLAY</button>
+    <div><button class="btn" id="btn-play">PLAY</button><button class="btn ghost" id="btn-online">PLAY ONLINE</button><button class="btn ghost" id="btn-free">FREE PLAY</button></div>
     <div class="keys">
       <div><b>Drive / steer</b><span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span></div>
       <div><b>Jump · double jump</b><kbd>SPACE</kbd></div>
@@ -205,18 +260,55 @@
       <div><b>Powerslide · air roll</b><kbd>SHIFT</kbd></div>
       <div><b>Air pitch / yaw</b><span><kbd>W</kbd> <kbd>S</kbd> / <kbd>A</kbd> <kbd>D</kbd></span></div>
       <div><b>Ball cam / car cam</b><span><kbd>C</kbd> / <kbd>TAB</kbd></span></div>
-      <div><b>Pause · sound</b><span><kbd>ESC</kbd> · <kbd>M</kbd></span></div>
+      <div><b>Pause · sound · music</b><span><kbd>ESC</kbd> · <kbd>M</kbd> · <kbd>N</kbd></span></div>
+      <div><b>Free play: reset ball</b><kbd>R</kbd></div>
     </div>
     <div class="touch-help">Left stick drives and steers · <b>BOOST</b> · <b>JUMP</b> (tap again mid-air to flip) · <b>DRIFT</b></div>
-    <div class="fine">You play BLUE · 3:00 matches · sudden-death overtime · gamepads work too</div>
+    <div class="fine">3:00 matches · sudden-death overtime · points for goals, assists, saves and shots on target · gamepads work too</div>
+  </div>
+</div>
+
+<!-- Online: find a match -->
+<div id="online" class="overlay hidden">
+  <div class="card narrow">
+    <div class="brand">EON LEAGUE · ONLINE</div>
+    <h1 class="title" style="font-size:clamp(40px,7vw,72px)">PLAY ONLINE</h1>
+    <div class="form">
+      <label class="field"><span>YOUR NAME</span><input class="text" id="net-name" maxlength="12" autocomplete="off" spellcheck="false" enterkeyhint="done"></label>
+      <button class="btn" id="btn-quick">QUICK MATCH</button>
+      <button class="btn ghost" id="btn-create">CREATE PRIVATE ROOM</button>
+      <div class="joinrow"><input class="text code" id="net-code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go"><button class="btn ghost" id="btn-join">JOIN ROOM</button></div>
+      <div class="status" id="net-status"></div>
+      <button class="btn ghost" id="btn-online-back">BACK</button>
+    </div>
+    <div class="fine">Quick match drops you into an open room, or opens one for others to find. Private rooms are joined with their four-letter code.</div>
+  </div>
+</div>
+
+<!-- Online: room lobby -->
+<div id="lobby" class="overlay hidden">
+  <div class="card">
+    <div class="brand" id="lobby-brand">ROOM CODE</div>
+    <h1 class="title code" id="lobby-code">····</h1>
+    <div class="row" style="margin-top:0"><button class="btn ghost" id="btn-copy">COPY INVITE LINK</button><button class="btn ghost" id="btn-switch">SWITCH TEAM</button></div>
+    <div class="teams">
+      <div class="team-col blue"><h3>BLUE</h3><ul id="lobby-blue"></ul></div>
+      <div class="team-col orange"><h3>ORANGE</h3><ul id="lobby-orange"></ul></div>
+    </div>
+    <div class="opts" id="lobby-opts">
+      <div class="opt"><span>MODE</span><div class="seg" id="lob-mode"><button data-v="1v1">1 v 1</button><button data-v="2v2">2 v 2</button></div></div>
+      <div class="opt"><span>BOTS</span><div class="seg" id="lob-fill"><button data-v="1">FILL EMPTY SEATS</button><button data-v="0">NONE</button></div><div class="seg" id="lob-skill"><button data-v="rookie">ROOKIE</button><button data-v="pro">PRO</button><button data-v="allstar">ALL-STAR</button></div></div>
+    </div>
+    <div class="status" id="lobby-status" style="margin:0 auto 10px"></div>
+    <div class="row"><button class="btn" id="btn-start">START MATCH</button><button class="btn ghost" id="btn-leave">LEAVE ROOM</button></div>
   </div>
 </div>
 
 <!-- Pause -->
 <div id="pause" class="overlay hidden">
   <div class="card">
-    <div class="brand">PAUSED</div>
-    <h1 class="title" style="font-size:clamp(44px,8vw,84px)">TIME OUT</h1>
+    <div class="brand" id="pause-brand">PAUSED</div>
+    <h1 class="title" id="pause-title" style="font-size:clamp(44px,8vw,84px)">TIME OUT</h1>
     <div class="row" style="margin-top:22px">
       <button class="btn" id="btn-resume">RESUME</button>
     </div>
@@ -224,6 +316,7 @@
       <button class="btn ghost" id="btn-restart">RESTART MATCH</button>
       <button class="btn ghost" id="btn-quit">MAIN MENU</button>
       <button class="btn ghost" id="btn-sound">SOUND: ON</button>
+      <button class="btn ghost" id="btn-music">MUSIC: ON</button>
     </div>
   </div>
 </div>
@@ -234,7 +327,8 @@
     <div class="brand" id="end-brand">FULL TIME</div>
     <h2 class="big" id="end-title">VICTORY</h2>
     <div class="final"><span class="b" id="end-blue">0</span> &nbsp;–&nbsp; <span class="o" id="end-orange">0</span></div>
-    <table class="stats"><thead><tr><th>PLAYER</th><th>GOALS</th><th>SAVES</th><th>TOUCHES</th></tr></thead><tbody id="end-stats"></tbody></table>
+    <table class="stats"><thead><tr><th>PLAYER</th><th>SCORE</th><th>GOALS</th><th>ASSISTS</th><th>SAVES</th><th>SHOTS</th></tr></thead><tbody id="end-stats"></tbody></table>
+    <div class="status" id="end-status" style="margin:-8px auto 12px"></div>
     <div class="row">
       <button class="btn" id="btn-again">REMATCH</button>
       <button class="btn ghost" id="btn-menu">MAIN MENU</button>
@@ -245,7 +339,7 @@
 <div id="rotate">Rotate your device to landscape to play</div>
 
 <!-- Loading -->
-<div id="boot"><div class="logo">BOOSTBALL</div><div class="bar"><i></i></div><div id="boot-status">Loading…</div></div>
+<div id="boot"><div class="logo">EON LEAGUE</div><div class="bar"><i></i></div><div id="boot-status">Loading…</div></div>
 
 <script type="module">
 // ============================================================================
@@ -291,7 +385,44 @@ try {
 // ============================================================================
 //  CONFIG — every tunable number lives here (1 unit = 1 metre)
 // ============================================================================
-const GAME_TITLE = 'BOOSTBALL';
+const GAME_TITLE = 'EON LEAGUE';
+
+// ---- Music -----------------------------------------------------------------
+// Put the mp3 next to this HTML file. Add more filenames and they play in order as a playlist.
+const MUSIC_TRACKS = ['EonLeague.mp3'];
+const MUSIC_VOLUME = 0.5;
+
+// ---- Engine sound ----------------------------------------------------------
+// The engine is synthesised in the browser. To use a recording instead, put a short seamless engine loop
+// (recorded at a steady mid-range rev) next to this file and name it here, e.g. 'EonLeagueEngine.mp3'.
+const ENGINE_SAMPLE = null;
+
+// ---- Online play (Firebase Realtime Database) --------------------------------
+// The same web config the other Eon games on the shared up-to-battles project use.
+// Set FIREBASE_CONFIG = null to switch online play off (the menu button then explains why).
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyC1TMdNxiOGXwAjKx-wwtrZk0Ab92EIAms',
+  authDomain: 'up-to-battles.firebaseapp.com',
+  databaseURL: 'https://up-to-battles-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId: 'up-to-battles',
+  storageBucket: 'up-to-battles.firebasestorage.app',
+  messagingSenderId: '277525542955',
+  appId: '1:277525542955:web:52d76130dd2e7f1aa3d26e',
+};
+const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
+// Everything this game writes lives under this one node, alongside whatever else the project holds:
+//   eonleague/lobby/<CODE>            { mode, n, max, name, t }            ← open quick-match rooms
+//   eonleague/rooms/<CODE>/meta       { host, mode, skill, fill, phase, pub, t }
+//   eonleague/rooms/<CODE>/players/<uid>   { name, team, t }
+//   eonleague/rooms/<CODE>/match      { id, n, phase, at, score, left, roster, … }   ← written by the host
+//   eonleague/rooms/<CODE>/state/<uid>     { t, k, c: cars, s: stats, b: ball }      ← ~15 times a second
+//   eonleague/rooms/<CODE>/pads       { p<i>: time taken }
+// The database rules it needs are in the setup notes that came with this file.
+const NET_PATH = 'eonleague';
+const NET = { SEND_RATE: 15, TIMEOUT: 8, MAX_NAME: 12 };
+
+// ---- Points ------------------------------------------------------------------
+const POINTS = { goal: 100, assist: 50, save: 50, epicSave: 75, shot: 20 };
 
 const TEAMS = [
   // sign = which end of the pitch (z axis) the team defends
@@ -320,6 +451,7 @@ const PHYS = {
 const BALLP = {
   R: 0.93, MASS: 30, RESTITUTION: 0.6, FRICTION: 0.35,
   MAX_SPEED: 60, MAX_SPIN: 6, AIR_DRAG: 0.03, ROLL_DECEL: 0.55,
+  GRIP: 0.375,      // friction between ball and arena (the mean of the two surfaces) — used by the forecast
   HIT_BOOST: 0.6,   // extra punch added to car hits (0 = pure rigid-body collision)
 };
 
@@ -1019,7 +1151,7 @@ class BoostPads {
       const plate = new THREE.Mesh(new THREE.RingGeometry(big ? 1.15 : 0.5, big ? 1.35 : 0.62, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd98a, toneMapped: false, transparent: true }));
       plate.position.y = 0.05;
       group.add(disc, plate);
-      const pad = { x, z, big, cfg, active: true, timer: 0, group, disc, plate, pulse: 0 };
+      const pad = { index: this.pads.length, x, z, big, cfg, active: true, timer: 0, group, disc, plate, pulse: 0 };
       if (big) {
         pad.orb = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: 0xffc94d, toneMapped: false }));
         pad.orb.castShadow = true;
@@ -1042,7 +1174,7 @@ class BoostPads {
     for (const p of this.pads) {
       if (!p.active) { p.timer -= dt; if (p.timer <= 0) p.active = true; continue; }
       for (const car of cars) {
-        if (car.boost >= 100 || car.pos.y > p.cfg.height) continue;
+        if (car.remote || car.boost >= 100 || car.pos.y > p.cfg.height) continue;   // remote cars collect on their own machine
         const dx = car.pos.x - p.x, dz = car.pos.z - p.z;
         if (dx * dx + dz * dz > p.cfg.radius * p.cfg.radius) continue;
         car.boost = Math.min(100, car.boost + p.cfg.amount);
@@ -1051,6 +1183,16 @@ class BoostPads {
         break;
       }
     }
+  }
+
+  /** Online: another player took pad `i` that many seconds ago. */
+  netTaken(i, secondsAgo) {
+    const p = this.pads[i];
+    if (!p) return;
+    const left = p.cfg.respawn - Math.max(0, secondsAgo);
+    if (left <= 0.05) return;
+    if (p.active) p.pulse = 1;
+    p.active = false; p.timer = left;
   }
 
   /** Frame-rate visuals. */
@@ -1106,6 +1248,9 @@ class Ball {
     this.vel = V(); this.spin = V();
     this.enabled = true;
     this.lastTouch = null;            // { car, team, time }
+    this.prevTouch = null;            // the different car that touched it before that (for assists)
+    this.net = { owner: null, seq: 0, car: -1 };   // online: whose simulation the ball currently follows
+    this.vis = V();                   // online: visual offset that hides network corrections, eased back to zero
     this.touchColor = new THREE.Color(0xdff6ff);
     this.flash = 0;
     this.prediction = Array.from({ length: 121 }, () => ({ t: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }));
@@ -1126,7 +1271,8 @@ class Ball {
     this.pos.set(0, BALLP.R + 0.01, 0); this.prevPos.copy(this.pos);
     this.quat.identity(); this.prevQuat.identity();
     this.vel.set(0, 0, 0); this.spin.set(0, 0, 0);
-    this.lastTouch = null;
+    this.lastTouch = null; this.prevTouch = null;
+    this.vis.set(0, 0, 0);
     this.touchColor.set(0xdff6ff);
     this.trailCount = 0;
     this.group.visible = this.indicator.visible = this.trailMesh.visible = true;
@@ -1168,26 +1314,67 @@ class Ball {
   }
 
   touchedBy(car, time) {
+    if (this.lastTouch && this.lastTouch.car !== car) this.prevTouch = this.lastTouch;
     this.lastTouch = { car, team: car.team, time };
     this.touchColor.set(TEAMS[car.team].glow);
     this.flash = 1;
   }
 
-  /** Cheap forward simulation (floor/wall bounces only) → this.prediction[0..count). */
+  // ---- Online ---------------------------------------------------------------
+  /** Position, velocity and spin appended to `out`, rounded for the wire. */
+  netPack(out) {
+    const r = x => (Number.isFinite(x) ? Math.round(x * 100) / 100 : 0), p = this.pos, v = this.vel, w = this.spin;
+    out.push(r(p.x), r(p.y), r(p.z), r(v.x), r(v.y), r(v.z), r(w.x), r(w.y), r(w.z));
+    return out;
+  }
+
+  /** Adopt the ball owner's state (a[o…o+8], `age` seconds old). A fresh touch or a big disagreement jumps
+   *  straight to it — the jump is hidden by `vis`, which the drawn ball eases out of — small drift is steered out. */
+  netApply(a, o, age, touched) {
+    const g = PHYS.GRAVITY, R = BALLP.R, air = a[o + 1] > R + 0.08 || Math.abs(a[o + 4]) > 0.5;
+    const x = a[o] + a[o + 3] * age, z = a[o + 2] + a[o + 5] * age;
+    const y = Math.max(R, a[o + 1] + a[o + 4] * age - (air ? 0.5 * g * age * age : 0)), vy = a[o + 4] - (air ? g * age : 0);
+    if (![x, y, z, vy, a[o + 3], a[o + 5]].every(Number.isFinite)) return;
+    const dx = x - this.pos.x, dy = y - this.pos.y, dz = z - this.pos.z, err = Math.hypot(dx, dy, dz), b = this.body;
+    if (touched || err > 1.5) {
+      if (err < 8) this.vis.x -= dx, this.vis.y -= dy, this.vis.z -= dz; else this.vis.set(0, 0, 0);
+      b.setTranslation({ x, y, z }, true);
+      b.setLinvel({ x: a[o + 3], y: vy, z: a[o + 5] }, true);
+      this.pos.set(x, y, z); this.prevPos.copy(this.pos); this.vel.set(a[o + 3], vy, a[o + 5]);
+    } else b.setLinvel({ x: a[o + 3] + dx * 5, y: vy + dy * 5, z: a[o + 5] + dz * 5 }, true);
+    b.setAngvel({ x: a[o + 6] || 0, y: a[o + 7] || 0, z: a[o + 8] || 0 }, true);
+  }
+
+  /**
+   * Cheap forward simulation (flat floor/walls only) → this.prediction[0..count). The floor is modelled the way the real
+   * ball meets it: its spin is capped, so anything quick skids and the floor drags on it until it is slow enough to roll.
+   */
   predict(horizon = 4) {
-    const { W, L, H, GW, GH } = FIELD, R = BALLP.R, g = PHYS.GRAVITY, h = 1 / 60, e = BALLP.RESTITUTION;
-    let x = this.pos.x, y = this.pos.y, z = this.pos.z, vx = this.vel.x, vy = this.vel.y, vz = this.vel.z;
-    const out = this.prediction, steps = Math.round(horizon * 60);
+    const { W, L, H, GW, GH } = FIELD, R = BALLP.R, g = PHYS.GRAVITY, h = 1 / 60, e = BALLP.RESTITUTION, mu = BALLP.GRIP;
+    let x = this.pos.x, y = this.pos.y, z = this.pos.z, vx = this.vel.x, vy = this.vel.y, vz = this.vel.z, wx = this.spin.x, wz = this.spin.z;
+    const out = this.prediction, steps = Math.round(horizon * 60), spinKeep = 1 - 0.22 * h, drag = 1 - BALLP.AIR_DRAG * h;
     let n = 0;
     this.predictedGoal = null;
     for (let i = 0; i <= steps; i++) {
       if (i % 2 === 0) { const s = out[n++]; s.t = i * h; s.x = x; s.y = y; s.z = z; s.vx = vx; s.vy = vy; s.vz = vz; }
       vy -= g * h;
-      const k = 1 - BALLP.AIR_DRAG * h;
-      vx *= k; vy *= k; vz *= k;
+      vx *= drag; vy *= drag; vz *= drag; wx *= spinKeep; wz *= spinKeep;
       x += vx * h; y += vy * h; z += vz * h;
-      if (y < R) { y = R; if (vy < 0) { vy = -vy * e; if (vy < 0.5) vy = 0; vx *= 0.985; vz *= 0.985; } }
-      else if (y > H - R) { y = H - R; vy = -Math.abs(vy) * e; }
+      if (y < R) {
+        y = R;
+        if (vy < 0) {
+          const vin = -vy;
+          vy = vin * e; if (vy < 0.5) vy = 0;
+          // grip: the floor pushes against the sliding contact point, slowing the ball and spinning it up
+          const ux = vx + wz * R, uz = vz - wx * R, u = Math.hypot(ux, uz);
+          if (u > 1e-4) {
+            const j = Math.min(mu * vin, u / 3.5), fx = -ux / u * j, fz = -uz / u * j;
+            vx += fx; vz += fz; wx -= 2.5 * fz / R; wz += 2.5 * fx / R;
+            const w = Math.hypot(wx, wz); if (w > BALLP.MAX_SPIN) { wx *= BALLP.MAX_SPIN / w; wz *= BALLP.MAX_SPIN / w; }
+          }
+          if (vy === 0) { const hs = Math.hypot(vx, vz); if (hs > 1e-3) { const k = Math.max(0, hs - BALLP.ROLL_DECEL * h) / hs; vx *= k; vz *= k; } }
+        }
+      } else if (y > H - R) { y = H - R; vy = -Math.abs(vy) * e; }
       if (Math.abs(x) > W - R) { x = Math.sign(x) * (W - R); vx = -vx * e; }
       if (Math.abs(z) > L - R) {
         if (Math.abs(x) < GW - R * 0.5 && y < GH - R * 0.5) {
@@ -1277,7 +1464,8 @@ class Ball {
   /** Per-frame visual update. alpha = interpolation between physics steps. */
   update(dt, alpha, time, camera) {
     if (!this.enabled) return;
-    const p = this.renderPos.lerpVectors(this.prevPos, this.pos, alpha);
+    const p = this.renderPos.lerpVectors(this.prevPos, this.pos, alpha).add(this.vis);
+    this.vis.multiplyScalar(Math.exp(-9 * dt));
     this.group.position.copy(p);
     this.mesh.quaternion.slerpQuaternions(this.prevQuat, this.quat, alpha);
     this.flash = Math.max(0, this.flash - dt * 4);
@@ -1338,8 +1526,9 @@ const TURN_CURVE = [[0, 0.69], [5, 0.398], [10, 0.235], [15, 0.1375], [17.5, 0.1
 const _ray = { origin: { x: 0, y: 0, z: 0 }, dir: { x: 0, y: -1, z: 0 } };
 
 class Car {
-  constructor(game, { team, name, human = false, variant = 0 }) {
-    this.game = game; this.team = team; this.name = name; this.human = human; this.variant = variant;
+  constructor(game, { id = 0, team, name, human = false, variant = 0 }) {
+    this.game = game; this.id = id; this.team = team; this.name = name; this.human = human; this.variant = variant;
+    this.remote = false; this.net = null; this.ownerUid = null; this.isBot = false;      // online play (see setRemote)
     this.controls = { throttle: 0, steer: 0, pitch: 0, yaw: 0, roll: 0, jump: false, boost: false, drift: false };
     const C = CARP, world = game.world, edge = 0.05;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 2, 0).setCanSleep(false).setCcdEnabled(true));
@@ -1355,9 +1544,11 @@ class Car {
     this.wheels = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => ({
       mount: V().set(sx * C.WHEEL_X, C.WHEEL_Y, sz * C.WHEEL_Z), front: sz < 0, len: C.SUSP_LEN, contact: false, spin: 0,
     }));
-    this.stats = { goals: 0, touches: 0, saves: 0 };
+    this.stats = { points: 0, goals: 0, assists: 0, saves: 0, shots: 0, touches: 0 };
+    this.shotAt = -9; this.saveAt = -9;                       // when it last earned each award (stops double counting)
     this._s = { a: V(), b: V(), c: V(), d: V(), n: V(), f: V(), r: V(), o: V(), hn: V() };
     this.dodgeAxis = V(); this.rightNormal = V().set(0, 1, 0);
+    this._q1 = new THREE.Quaternion(); this._q2 = new THREE.Quaternion();
     this._buildVisual();
     this.spawn(0, 0, 0);
   }
@@ -1383,12 +1574,79 @@ class Car {
     for (const w of this.wheels) { w.len = CARP.SUSP_LEN - 0.01; w.contact = true; }
     const c = this.controls;
     c.throttle = c.steer = c.pitch = c.yaw = c.roll = 0; c.jump = c.boost = c.drift = false;
+    if (this.net) { const n = this.net; n.p.copy(this.pos); n.q.copy(q); n.v.set(0, 0, 0); n.w.set(0, 0, 0); n.err.set(0, 0, 0); n.age = 0; n.flags = 1; n.fresh = true; }
   }
 
   get dodging() { return this.dodgeTimer >= 0; }
 
+  // ---- Online ---------------------------------------------------------------
+  /** A remote car is driven by another player's machine: here it is a kinematic body that follows their state
+   *  updates (so it still knocks the ball and blocks other cars) instead of running its own physics. */
+  setRemote(remote) {
+    if (this.remote === remote) return;
+    this.remote = remote;
+    this.body.setBodyType(remote ? RAPIER.RigidBodyType.KinematicPositionBased : RAPIER.RigidBodyType.Dynamic, true);
+    if (remote) this.net = { p: this.pos.clone(), q: this.quat.clone(), v: V(), w: V(), err: V(), age: 0, flags: 1, fresh: true };
+    else { this.body.setLinvel(this.vel, true); this.body.setAngvel(this.angVel, true); this.net = null; this.prevJump = false; }
+  }
+
+  /** This car's state for the wire: position, rotation, velocity, spin, boost, flags, steering. */
+  netPack() {
+    const r = x => (Number.isFinite(x) ? Math.round(x * 100) / 100 : 0), r3 = x => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : 0);
+    const p = this.pos, q = this.quat, v = this.vel, w = this.angVel;
+    const flags = (this.grounded ? 1 : 0) | (this.boosting ? 2 : 0) | (this.supersonic ? 4 : 0) | (this.driftAmt > 0.5 ? 8 : 0) | (this.dodgeTimer >= 0 ? 16 : 0) | (this.jumping ? 32 : 0);
+    return [r(p.x), r(p.y), r(p.z), r3(q.x), r3(q.y), r3(q.z), r3(q.w), r(v.x), r(v.y), r(v.z), r(w.x), r(w.y), r(w.z), Math.round(this.boost) || 0, flags, r(this.controls.steer)];
+  }
+
+  /** The owner's latest state (same layout as netPack), `age` seconds old. */
+  netUpdate(a, age) {
+    const n = this.net;
+    if (!n || !Array.isArray(a) || a.length < 15 || !a.every(Number.isFinite)) return;
+    n.p.set(a[0], a[1], a[2]); n.q.set(a[3], a[4], a[5], a[6]).normalize(); n.v.set(a[7], a[8], a[9]); n.w.set(a[10], a[11], a[12]);
+    n.age = age; n.flags = a[14]; this.boost = a[13]; this.controls.steer = a[15] || 0;
+    // the new estimate rarely lands exactly where we were showing the car: remember the gap and bleed it away
+    // smoothly (a far-off gap — kickoff reset, long silence — is simply jumped)
+    this._netTarget(n.err).sub(this.pos).negate();
+    if (n.fresh || n.err.lengthSq() > 36) n.err.set(0, 0, 0);
+    n.fresh = false;
+  }
+
+  /** Dead reckoning: where the owner's car should be `net.age` seconds after its last update. */
+  _netTarget(out) {
+    const n = this.net, ex = Math.min(n.age, 0.3);
+    out.copy(n.p).addScaledVector(n.v, ex);
+    if (n.flags & 1) out.addScaledVector(this._s.b.crossVectors(n.w, n.v), 0.5 * ex * ex);   // turning: follow the arc, not the tangent
+    else out.y -= 0.5 * PHYS.GRAVITY * ex * ex;
+    return out;
+  }
+
+  /** Follow the owner's car: dead-reckon from its last update to "now", easing out whatever error the last update revealed. */
+  _stepRemote(dt) {
+    const n = this.net, S = this._s, C = CARP, flags = n.flags, grounded = !!(flags & 1);
+    n.age += dt;
+    n.err.multiplyScalar(Math.exp(-9 * dt));
+    const ex = Math.min(n.age, 0.3), target = this._netTarget(S.a).add(n.err);
+    const spin = n.w.length(), tq = this._q1;
+    if (spin > 1e-3) tq.setFromAxisAngle(S.c.copy(n.w).multiplyScalar(1 / spin), spin * ex).multiply(n.q); else tq.copy(n.q);
+    this.body.setNextKinematicTranslation(target);
+    this.body.setNextKinematicRotation(this._q2.copy(this.quat).slerp(tq, n.fresh ? 1 : 1 - Math.exp(-18 * dt)));
+    // what the rest of the game reads off a car
+    const wasJumping = this.jumping, wasDodging = this.dodgeTimer >= 0;
+    this.vel.copy(n.v); this.angVel.copy(n.w);
+    this.fwd.set(0, 0, -1).applyQuaternion(this.quat); this.up.set(0, 1, 0).applyQuaternion(this.quat); this.right.set(1, 0, 0).applyQuaternion(this.quat);
+    this.grounded = grounded; this.wheelContacts = grounded ? 4 : 0;
+    if (grounded) this.groundNormal.copy(this.up);
+    this.boosting = !!(flags & 2); this.supersonic = !!(flags & 4); this.driftAmt = flags & 8 ? 1 : 0;
+    this.dodgeTimer = flags & 16 ? 0 : -1; this.jumping = !!(flags & 32);
+    this.speed = n.v.length(); this.forwardSpeed = n.v.dot(this.fwd);
+    for (const w of this.wheels) { w.contact = grounded; w.len = damp(w.len, grounded ? C.SUSP_LEN - 0.005 : C.SUSP_LEN, 20, dt); }
+    if (this.jumping && !wasJumping) this.game.onCarJump(this, false);
+    if (this.dodgeTimer >= 0 && !wasDodging) this.game.onCarDodge(this);
+  }
+
   /** Apply one physics step worth of forces. Call before world.step(). */
   step(dt) {
+    if (this.remote) return this._stepRemote(dt);
     const C = CARP, c = this.controls, body = this.body, world = this.game.world, S = this._s;
     const pos = this.pos, quat = this.quat, vel = this.vel, ang = this.angVel, fwd = this.fwd, up = this.up, right = this.right;
     let t = body.translation(), r = body.rotation();
@@ -1577,6 +1835,7 @@ class Car {
 
   /** Shove the car (goal explosion). */
   blast(dir, strength) {
+    if (this.remote) return;                                  // its owner's machine does the blasting
     this.blasted = 1.2;
     this.body.applyImpulse({ x: dir.x * strength * CARP.MASS, y: dir.y * strength * CARP.MASS, z: dir.z * strength * CARP.MASS }, true);
     this.body.applyTorqueImpulse({ x: rand(-1, 1) * 40, y: rand(-1, 1) * 40, z: rand(-1, 1) * 40 }, true);
@@ -2197,6 +2456,18 @@ class CameraController {
     this._finish(dt, 58);
   }
 
+  /** Goal replay: a broadcast-style camera that hangs back from the ball, off to one side, and watches it go in. */
+  replay(dt, ball, goalSign, side) {
+    const cam = this.camera, b = ball.renderPos;
+    const want = this._a.set(b.x * 0.55 + side * 9, Math.max(4.5, b.y * 0.7 + 4), b.z - goalSign * 14);
+    this._confine(want);
+    if (this.fresh) { cam.position.copy(want); this.look.copy(b); this.fresh = false; }
+    cam.position.lerp(want, 1 - Math.exp(-2.4 * dt));
+    this.look.lerp(b, 1 - Math.exp(-7 * dt));
+    this.upRef.set(0, 1, 0); cam.up.set(0, 1, 0);
+    this._finish(dt, 60);
+  }
+
   _finish(dt, fovTarget) {
     const cam = this.camera;
     if (this.shake > 0.001) {
@@ -2211,7 +2482,7 @@ class CameraController {
 }
 
 // ============================================================================
-//  FX — additive GPU point particles, goal shockwave, and a tiny WebAudio synth
+//  FX — additive GPU point particles, goal shockwave, WebAudio sound effects and the music player
 // ============================================================================
 class Particles {
   constructor(game, max = 3000) {
@@ -2323,8 +2594,13 @@ class Shockwave {
 }
 
 /** Procedural sound effects — no audio files needed. */
+const ENGINE_GEARS = [0, 5, 9, 13, 17.5, 24];      // road speed (m/s) at the top of each gear
+// Effects volume going into the limiter. The browser's compressor adds about 4.3 dB of make-up gain at these settings,
+// so this is 0.8 with that taken back out.
+const SFX_GAIN = 0.49;
+
 class Sfx {
-  constructor() { this.ctx = null; this.muted = false; this.ready = false; }
+  constructor() { this.ctx = null; this.muted = false; this.ready = false; this.rpm = 1000; this.gear = 1; this.shift = 0; }
 
   /** Must be called from a user gesture (Play button). */
   unlock() {
@@ -2341,29 +2617,101 @@ class Sfx {
 
   _setup() {
     const ctx = this.ctx;
-    this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.8; this.master.connect(ctx.destination);
+    this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : SFX_GAIN;
+    const limiter = this.limiter = ctx.createDynamicsCompressor();   // keeps a goal explosion over a screaming engine from clipping
+    limiter.threshold.value = -12; limiter.knee.value = 8; limiter.ratio.value = 6; limiter.attack.value = 0.004; limiter.release.value = 0.2;
+    this.master.connect(limiter).connect(ctx.destination);
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.noiseBuf = buf;
-    // engine: two detuned saws through a low-pass
-    this.engFilter = ctx.createBiquadFilter(); this.engFilter.type = 'lowpass'; this.engFilter.frequency.value = 400;
-    this.engGain = ctx.createGain(); this.engGain.gain.value = 0;
-    this.engOsc = [0, 7].map(det => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 60; o.detune.value = det * 4; o.connect(this.engFilter); o.start(); return o; });
-    this.engFilter.connect(this.engGain).connect(this.master);
-    // boost: band-passed noise loop
-    const loop = (type, freq, q) => {
-      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
-      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
-      const g = ctx.createGain(); g.gain.value = 0;
-      src.connect(f).connect(g).connect(this.master); src.start();
-      return { f, g };
-    };
-    this.boostLoop = loop('bandpass', 1100, 0.8);
-    this.crowd = loop('bandpass', 520, 0.5);
+    this._setupEngine();
+    this.boostLoop = this._loop('bandpass', 1100, 0.8);
+    this.boostLow = this._loop('lowpass', 240, 0.7);            // the chest-thump under the hiss
+    this.crowd = this._loop('bandpass', 520, 0.5);
     this.ready = true;
+    if (ENGINE_SAMPLE) this._loadEngineSample(ENGINE_SAMPLE);
   }
 
-  setMuted(m) { this.muted = m; if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.03); }
+  /** Looping filtered noise with its own gain. */
+  _loop(type, freq, q) {
+    const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(f).connect(g).connect(this.master); src.start(0, Math.random());
+    return { f, g };
+  }
+
+  // ---- Engine ----------------------------------------------------------------
+  // A small engine model rather than a plain tone: revs come from road speed through a five-speed gearbox,
+  // and the sound is built the way an exhaust note is — a pulse train at the firing rate whose harmonics
+  // are shaped by load (throttle opens the filter and drives the distortion), plus chopped intake rasp.
+  _setupEngine() {
+    const ctx = this.ctx, E = this.eng = {};
+    // One oscillator turns at the engine-cycle rate (two crank revolutions). Its waveform is drawn from
+    // harmonics: the firing orders (4th, 8th, 12th… on a four-cylinder) carry the note, while the weaker
+    // orders in between give the lumpy, mechanical texture a plain sawtooth lacks.
+    const N = 48, re = new Float32Array(N + 1), im = new Float32Array(N + 1);
+    let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let h = 1; h <= N; h++) {
+      const amp = (h % 4 === 0 ? 1 : h % 2 === 0 ? 0.36 : 0.17) / Math.pow(h / 4 + 0.6, 1.1), ph = rnd() * TAU;
+      re[h] = amp * Math.cos(ph); im[h] = amp * Math.sin(ph);
+    }
+    const wave = ctx.createPeriodicWave(re, im);
+    const voice = detune => { const o = ctx.createOscillator(); o.setPeriodicWave(wave); o.frequency.value = 9; o.detune.value = detune; o.start(); return o; };
+    E.oscs = [voice(0), voice(11)];                              // two voices a few cents apart: slow beating, like uneven cylinders
+    E.drive = ctx.createGain(); E.drive.gain.value = 0.3;
+    E.shaper = ctx.createWaveShaper();                           // soft clipping → edge that grows with load, without turning to fuzz
+    const curveData = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) { const x = (i / 511.5) - 1; curveData[i] = Math.tanh(1.5 * x + 0.18) - Math.tanh(0.18); }   // slightly lopsided: even harmonics too
+    E.shaper.curve = curveData; E.shaper.oversample = '2x';
+    E.lp = ctx.createBiquadFilter(); E.lp.type = 'lowpass'; E.lp.frequency.value = 500; E.lp.Q.value = 0.9;
+    E.body = ctx.createBiquadFilter(); E.body.type = 'peaking'; E.body.frequency.value = 170; E.body.gain.value = 5; E.body.Q.value = 1.2;   // follows the firing note
+    // Two fixed resonances, like the pipework of a real exhaust: as the revs climb the harmonics sweep through them,
+    // which is what makes an engine's tone change with speed instead of just sliding up in pitch.
+    const formant = (f, db, q) => { const b = ctx.createBiquadFilter(); b.type = 'peaking'; b.frequency.value = f; b.gain.value = db; b.Q.value = q; return b; };
+    E.f1 = formant(430, 6, 2.2); E.f2 = formant(1150, 5, 2.6);
+    E.gain = ctx.createGain(); E.gain.gain.value = 0;
+    for (const o of E.oscs) o.connect(E.drive);
+    E.drive.connect(E.shaper).connect(E.lp).connect(E.body).connect(E.f1).connect(E.f2).connect(E.gain).connect(this.master);
+    // intake / exhaust rasp: band-passed noise chopped at the firing rate
+    const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+    E.raspBp = ctx.createBiquadFilter(); E.raspBp.type = 'bandpass'; E.raspBp.frequency.value = 900; E.raspBp.Q.value = 1.1;
+    E.raspChop = ctx.createGain(); E.raspChop.gain.value = 0.55;
+    E.chop = ctx.createOscillator(); E.chop.type = 'sawtooth'; E.chop.frequency.value = 36;
+    E.chopDepth = ctx.createGain(); E.chopDepth.gain.value = 0.45;
+    E.chop.connect(E.chopDepth).connect(E.raspChop.gain);
+    E.raspGain = ctx.createGain(); E.raspGain.gain.value = 0;
+    src.connect(E.raspBp).connect(E.raspChop).connect(E.raspGain).connect(this.master);
+    src.start(); E.chop.start();
+  }
+
+  /** Optional: a recorded engine loop replaces the synthesised note (its pitch follows the revs). */
+  _loadEngineSample(url) {
+    fetch(url).then(r => (r.ok ? r.arrayBuffer() : Promise.reject())).then(b => this.ctx.decodeAudioData(b)).then(buffer => {
+      const E = this.eng, src = this.ctx.createBufferSource(); src.buffer = buffer; src.loop = true;
+      E.sampleGain = this.ctx.createGain(); E.sampleGain.gain.value = 0;
+      src.connect(E.sampleGain).connect(this.master); src.start();
+      E.sample = src;
+    }).catch(() => {});
+  }
+
+  /** Revs for the current road speed: pick a gear, map speed to rpm inside it. */
+  _revs(speed, throttle, airborne, dt) {
+    const G = ENGINE_GEARS;
+    if (this.gear < 5 && speed > G[this.gear] * 0.98) { this.gear++; this.shift = 0.12; }
+    else if (this.gear > 1 && speed < G[this.gear - 1] * 0.8) { this.gear--; this.shift = 0.06; }
+    this.shift = Math.max(0, this.shift - dt);
+    const lo = G[this.gear - 1] * 0.8, hi = G[this.gear];
+    let target = this.gear === 1 ? 1000 + 5800 * (speed / hi) : 3300 + 3600 * ((speed - lo) / (hi - lo));
+    if (airborne) target = throttle > 0.1 ? 6900 : 1700;         // wheels off the ground: the engine spins free
+    else if (throttle > 0.1 && speed < 1.5) target += 1100;      // launch
+    this.rpm = damp(this.rpm, clamp(target, 950, 7400), airborne ? 5 : 13, dt);
+    return this.rpm;
+  }
+
+  setMuted(m) { this.muted = m; if (this.master) this.master.gain.setTargetAtTime(m ? 0 : SFX_GAIN, this.ctx.currentTime, 0.03); }
+  /** Tab hidden: nothing is updating the loops any more, so stop the lot until the tab is shown again. */
+  setHidden(h) { if (!this.ctx) return; try { if (h) this.ctx.suspend(); else this.ctx.resume(); } catch (err) { /* context already closed */ } }
 
   tone(freq, dur, { type = 'sine', gain = 0.2, to = null, delay = 0 } = {}) {
     if (!this.ready) return;
@@ -2389,6 +2737,11 @@ class Sfx {
   dodge() { this.noise(0.28, { gain: 0.16, freq: 500, to: 2600, q: 1.2 }); }
   land(v) { this.tone(90, 0.14, { gain: clamp(v / 14, 0.05, 0.3), to: 50 }); }
   pad(big) { this.tone(big ? 520 : 760, big ? 0.3 : 0.14, { type: 'triangle', gain: 0.16, to: big ? 1400 : 1200 }); if (big) this.tone(780, 0.3, { type: 'sine', gain: 0.1, to: 2100, delay: 0.05 }); }
+  /** Points awarded: a short rising chime (bigger awards get a third note). */
+  points(amount) {
+    this.tone(880, 0.12, { type: 'triangle', gain: 0.13 }); this.tone(1320, 0.18, { type: 'triangle', gain: 0.12, delay: 0.08 });
+    if (amount >= 50) this.tone(1760, 0.26, { type: 'triangle', gain: 0.1, delay: 0.17 });
+  }
   goal() {
     this.noise(1.6, { gain: 0.7, freq: 3000, to: 90, type: 'lowpass', q: 0.4 });
     this.tone(70, 1.2, { gain: 0.6, to: 30 });
@@ -2398,17 +2751,72 @@ class Sfx {
   whistle() { this.tone(2100, 0.5, { type: 'square', gain: 0.05, to: 1900 }); }
 
   /** Continuous sounds follow the player's car. */
-  update(car, active) {
+  update(car, active, dt) {
     if (!this.ready) return;
-    const t = this.ctx.currentTime, on = active && car;
-    const sp = on ? car.speed : 0;
-    this.engOsc.forEach(o => o.frequency.setTargetAtTime(52 + sp * 6.5, t, 0.06));
-    this.engFilter.frequency.setTargetAtTime(300 + sp * 60, t, 0.08);
-    this.engGain.gain.setTargetAtTime(on ? 0.05 + Math.min(0.05, sp * 0.003) : 0, t, 0.1);
-    this.boostLoop.g.gain.setTargetAtTime(on && car.boosting ? 0.2 : 0, t, 0.04);
+    const t = this.ctx.currentTime, E = this.eng, on = !!(active && car);
+    const boosting = on && car.boosting, airborne = on && !car.grounded, sp = on ? car.speed : 0;
+    const throttle = on ? Math.max(Math.abs(car.controls.throttle), boosting ? 1 : 0) : 0;
+    const rpm = this._revs(on ? Math.abs(car.forwardSpeed) : 0, throttle, airborne, Math.max(dt, 1e-3));
+    const r = (rpm - 950) / 6450;                                  // 0 at idle … 1 at the limiter
+    const load = on ? clamp(throttle * 0.8 + (boosting ? 0.3 : 0), 0, 1) : 0;   // how hard the engine is working
+    const cut = this.shift > 0 ? 0.4 : 1;                          // brief dip as the gear goes in
+    // the level barely moves: load already makes it louder through the drive and the filter. It sits under the music.
+    const cycle = rpm / 120, level = on ? (0.07 + 0.012 * load) * cut : 0;
+    E.oscs.forEach(o => o.frequency.setTargetAtTime(cycle, t, 0.02));
+    E.chop.frequency.setTargetAtTime(cycle * 4, t, 0.02);
+    E.drive.gain.setTargetAtTime(0.3 + load * 0.6, t, 0.05);
+    E.lp.frequency.setTargetAtTime(520 + r * 1300 + load * (700 + r * 2100), t, 0.05);
+    E.body.frequency.setTargetAtTime(120 + r * 260, t, 0.08);
+    E.raspBp.frequency.setTargetAtTime(650 + r * 2300, t, 0.06);
+    E.raspGain.gain.setTargetAtTime(on ? (0.012 + 0.02 * load * (0.4 + r)) * cut : 0, t, 0.05);
+    if (E.sample) {                                                // recorded loop instead of the synthesised note
+      E.sample.playbackRate.setTargetAtTime(clamp(rpm / 4200, 0.3, 2.2), t, 0.03);
+      E.sampleGain.gain.setTargetAtTime(level * 2.4, t, 0.035);
+      E.gain.gain.setTargetAtTime(0, t, 0.05);
+    } else E.gain.gain.setTargetAtTime(level, t, 0.035);
+    this.boostLoop.g.gain.setTargetAtTime(boosting ? 0.17 : 0, t, 0.04);
     this.boostLoop.f.frequency.setTargetAtTime(900 + sp * 40, t, 0.1);
+    this.boostLow.g.gain.setTargetAtTime(boosting ? 0.22 : 0, t, 0.05);
     if (this.crowd.g.gain.value < 0.03) this.crowd.g.gain.setTargetAtTime(active ? 0.035 : 0.012, t, 0.5);
   }
+}
+
+/** Background music: plays MUSIC_TRACKS (files next to this page) in order, looping. Starts on the first click or key press. */
+class Music {
+  constructor(tracks, volume) {
+    this.tracks = tracks || []; this.volume = volume; this.index = 0; this.el = null; this.on = true; this.started = false; this.missing = 0;
+    try { this.on = localStorage.getItem('eonleague.music') !== 'off'; } catch (err) { /* storage unavailable: keep the default */ }
+  }
+
+  /** Call from a user gesture. Safe to call repeatedly. */
+  start() {
+    if (!this.tracks.length || this.missing >= this.tracks.length) return;
+    if (!this.el) {
+      const el = this.el = new Audio();
+      el.preload = 'auto'; el.volume = this.volume; el.loop = this.tracks.length === 1;
+      el.addEventListener('ended', () => this._next());
+      el.addEventListener('error', () => { this.missing++; if (this.missing < this.tracks.length) this._next(); });   // file not uploaded yet: stay quiet
+      el.src = this.tracks[this.index];
+    }
+    this.started = true;
+    if (this.on) this._play();
+  }
+
+  _play() { const p = this.el && this.el.play(); if (p && p.catch) p.catch(() => {}); }
+  _next() { this.index = (this.index + 1) % this.tracks.length; this.el.src = this.tracks[this.index]; if (this.on) this._play(); }
+
+  setOn(on) {
+    this.on = on;
+    try { localStorage.setItem('eonleague.music', on ? 'on' : 'off'); } catch (err) { /* ignore */ }
+    if (!this.el) { if (on) this.start(); return; }
+    if (on) this._play(); else this.el.pause();
+  }
+
+  /** Tab hidden: hold the music until it is shown again. */
+  setHidden(h) { if (!this.el || !this.started) return; if (h) this.el.pause(); else if (this.on) this._play(); }
+
+  /** Master mute (M key) silences the music too without changing the music setting. */
+  setMuted(m) { if (this.el) this.el.muted = m; this.muted = m; }
 }
 
 // ============================================================================
@@ -2422,13 +2830,16 @@ class Input {
     this.touch = { x: 0, y: 0, jump: false, boost: false, drift: false };
     this.padHeld = {};
     const GAME_KEYS = new Set(['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'ShiftLeft', 'ShiftRight']);
+    const typing = e => e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     addEventListener('keydown', e => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || typing(e)) return;         // typing a name or room code is not driving
       if (GAME_KEYS.has(e.code) && game.playing) e.preventDefault();      // menus keep normal keyboard behaviour
       if (!e.repeat) {
         if (e.code === 'KeyC' || e.code === 'Tab') game.toggleCamera();
         else if (e.code === 'Escape' || e.code === 'KeyP') game.togglePause();
         else if (e.code === 'KeyM') game.toggleSound();
+        else if (e.code === 'KeyN') game.toggleMusic();
+        else if (e.code === 'KeyR') game.freeReset();
       }
       this.keys.add(e.code);
     });
@@ -2517,6 +2928,8 @@ class HUD {
     this.speedTag = $('speed-tag'); this.camMode = $('cam-mode'); this.hint = $('hint');
     this.bannerEl = $('banner'); this.bannerMain = $('banner-main'); this.bannerSub = $('banner-sub');
     this.menu = $('menu'); this.pause = $('pause'); this.end = $('end'); this.touch = $('touch');
+    this.feedEl = $('feed'); this.pointsEl = $('points-num');
+    this.replayEl = $('replay-tag'); this.arrow = $('ball-arrow'); this.arrowOn = false;
     this.bannerTime = 0; this.last = {};
     $('title').textContent = GAME_TITLE;
   }
@@ -2526,8 +2939,23 @@ class HUD {
     this.touch.classList.toggle('hidden', !on || !IS_TOUCH);
     if (on) { this.hint.style.opacity = 1; clearTimeout(this._hintT); this._hintT = setTimeout(() => (this.hint.style.opacity = 0), 9000); }
   }
+  showReplay(on) { this.replayEl.classList.toggle('hidden', !on); }
+  /** Edge-of-screen pointer to the ball (x, y in pixels, angle in radians), or hide it with null. */
+  setArrow(x, y, angle) {
+    const on = x !== null;
+    if (on !== this.arrowOn) { this.arrowOn = on; this.arrow.classList.toggle('hidden', !on); }
+    if (on) this.arrow.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${angle.toFixed(3)}rad)`;
+  }
+  setFreeClock() { this.last.clock = 'free'; this.clock.textContent = 'FREE PLAY'; this.clock.classList.remove('urgent'); }
   showMenu(on) { this.menu.classList.toggle('hidden', !on); }
-  showPause(on) { this.pause.classList.toggle('hidden', !on); }
+  /** Offline this is a real pause; online the match carries on behind it, so it is just a menu. */
+  showPause(on, online = false) {
+    this.pause.classList.toggle('hidden', !on);
+    this.$('pause-brand').textContent = online ? 'MATCH STILL RUNNING' : 'PAUSED';
+    this.$('pause-title').textContent = online ? 'MENU' : 'TIME OUT';
+    this.$('btn-restart').classList.toggle('hidden', online);
+    this.$('btn-quit').textContent = online ? 'LEAVE MATCH' : 'MAIN MENU';
+  }
   showEnd(on) { this.end.classList.toggle('hidden', !on); }
 
   setScore(score, bumpTeam = -1) {
@@ -2558,6 +2986,18 @@ class HUD {
   }
 
   setSupersonic(on) { if (this.last.ss !== on) { this.last.ss = on; this.speedTag.classList.toggle('on', on); } }
+  setPoints(points) { if (this.last.points !== points) { this.last.points = points; this.pointsEl.textContent = points; } }
+
+  /** Pop an award ("SAVE +50") or a plain notice into the feed; it removes itself when its animation ends. */
+  feed(text, points = 0) {
+    const el = document.createElement('div');
+    el.className = points ? 'award' : 'award note';
+    if (points) { const b = document.createElement('b'); b.textContent = '+' + points; el.appendChild(b); }
+    el.appendChild(document.createTextNode(text));
+    el.addEventListener('animationend', () => el.remove());
+    this.feedEl.appendChild(el);
+    while (this.feedEl.children.length > 4) this.feedEl.firstChild.remove();
+  }
   setCam(mode) { this.camMode.textContent = mode === 'ball' ? 'BALL CAM' : 'CAR CAM'; }
 
   /** Big centre-screen message. cls: blue | orange | amber | count. */
@@ -2575,8 +3015,8 @@ class HUD {
     }
   }
 
-  /** Fill in the full-time screen. */
-  fillEnd({ score, winner, playerTeam, cars, overtime }) {
+  /** Fill in the full-time screen. `online`: null offline, else { host: bool }. */
+  fillEnd({ score, winner, playerTeam, cars, overtime, online = null }) {
     const title = this.$('end-title'), won = winner === playerTeam;
     title.textContent = playerTeam < 0 ? `${TEAMS[winner].name} WINS` : won ? 'VICTORY' : 'DEFEAT';
     title.className = 'big ' + (winner === 0 ? 'blue' : 'orange');
@@ -2584,20 +3024,559 @@ class HUD {
     this.$('end-blue').textContent = score[0]; this.$('end-orange').textContent = score[1];
     const body = this.$('end-stats');
     body.textContent = '';
-    for (const car of cars) {
-      const tr = document.createElement('tr');
+    // best score first within each team; the MVP is the top scorer on the winning side
+    const rows = cars.slice().sort((a, b) => a.team - b.team || b.stats.points - a.stats.points);
+    const side = cars.filter(c => c.team === winner), pool = side.length ? side : cars;
+    const mvp = pool.reduce((best, c) => (c.stats.points > best.stats.points ? c : best), pool[0]);
+    for (const car of rows) {
+      const tr = document.createElement('tr'), st = car.stats;
       tr.className = `t${car.team}${car.human ? ' me' : ''}`;
-      for (const v of [car.name, car.stats.goals, car.stats.saves, car.stats.touches]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+      [car.name, st.points, st.goals, st.assists, st.saves, st.shots].forEach((v, i) => {
+        const td = document.createElement('td'); td.textContent = v;
+        if (i === 1) td.className = 'pts';
+        if (i === 0 && car === mvp && st.points > 0) { const tag = document.createElement('span'); tag.className = 'mvp'; tag.textContent = 'MVP'; td.appendChild(tag); }
+        tr.appendChild(td);
+      });
       body.appendChild(tr);
     }
+    // online: only the host can start the rematch
+    this.$('btn-again').classList.toggle('hidden', !!online && !online.host);
+    this.$('btn-menu').textContent = online ? 'LEAVE ROOM' : 'MAIN MENU';
+    this.$('end-status').textContent = online ? (online.host ? 'You are the host — start a rematch when everyone is ready.' : 'Waiting for the host to start a rematch…') : '';
+  }
+}
+
+// ============================================================================
+//  NET — online play over Firebase Realtime Database (no game server needed).
+//
+//  How a match stays in sync:
+//    • Every player simulates the whole pitch locally, but only DRIVES their own car. ~15 times a second
+//      each machine publishes the cars it owns; everyone else shows those as "remote" cars that follow
+//      the updates (dead-reckoned and smoothed, see Car._stepRemote).
+//    • The ball follows whoever touched it last: hit it and your machine becomes its authority at once
+//      (so your own touches feel instant) and starts publishing it with your car. Others steer their
+//      copy of the ball onto yours. A newer touch by someone else takes the ball over.
+//    • The host (who opened the room) referees: kickoffs, the clock, goals, overtime and full time are
+//      announced in one small "match" record that every machine — the host's too — reacts to.
+//      The host also drives the bots that fill empty seats, and takes over the car of anyone who leaves.
+// ============================================================================
+class Net {
+  constructor(game) {
+    this.game = game;
+    this.db = null; this.uid = null; this.offset = 0; this.connecting = null;
+    this.code = null; this.isHost = false; this.meta = null; this.players = {}; this.match = null;
+    this.subs = []; this.sendClock = 0; this.sendSoon = false; this.lastSeen = {}; this.matchStart = 0; this.watchClock = 0;
+    this.sawSelf = false; this.listed = false; this.sendFails = 0;
+    this.name = 'Player';
+    try { this.name = Net.cleanName(localStorage.getItem('eonleague.name')); } catch (err) { /* storage unavailable */ }
+  }
+
+  get active() { return !!this.code; }
+  /** Server time in ms (our clock plus Firebase's measured offset) — the shared clock for kickoffs and packet ages. */
+  now() { return Date.now() + this.offset; }
+  get stamp() { return firebase.database.ServerValue.TIMESTAMP; }
+  ref(path) { return this.db.ref(NET_PATH + '/' + path); }
+  room(sub) { return this.ref('rooms/' + this.code + (sub ? '/' + sub : '')); }
+
+  static cleanName(name) { return String(name || '').replace(/\s+/g, ' ').trim().slice(0, NET.MAX_NAME) || 'Player'; }
+  static makeCode() { let c = ''; for (let i = 0; i < 4; i++) c += 'ABCDEFGHJKLMNPQRSTUVWXYZ'[(Math.random() * 24) | 0]; return c; }
+  static spots() { return [0, 1, 2, 3, 4].sort(() => Math.random() - 0.5); }
+  static within(promise, ms = 10000) {
+    return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('The online service did not answer. Check your connection and try again.')), ms))]);
+  }
+
+  /** Turn an SDK error into something a player can act on. */
+  static explain(err) {
+    const text = String((err && (err.code || err.message)) || err).toLowerCase();
+    if (text.includes('permission')) return 'The online database refused the request — its rules need an entry for Eon League (see the setup notes).';
+    if (text.includes('operation-not-allowed') || text.includes('admin-restricted')) return 'Anonymous sign-in is switched off for this Firebase project.';
+    if (text.includes('network')) return 'Could not reach the online service. Check your connection and try again.';
+    return (err && err.message) || 'Something went wrong — try again.';
+  }
+
+  // ---- Connecting -------------------------------------------------------------
+  /** Load the Firebase SDK (only once someone actually goes online), sign in anonymously, open the database. */
+  connect() {
+    if (this.connecting) return this.connecting;
+    if (!FIREBASE_CONFIG) return Promise.reject(new Error('Online play is not set up in this copy of the game.'));
+    const load = file => new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = FIREBASE_SDK + file; el.onload = resolve; el.onerror = () => reject(new Error('Could not load the online service. Check your connection and try again.'));
+      document.head.appendChild(el);
+    });
+    const sdk = window.firebase && firebase.database ? Promise.resolve()
+      : load('firebase-app-compat.js').then(() => load('firebase-auth-compat.js')).then(() => load('firebase-database-compat.js'));
+    this.connecting = Net.within(sdk.then(() => {
+      if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      return firebase.auth().signInAnonymously();
+    }), 15000).then(cred => {
+      // Our id in rooms. Anonymous sign-in gives every tab of one browser the same account, so add a per-tab part —
+      // otherwise two windows on one machine (the easy way to try online play) would count as one player.
+      this.uid = String(cred.user.uid).replace(/[^A-Za-z0-9]/g, '').slice(0, 6) + Math.random().toString(36).slice(2, 8);
+      this.db = firebase.database();
+      this.db.ref('.info/serverTimeOffset').on('value', snap => { this.offset = snap.val() || 0; });
+    }).catch(err => { this.connecting = null; throw err; });
+    return this.connecting;
+  }
+
+  setName(name) {
+    this.name = Net.cleanName(name);
+    try { localStorage.setItem('eonleague.name', this.name); } catch (err) { /* ignore */ }
+    if (this.code && this.players[this.uid]) this.room('players/' + this.uid + '/name').set(this.name);
+  }
+
+  // ---- Rooms --------------------------------------------------------------------
+  /** Open a new room and become its host. */
+  async create({ mode = '1v1', skill = 'pro', fill = true, pub = false } = {}) {
+    await this.connect();
+    let code = null;
+    for (let tries = 0; tries < 6 && !code; tries++) {
+      const candidate = Net.makeCode();
+      const meta = (await Net.within(this.ref('rooms/' + candidate + '/meta').once('value'))).val();
+      if (!meta || this.now() - (meta.t || 0) > 6 * 3600e3) code = candidate;      // free, or abandoned long ago
+    }
+    if (!code) throw new Error('Could not find a free room code — try again.');
+    this.code = code; this.isHost = true;
+    try {
+      const room = this.room();
+      room.onDisconnect().remove();                             // the room goes when its host does
+      await Net.within(room.set({
+        meta: { host: this.uid, mode, skill, fill: !!fill, pub: !!pub, phase: 'lobby', t: this.stamp },
+        players: { [this.uid]: { name: this.name, team: 0, t: this.stamp } },
+      }));
+    } catch (err) { this.code = null; this.isHost = false; throw err; }
+    this._listen();
+    return code;
+  }
+
+  /** Join the room with this four-letter code. */
+  async join(code) {
+    await this.connect();
+    code = String(code || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (code.length !== 4) throw new Error('Room codes are four letters.');
+    const meta = (await Net.within(this.ref('rooms/' + code + '/meta').once('value'))).val();
+    if (!meta) throw new Error(`There is no room ${code} — check the code.`);
+    if (meta.phase !== 'lobby') throw new Error('That match has already kicked off.');
+    const players = (await Net.within(this.ref('rooms/' + code + '/players').once('value'))).val() || {};
+    const cap = meta.mode === '2v2' ? 2 : 1, count = [0, 0];
+    for (const id in players) if (id !== this.uid) count[players[id].team ? 1 : 0]++;
+    if (count[0] + count[1] >= cap * 2) throw new Error('That room is full.');
+    const team = count[0] < cap && count[0] <= count[1] ? 0 : 1;
+    this.code = code; this.isHost = false;
+    try {
+      const me = this.room('players/' + this.uid);
+      me.onDisconnect().remove(); this.room('state/' + this.uid).onDisconnect().remove();
+      await Net.within(me.set({ name: this.name, team, t: this.stamp }));
+    } catch (err) { this.code = null; throw err; }
+    this._listen();
+    return code;
+  }
+
+  /** Join the fullest open room on the quick-match list, or open one for others to find. */
+  async quick(settings) {
+    await this.connect();
+    const list = (await Net.within(this.ref('lobby').once('value'))).val() || {};
+    const open = Object.keys(list)
+      .filter(c => list[c] && list[c].n < list[c].max && this.now() - (list[c].t || 0) < 2 * 3600e3)
+      .sort((a, b) => list[b].n - list[a].n);
+    for (const code of open) {
+      try { return await this.join(code); } catch (err) { /* gone or filled up in the meantime: try the next */ }
+    }
+    return this.create({ ...settings, pub: true });
+  }
+
+  /** Leave the room (the host leaving closes it for everyone). */
+  leave() {
+    if (!this.code) return;
+    for (const off of this.subs) off();
+    this.subs = [];
+    try {
+      if (this.isHost) {
+        this.room().onDisconnect().cancel(); this.room().remove();
+        const listing = this.ref('lobby/' + this.code); listing.onDisconnect().cancel(); listing.remove();
+      } else for (const sub of ['players/', 'state/']) { const r = this.room(sub + this.uid); r.onDisconnect().cancel(); r.remove(); }
+    } catch (err) { /* already offline: the onDisconnect hooks clean up */ }
+    this.code = null; this.isHost = false; this.meta = null; this.players = {}; this.match = null; this.sawSelf = false; this.listed = false;
+  }
+
+  _closed(message) { this.leave(); this.game.onRoomClosed(message); }
+
+  _listen() {
+    const on = (ref, event, fn) => {
+      ref.on(event, fn, err => { if (this.code) this._closed(Net.explain(err)); });
+      this.subs.push(() => ref.off(event, fn));
+    };
+    this.sawSelf = false; this.listed = false; this.sendFails = 0; this.match = null;
+    on(this.room('meta'), 'value', snap => this._onMeta(snap.val()));
+    on(this.room('players'), 'value', snap => this._onPlayers(snap.val() || {}));
+    on(this.room('match'), 'value', snap => { const m = snap.val(); if (m && m.roster) { this.match = m; this.game.onMatch(m); } });
+    const state = this.room('state'), packet = snap => { if (snap.key !== this.uid) this._onPacket(snap.key, snap.val()); };
+    on(state, 'child_added', packet); on(state, 'child_changed', packet);
+    const pads = this.room('pads'), pad = snap => this.game.onPadTaken(+String(snap.key).slice(1), snap.val());
+    on(pads, 'child_added', pad); on(pads, 'child_changed', pad);
+  }
+
+  _onMeta(meta) {
+    if (!meta) { if (this.code && !this.isHost) this._closed('The host closed the room.'); return; }
+    const was = this.meta && this.meta.phase;
+    this.meta = meta;
+    if (this.isHost) this._seat();
+    if (was === 'match' && meta.phase === 'lobby') this.game.onBackToLobby();
+    this.game.ui.renderLobby();
+  }
+
+  _onPlayers(players) {
+    this.players = players;
+    if (players[this.uid]) this.sawSelf = true;
+    else if (this.sawSelf && !this.isHost) return this._closed('You were disconnected from the room.');
+    if (this.isHost) { this._seat(); if (this.meta && this.meta.phase === 'match') this.game.onPlayersChanged(players); }
+    this.game.ui.renderLobby();
+  }
+
+  /** Players in the order they joined. */
+  order() { return Object.keys(this.players).sort((a, b) => (this.players[a].t || 0) - (this.players[b].t || 0) || (a < b ? -1 : 1)); }
+  seats() { return this.meta && this.meta.mode === '2v2' ? 2 : 1; }
+
+  /** Host, in the lobby: keep teams within their size (first come, first served) and the quick-match listing current. */
+  _seat() {
+    const meta = this.meta;
+    if (!meta || meta.phase !== 'lobby') { this._list(false); return; }
+    const cap = this.seats(), count = [0, 0];
+    for (const id of this.order()) {
+      const team = this.players[id].team ? 1 : 0;
+      if (count[team] < cap) count[team]++;
+      else if (count[1 - team] < cap) { count[1 - team]++; this.room('players/' + id + '/team').set(1 - team); }
+      else this.room('players/' + id).remove();                 // no seat left
+    }
+    this._list(!!meta.pub, count[0] + count[1], cap * 2);
+  }
+
+  _list(show, n, max) {
+    const listing = this.ref('lobby/' + this.code);
+    if (show) {
+      const key = `${this.meta.mode}/${n}/${this.name}`;
+      if (this.listed === key) return;
+      this.listed = key;
+      listing.onDisconnect().remove();
+      listing.set({ mode: this.meta.mode, n, max, name: this.name, t: this.stamp });
+    } else if (this.listed) { this.listed = false; listing.remove(); }
+  }
+
+  switchTeam() {
+    const me = this.players[this.uid];
+    if (!me || !this.meta || this.meta.phase !== 'lobby') return;
+    const other = me.team ? 0 : 1;
+    let there = 0;
+    for (const id in this.players) if ((this.players[id].team ? 1 : 0) === other) there++;
+    if (there < this.seats()) this.room('players/' + this.uid + '/team').set(other);
+  }
+
+  setOption(key, value) { if (this.isHost && this.meta && this.meta.phase === 'lobby') this.room('meta/' + key).set(value); }
+
+  // ---- Refereeing (host) --------------------------------------------------------
+  /** Kick a match off: seat the humans, fill the gaps with bots, announce kickoff number one. Returns an error message or null. */
+  start() {
+    if (!this.isHost || !this.meta) return 'Only the host can start the match.';
+    const meta = this.meta, cap = this.seats(), roster = [], order = this.order();
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    for (let team = 0; team < 2; team++) {
+      let k = 0;
+      for (const id of order) {
+        if ((this.players[id].team ? 1 : 0) === team && k < cap) roster.push({ team, k: k++, uid: id, bot: 0, name: Net.cleanName(this.players[id].name) });
+      }
+      while (meta.fill && k < cap) roster.push({ team, k: k++, uid: this.uid, bot: 1, name: names.pop() });
+      if (k === 0) return 'Each team needs at least one player — or let bots fill the empty seats.';
+    }
+    const m = { id: Math.floor(this.now() / 1000), n: 1, phase: 'countdown', at: this.now() + 4200, score: [0, 0], left: MATCH.LENGTH, ot: 0, otT: 0, spots: Net.spots(), skill: meta.skill || 'pro', rv: 1, roster };
+    this.room().update({ 'meta/phase': 'match', match: m, pads: null, state: null });
+    this.match = m;
+    this.game.onMatch(m);
+    return null;
+  }
+
+  /** Publish the match record. Everyone, the host included, reacts to the same message. */
+  post(changes, clearPads = false) {
+    const m = { ...this.match, ...changes };
+    for (const key in m) if (m[key] === undefined || m[key] === null) delete m[key];
+    this.match = m;
+    if (clearPads) this.room().update({ match: m, pads: null }); else this.room('match').set(m);
+    this.game.onMatch(m);
+  }
+
+  /** Send everyone back to the lobby (same room, same players). */
+  toLobby() { if (this.isHost && this.code) this.room().update({ 'meta/phase': 'lobby', match: null, state: null, pads: null }); }
+
+  // ---- In-match traffic -----------------------------------------------------------
+  /** A car on this machine touched the ball: its simulation of the ball is now the one everybody follows. */
+  claimBall(carId) {
+    const b = this.game.ball.net;
+    if (b.owner !== this.uid) b.seq++;
+    b.owner = this.uid; b.car = carId;
+    this.sendSoon = true;
+  }
+
+  padTaken(index) { if (this.code) this.room('pads/p' + index).set(this.stamp).catch(() => {}); }
+
+  /** Called every physics step while a match is on. */
+  step(dt) {
+    this.sendClock += dt;
+    if (this.sendClock >= 1 / NET.SEND_RATE || (this.sendSoon && this.sendClock >= 0.03)) { this.sendClock = 0; this.sendSoon = false; this._send(); }
+    this.watchClock += dt;
+    if (this.watchClock < 1 || !this.match) return;
+    this.watchClock = 0;
+    const silentFor = uid => (Date.now() - (this.lastSeen[uid] || this.matchStart)) / 1000;
+    if (this.isHost) {
+      // someone who has gone quiet (closed lid, lost signal) is dropped; game.onPlayersChanged hands their car to a bot
+      for (const r of this.match.roster) if (!r.bot && r.uid !== this.uid && this.players[r.uid] && silentFor(r.uid) > NET.TIMEOUT) this.room('players/' + r.uid).remove();
+    } else if (this.meta && silentFor(this.meta.host) > NET.TIMEOUT) this._closed('Lost the connection to the host.');
+  }
+
+  _send() {
+    const game = this.game, m = this.match, cars = {}, stats = {};
+    let any = false;
+    for (const car of game.cars) {
+      if (car.remote) continue;
+      any = true;
+      const st = car.stats;
+      cars['c' + car.id] = car.netPack();
+      stats['c' + car.id] = [st.points, st.goals, st.assists, st.saves, st.shots, st.touches];
+    }
+    if (!any || !m) return;
+    const packet = { t: this.now(), k: m.n, c: cars, s: stats }, ball = game.ball;
+    if (ball.enabled && ball.net.owner === this.uid) packet.b = ball.netPack([ball.net.seq, ball.net.car]);
+    this.room('state/' + this.uid).set(packet).then(() => { this.sendFails = 0; }, err => {
+      if (++this.sendFails === 20 && this.code) this._closed(Net.explain(err));
+    });
+  }
+
+  _onPacket(uid, p) {
+    this.lastSeen[uid] = Date.now();
+    const game = this.game, m = this.match;
+    if (!p || !m || !game.online || p.k !== m.n || !p.c) return;       // nothing yet, or from before the last kickoff reset
+    const age = clamp((this.now() - p.t) / 1000 || 0, 0, 0.3);
+    for (const key in p.c) {
+      const car = game.cars[+key.slice(1)];
+      if (!car || !car.remote || car.ownerUid !== uid) continue;
+      car.netUpdate(p.c[key], age);
+      const st = p.s && p.s[key];
+      if (Array.isArray(st)) { const s = car.stats; s.points = st[0] | 0; s.goals = st[1] | 0; s.assists = st[2] | 0; s.saves = st[3] | 0; s.shots = st[4] | 0; s.touches = st[5] | 0; }
+    }
+    if (Array.isArray(p.b) && game.ball.enabled) this._onBall(uid, p.b, age);
+  }
+
+  _onBall(uid, b, age) {
+    const game = this.game, ball = game.ball, net = ball.net, seq = b[0];
+    // a newer touch wins; two touches that crossed in the post are settled by player id so both sides agree
+    const takeover = seq > net.seq || (seq === net.seq && uid !== net.owner && (net.owner === null || uid < net.owner));
+    if (!takeover && uid !== net.owner) return;                         // stale, or from someone who lost the ball
+    if (seq < net.seq) return;
+    const toucher = b[1] !== net.car;
+    net.seq = seq; net.owner = uid;
+    if (takeover || toucher) { net.car = b[1]; const car = game.cars[b[1]]; if (car) game.onRemoteTouch(car); }
+    ball.netApply(b, 2, age, takeover);
+  }
+}
+
+// ============================================================================
+//  ONLINE UI — the "play online" form and the room lobby
+// ============================================================================
+class OnlineUI {
+  constructor(game) {
+    this.game = game; this.net = game.net; this.panel = null; this.busy = false;
+    const $ = this.$ = id => document.getElementById(id), net = this.net;
+    this.nameEl = $('net-name'); this.codeEl = $('net-code');
+    this.nameEl.value = net.name === 'Player' ? '' : net.name;
+    this.nameEl.placeholder = 'Player';
+    $('btn-online').addEventListener('click', () => this.open());
+    $('btn-online-back').addEventListener('click', () => { this.show(null); game.hud.showMenu(true); });
+    $('btn-quick').addEventListener('click', () => this._go(() => net.quick(this._settings())));
+    $('btn-create').addEventListener('click', () => this._go(() => net.create(this._settings())));
+    $('btn-join').addEventListener('click', () => this._go(() => net.join(this.codeEl.value)));
+    this.codeEl.addEventListener('input', () => { this.codeEl.value = this.codeEl.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+    this.codeEl.addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join').click(); });
+    $('btn-leave').addEventListener('click', () => { net.leave(); this.show('online'); this.status(''); });
+    $('btn-start').addEventListener('click', () => { const problem = net.start(); if (problem) this._say('lobby-status', problem, true); });
+    $('btn-switch').addEventListener('click', () => net.switchTeam());
+    $('btn-copy').addEventListener('click', () => this._copyInvite());
+    const option = (id, key, parse) => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (b) net.setOption(key, parse(b.dataset.v)); });
+    option('lob-mode', 'mode', v => v); option('lob-fill', 'fill', v => v === '1'); option('lob-skill', 'skill', v => v);
+    // an invite link (…?room=CODE) opens straight on the join form
+    const invite = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+    if (invite.length === 4) { this.codeEl.value = invite; this.invited = true; }
+  }
+
+  /** Which online panel is showing: 'online', 'lobby' or null. */
+  show(panel) {
+    this.panel = panel;
+    this.$('online').classList.toggle('hidden', panel !== 'online');
+    this.$('lobby').classList.toggle('hidden', panel !== 'lobby');
+    if (panel) this.game.hud.showMenu(false);
+    if (panel === 'lobby') this.renderLobby();
+  }
+
+  open() {
+    this.show('online');
+    if (!FIREBASE_CONFIG) this.status('Online play is not set up in this copy of the game.', true);
+    else if (this.invited) { this.invited = false; this.status(`You've been invited to room ${this.codeEl.value}. Pick a name and press JOIN ROOM.`); }
+    else this.status('');
+  }
+
+  _say(id, text, error = false) { const el = this.$(id); el.textContent = text; el.classList.toggle('error', error); }
+  status(text, error = false) { this._say('net-status', text, error); }
+  _settings() { return { mode: this.game.settings.mode, skill: this.game.settings.skill, fill: true }; }
+
+  async _go(action) {
+    if (this.busy) return;
+    this.busy = true;
+    this.game.sfx.unlock(); this.game.music.start();          // we are inside a click: the moment to unlock audio
+    this.net.setName(this.nameEl.value);
+    this.status('Connecting…');
+    try { await action(); this.status(''); this.show('lobby'); } catch (err) { this.status(Net.explain(err), true); }
+    this.busy = false;
+  }
+
+  _copyInvite() {
+    const url = location.href.split(/[?#]/)[0] + '?room=' + this.net.code;
+    const done = () => this._say('lobby-status', 'Invite link copied — send it to your friends.');
+    const manual = () => this._say('lobby-status', url);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, manual); else manual();
+  }
+
+  /** Redraw the lobby from the room's current state. */
+  renderLobby() {
+    const net = this.net, meta = net.meta, $ = this.$;
+    if (this.panel !== 'lobby' || !net.code) return;
+    $('lobby-code').textContent = net.code;
+    if (!meta) return;                                          // the room's details arrive a moment after joining
+    const cap = net.seats(), order = net.order(), count = [0, 0];
+    $('lobby-brand').textContent = meta.pub ? 'OPEN ROOM · CODE' : 'PRIVATE ROOM · CODE';
+    for (let team = 0; team < 2; team++) {
+      const list = $(team ? 'lobby-orange' : 'lobby-blue');
+      list.textContent = '';
+      for (const id of order) {
+        const p = net.players[id];
+        if ((p.team ? 1 : 0) !== team) continue;
+        count[team]++;
+        const li = document.createElement('li'), tag = document.createElement('small');
+        li.textContent = Net.cleanName(p.name);
+        tag.textContent = [id === net.uid ? 'YOU' : '', id === meta.host ? 'HOST' : ''].filter(Boolean).join(' · ');
+        if (id === net.uid) li.className = 'me';
+        li.appendChild(tag); list.appendChild(li);
+      }
+      for (let k = count[team]; k < cap; k++) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = meta.fill ? 'Bot' : 'Open seat'; list.appendChild(li); }
+    }
+    const mark = (id, value) => { for (const b of $(id).children) b.classList.toggle('on', b.dataset.v === String(value)); };
+    mark('lob-mode', meta.mode); mark('lob-fill', meta.fill ? 1 : 0); mark('lob-skill', meta.skill);
+    $('lob-skill').classList.toggle('hidden', !meta.fill);
+    $('lobby-opts').classList.toggle('locked', !net.isHost);
+    $('btn-start').classList.toggle('hidden', !net.isHost);
+    const me = net.players[net.uid], host = net.players[meta.host];
+    $('btn-switch').classList.toggle('hidden', !me || count[me.team ? 0 : 1] >= cap);
+    const here = `${count[0] + count[1]} of ${cap * 2} players here`;
+    this._say('lobby-status', net.isHost ? `${here}. Share the code, then start when you're ready.` : `${here}. Waiting for ${host ? Net.cleanName(host.name) : 'the host'} to start the match…`);
+  }
+}
+
+// ============================================================================
+//  REPLAY — keeps the last few seconds of play and shows the goal again from a
+//  broadcast camera, slowing down as the ball goes in. Any button skips it.
+// ============================================================================
+const REPLAY = { RATE: 30, KEEP: 7, LENGTH: 4.2, SLOW_FROM: 1.1, SLOW: 0.38, HOLD: 0.9 };
+
+class Replay {
+  constructor(game) {
+    this.game = game;
+    this.cap = REPLAY.RATE * REPLAY.KEEP;
+    this.frames = new Array(this.cap);
+    this.head = 0; this.count = 0; this.clock = 0;
+    this.active = false; this.t = 0; this.len = 0; this.first = 0; this.hold = 0; this.burst = false;
+    this.sign = 1; this.side = 1; this.speed = 1;
+    this._p = V(); this._q = new THREE.Quaternion(); this._q2 = new THREE.Quaternion(); this._v = V();
+  }
+
+  clear() { this.count = 0; this.head = 0; this.clock = 0; }
+
+  /** Called every physics step of live offline play. */
+  record(dt) {
+    this.clock += dt;
+    if (this.clock < 1 / REPLAY.RATE - 1e-6) return;
+    this.clock -= 1 / REPLAY.RATE;
+    const g = this.game, cars = g.cars, n = 7 + cars.length * 8;
+    let f = this.frames[this.head];
+    if (!f || f.length !== n) f = this.frames[this.head] = new Float32Array(n);
+    const put = (o, p, q) => { f[o] = p.x; f[o + 1] = p.y; f[o + 2] = p.z; f[o + 3] = q.x; f[o + 4] = q.y; f[o + 5] = q.z; f[o + 6] = q.w; };
+    put(0, g.ball.pos, g.ball.quat);
+    cars.forEach((c, i) => { const o = 7 + i * 8; put(o, c.pos, c.quat); f[o + 7] = (c.boosting ? 1 : 0) | (c.supersonic ? 2 : 0); });
+    this.head = (this.head + 1) % this.cap;
+    this.count = Math.min(this.cap, this.count + 1);
+  }
+
+  _frame(k) { return this.frames[(this.head - this.count + k + this.cap * 2) % this.cap]; }
+
+  /** Start showing the goal; false if there isn't enough recorded to be worth it. */
+  start(goalSign) {
+    const n = Math.min(this.count, Math.round(REPLAY.LENGTH * REPLAY.RATE));
+    if (n < REPLAY.RATE * 1.5) return false;
+    this.first = this.count - n; this.len = (n - 1) / REPLAY.RATE; this.t = 0; this.hold = 0; this.burst = false;
+    this.sign = goalSign;
+    const end = this._frame(this.count - 1);
+    this.side = end[0] > 0 ? -1 : 1;           // watch from the other side of the pitch to where the ball went in
+    this.active = true;
+    return true;
+  }
+
+  /** Advance playback; returns false once it has finished. */
+  advance(dt) {
+    if (this.t >= this.len) {
+      if (!this.burst) { this.burst = true; this.game._replayBurst(this._frame(this.count - 1)); }
+      this.hold += dt;
+      return this.hold < REPLAY.HOLD;
+    }
+    this.speed = this.len - this.t < REPLAY.SLOW_FROM ? REPLAY.SLOW : 1;
+    this.t = Math.min(this.len, this.t + dt * this.speed);
+    return true;
+  }
+
+  /** Pose the cars and ball for the current playback time (after their normal per-frame update). */
+  apply() {
+    const g = this.game, x = this.t * REPLAY.RATE, i0 = Math.floor(x), a = x - i0;
+    const A = this._frame(this.first + i0), B = this._frame(this.first + Math.min(i0 + 1, this.count - this.first - 1));
+    const pose = (o, pos, quat) => {
+      pos.set(A[o] + (B[o] - A[o]) * a, A[o + 1] + (B[o + 1] - A[o + 1]) * a, A[o + 2] + (B[o + 2] - A[o + 2]) * a);
+      this._q.set(A[o + 3], A[o + 4], A[o + 5], A[o + 6]); this._q2.set(B[o + 3], B[o + 4], B[o + 5], B[o + 6]);
+      quat.slerpQuaternions(this._q, this._q2, a);
+    };
+    const ball = g.ball;
+    pose(0, ball.renderPos, ball.mesh.quaternion);
+    ball.group.position.copy(ball.renderPos);
+    ball.group.visible = true; ball.indicator.visible = false; ball.trailMesh.visible = false;
+    g.cars.forEach((c, i) => {
+      const o = 7 + i * 8, m = c.mesh;
+      pose(o, m.position, m.quaternion);
+      c.renderPos.copy(m.position);
+      if (c.tag) c.tag.position.set(m.position.x, m.position.y + 1.05, m.position.z);
+      c.boosting = !!(A[o + 7] & 1); c.supersonic = !!(A[o + 7] & 2); c.driftAmt = 0;
+      c.flame.visible = c.boosting;
+      c.vel.set(B[o] - A[o], B[o + 1] - A[o + 1], B[o + 2] - A[o + 2]).multiplyScalar(REPLAY.RATE);
+      c.fwd.set(0, 0, -1).applyQuaternion(m.quaternion);
+    });
+  }
+
+  stop() {
+    this.active = false;
+    const ball = this.game.ball;
+    if (!ball.enabled) ball.group.visible = false;
   }
 }
 
 // ============================================================================
 //  GAME MANAGER — owns the renderer, physics world and every game object;
-//  runs the fixed-step loop and the match rules (kickoff, goals, clock, overtime).
+//  runs the fixed-step loop and the match rules (kickoff, goals, clock, overtime),
+//  offline against bots or online with the host refereeing (see NET).
 // ============================================================================
 const HIT_CURVE = [[0, 0.65], [5, 0.65], [23, 0.55], [46, 0.3]];
+const KICKOFF_SPOTS = [[20.5, 25.6], [-20.5, 25.6], [2.6, 38.4], [-2.6, 38.4], [0, 46]];   // for the team defending +z; the other is mirrored
+const AWARDS = { goal: 'GOAL', assist: 'ASSIST', save: 'SAVE', epicSave: 'EPIC SAVE', shot: 'SHOT ON TARGET' };
 
 class GameManager {
   constructor() {
@@ -2628,21 +3607,34 @@ class GameManager {
     this.shockwave = new Shockwave(this);
     this.cameraCtl = new CameraController(this);
     this.sfx = new Sfx();
+    this.music = new Music(MUSIC_TRACKS, MUSIC_VOLUME);
     this.hud = new HUD();
     this.input = new Input(this);
+    this.net = new Net(this);
+    this.ui = new OnlineUI(this);
+    this.replay = new Replay(this);
+    this.free = false;             // free play: just you and the ball, no clock
+    this._skipCtl = {}; this._skipHeld = true; this._ndc = V();
 
     this.cars = []; this.bots = []; this.player = null;
     this.settings = { mode: '1v1', skill: 'pro' };
     this.score = [0, 0];
-    this.state = 'attract';        // attract | countdown | play | goal | ended
+    this.state = 'attract';        // attract | countdown | play | goal | replay | ended
+    this.online = false;           // true while an online match is on
+    this.matchId = 0; this.kickN = 0; this.goalN = 0; this.rosterV = 0; this.menuOpen = false;
+    this.verdict = null;           // a touch waiting to be judged as a save / shot on target
     this.paused = false; this.time = 0; this.simTime = 0; this.acc = 0; this.tick = 0; this.last = performance.now();
     this._v = V(); this._w = V(); this._c = new THREE.Color();
 
     this._bindUI();
     addEventListener('resize', () => this._resize());
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this._inMatch()) this.setPaused(true); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this._inMatch() && !this.online) this.setPaused(true);
+      this.sfx.setHidden(document.hidden); this.music.setHidden(document.hidden);
+    });
     this._resize();
     this.toMenu();
+    if (this.ui.invited) this.ui.open();
     this._frame = this._frame.bind(this);
     requestAnimationFrame(this._frame);
   }
@@ -2657,86 +3649,157 @@ class GameManager {
     });
     seg('opt-mode', 'mode'); seg('opt-skill', 'skill');
     $('btn-play').addEventListener('click', () => this.startMatch());
-    $('btn-again').addEventListener('click', () => this.startMatch());
+    $('btn-free').addEventListener('click', () => this.startFreePlay());
+    // a click / tap on the pitch skips a replay
+    this.canvas.addEventListener('pointerdown', () => this.skipReplay());
+    $('btn-again').addEventListener('click', () => { if (this.online) this.net.start(); else this.startMatch(); });
     $('btn-resume').addEventListener('click', () => this.setPaused(false));
-    $('btn-restart').addEventListener('click', () => this.startMatch());
+    $('btn-restart').addEventListener('click', () => (this.free ? this.startFreePlay() : this.startMatch()));
     $('btn-quit').addEventListener('click', () => this.toMenu());
     $('btn-menu').addEventListener('click', () => this.toMenu());
     $('btn-sound').addEventListener('click', () => this.toggleSound());
+    $('btn-music').addEventListener('click', () => this.toggleMusic());
+    $('btn-music').textContent = 'MUSIC: ' + (this.music.on ? 'ON' : 'OFF');
+    // browsers only let audio start from a click or key press: the first one anywhere starts the music
+    const gesture = () => { this.music.start(); removeEventListener('pointerdown', gesture); removeEventListener('keydown', gesture); };
+    addEventListener('pointerdown', gesture); addEventListener('keydown', gesture);
   }
 
   _inMatch() { return this.state === 'countdown' || this.state === 'play' || this.state === 'goal'; }
-  get playing() { return this._inMatch() && !this.paused; }
+  get playing() { return this._inMatch() && !this.paused && !this.menuOpen; }
 
-  /** Menu screen with bots playing an exhibition behind it. */
-  toMenu() {
-    this.paused = false;
+  /** Bots playing an exhibition behind the menus. */
+  _attract() {
+    this._endReplay(); this.free = false;
+    this.online = false; this.paused = false; this.menuOpen = false; this.verdict = null; this.matchId = 0;
     this._buildTeams(2, null, 'pro');
-    this.state = 'attract'; this.carsLive = true; this.kickoff = true; this.overtime = false;
+    this.state = 'attract'; this.carsLive = true; this.overtime = false;
     this._placeForKickoff();
-    this.hud.showMatch(false); this.hud.showPause(false); this.hud.showEnd(false); this.hud.showMenu(true);
+    this.hud.showMatch(false); this.hud.showPause(false); this.hud.showEnd(false);
     this.hud.clearBanner();
     this.cameraCtl.snap();
   }
 
+  /** Back to the main menu (leaving the online room, if in one). */
+  toMenu() {
+    if (this.net.active) this.net.leave();
+    this._attract();
+    this.ui.show(null);
+    this.hud.showMenu(true);
+  }
+
+  /** Start an offline match against bots. */
   startMatch() {
-    this.sfx.unlock();
-    this.paused = false;
+    this.sfx.unlock(); this.music.start();
+    if (this.net.active) this.net.leave();
+    this._endReplay(); this.free = false;
+    this.online = false; this.paused = false; this.menuOpen = false; this.verdict = null;
     this._buildTeams(this.settings.mode === '2v2' ? 2 : 1, 0, this.settings.skill);
     this.score = [0, 0]; this.timeLeft = MATCH.LENGTH; this.overtime = false; this.overtimeClock = 0;
-    this.hud.showMenu(false); this.hud.showPause(false); this.hud.showEnd(false); this.hud.showMatch(true);
-    this.hud.setScore(this.score); this.hud.setClock(this.timeLeft, false); this.hud.setCam(this.cameraCtl.mode);
+    this._showMatchHud();
     this._beginKickoff();
     this.canvas.focus();
   }
 
+  /** Free play: you, the ball and the whole arena — no opponents, no clock. R puts the ball back on the spot. */
+  startFreePlay() {
+    this.sfx.unlock(); this.music.start();
+    if (this.net.active) this.net.leave();
+    this._endReplay();
+    this.online = false; this.paused = false; this.menuOpen = false; this.verdict = null; this.free = true;
+    this._buildCars([{ team: 0, k: 0, name: 'You', human: true }], this.settings.skill);
+    this.score = [0, 0]; this.timeLeft = MATCH.LENGTH; this.overtime = false; this.overtimeClock = 0;
+    this._showMatchHud();
+    this.hud.setFreeClock(); this.hud.clock.classList.add('free');
+    this._freeKickoff();
+    this.hud.banner('FREE PLAY', IS_TOUCH ? 'PAUSE MENU → RESTART RESETS THE BALL' : 'R RESETS THE BALL · ESC FOR THE MENU', 'blue', 2.6);
+    this.canvas.focus();
+  }
+
+  _freeKickoff() {
+    this._placeForKickoff();
+    this.replay.clear();
+    this.state = 'play'; this.carsLive = true; this.kickoff = false;
+    this.cameraCtl.snap();
+  }
+
+  /** R in free play. */
+  freeReset() {
+    if (!this.free || this.paused || !(this.state === 'play' || this.state === 'goal')) return;
+    this._freeKickoff();
+  }
+
+  _showMatchHud() {
+    this.ui.show(null);
+    this.hud.showMenu(false); this.hud.showPause(false); this.hud.showEnd(false); this.hud.showMatch(true);
+    this.hud.clock.classList.remove('free');
+    this.hud.setScore(this.score); this.hud.setClock(this.timeLeft, false); this.hud.setCam(this.cameraCtl.mode); this.hud.setPoints(0);
+    this.hud.feedEl.textContent = '';
+  }
+
+  /** Offline: freeze the game. Online the match can't stop, so this only opens/closes the menu over it. */
   setPaused(p) {
     if (!this._inMatch()) return;
-    this.paused = p;
-    this.hud.showPause(p);
+    if (this.online) this.menuOpen = p; else this.paused = p;
+    this.hud.showPause(p, this.online);
     this.last = performance.now();
   }
-  togglePause() { this.setPaused(!this.paused); }
+  togglePause() { if (this.state === 'replay') { this.skipReplay(); return; } this.setPaused(this.online ? !this.menuOpen : !this.paused); }
   toggleCamera() { if (this._inMatch()) this.hud.setCam(this.cameraCtl.toggle()); }
   toggleSound() {
-    this.sfx.setMuted(!this.sfx.muted);
+    this.sfx.setMuted(!this.sfx.muted); this.music.setMuted(this.sfx.muted);
     document.getElementById('btn-sound').textContent = 'SOUND: ' + (this.sfx.muted ? 'OFF' : 'ON');
+  }
+  toggleMusic() {
+    this.music.setOn(!this.music.on);
+    document.getElementById('btn-music').textContent = 'MUSIC: ' + (this.music.on ? 'ON' : 'OFF');
   }
 
   // ---- Teams & kickoff ------------------------------------------------------
-  _buildTeams(perTeam, humanTeam, skill) {
+  /** Build the cars for a match. Each entry: { team, k, name, human, remote, uid, bot }. */
+  _buildCars(list, skill) {
     for (const car of this.cars) car.dispose();
     this.cars = []; this.bots = []; this.player = null;
-    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
-    for (const team of TEAMS) for (let k = 0; k < perTeam; k++) {
-      const human = team.id === humanTeam && k === 0;
-      const car = new Car(this, { team: team.id, name: human ? 'You' : names.pop(), human, variant: k });
+    list.forEach((e, id) => {
+      const car = new Car(this, { id, team: e.team, name: e.name, human: !!e.human, variant: e.k });
+      car.ownerUid = e.uid || null; car.isBot = !!e.bot;
       this.cars.push(car);
-      if (human) this.player = car; else this.bots.push(new BotAI(this, car, skill));
-    }
+      if (e.remote) car.setRemote(true);
+      else if (e.human) this.player = car;
+      else this.bots.push(new BotAI(this, car, skill));
+    });
     this.carByCollider = new Map(this.cars.map(c => [c.collider.handle, c]));
   }
 
-  _placeForKickoff() {
-    // spawn spots for the team defending +z; the other team is mirrored through the centre spot
-    const spots = [[20.5, 25.6], [-20.5, 25.6], [2.6, 38.4], [-2.6, 38.4], [0, 46]].sort(() => Math.random() - 0.5);
+  /** Offline line-up: the human (if any) plus bots. */
+  _buildTeams(perTeam, humanTeam, skill) {
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5), list = [];
+    for (const team of TEAMS) for (let k = 0; k < perTeam; k++) {
+      const human = team.id === humanTeam && k === 0;
+      list.push({ team: team.id, k, name: human ? 'You' : names.pop(), human, bot: !human });
+    }
+    this._buildCars(list, skill);
+  }
+
+  /** Put everyone on their kickoff spots. `order` (online) fixes which spots are used so every machine agrees. */
+  _placeForKickoff(order = Net.spots()) {
     for (const team of TEAMS) {
       this.cars.filter(c => c.team === team.id).forEach((car, k) => {
-        const x = spots[k][0] * team.sign, z = spots[k][1] * team.sign;
+        const spot = KICKOFF_SPOTS[order[k % order.length]], x = spot[0] * team.sign, z = spot[1] * team.sign;
         car.spawn(x, z, Math.atan2(x, z));                 // face the centre spot
       });
     }
     this.ball.reset();
     this.pads.reset();
     for (const bot of this.bots) bot.reset();
-    this.kickoff = true;
+    this.kickoff = true; this.verdict = null;
     this.acc = 0;
   }
 
   _beginKickoff() {
     this._placeForKickoff();
     this.state = 'countdown'; this.stateTimer = MATCH.COUNTDOWN; this.countShown = 0;
-    this.carsLive = false;
+    this.carsLive = false; this.replay.clear();
     this.cameraCtl.snap();
   }
 
@@ -2745,7 +3808,7 @@ class GameManager {
     const player = this.player;
     this.simTime += dt;
     if (player) {
-      if (this.carsLive) this.input.read(player.controls);
+      if (this.carsLive && !this.menuOpen) this.input.read(player.controls);
       else { const c = player.controls; c.throttle = c.steer = c.pitch = c.yaw = c.roll = 0; c.jump = c.boost = c.drift = false; }
     }
     for (const bot of this.bots) bot.update(dt);
@@ -2763,36 +3826,46 @@ class GameManager {
     this.pads.step(dt, this.cars);
     this._failsafe();
     if (++this.tick % 2 === 0 && this.ball.enabled) this.ball.predict();
-    this._rules(dt);
+    this._judgeTouch();
+    if (this.online) { this.net.step(dt); this._rulesOnline(dt); } else this._rules(dt);
   }
 
+  /** Countdown beeps and the switch to live play. Returns true once the cars are released. */
+  _countdown(remaining) {
+    const hud = this.hud, n = Math.ceil(remaining);
+    if (n !== this.countShown && n > 0 && n <= MATCH.COUNTDOWN) { this.countShown = n; hud.banner(String(n), this.overtime ? 'SUDDEN DEATH' : '', 'count', 0.85); this.sfx.beep(false); }
+    if (remaining > 0) return false;
+    this.state = 'play'; this.carsLive = true;
+    hud.banner('GO!', '', 'count amber', 0.7); this.sfx.beep(true);
+    return true;
+  }
+
+  /** Run the regulation clock down to `left` seconds (with the last-ten-seconds ticks). */
+  _clock(left) {
+    const before = Math.ceil(this.timeLeft), now = Math.ceil(left);
+    this.timeLeft = left;
+    this.hud.setClock(left, false);
+    if (now !== before && now <= 10 && now > 0) this.sfx.tone(660, 0.08, { type: 'square', gain: 0.06 });
+  }
+
+  _ballInGoal() {
+    const p = this.ball.pos;
+    return this.ball.enabled && Math.abs(p.z) > FIELD.L + BALLP.R && Math.abs(p.x) < FIELD.GW + 0.3 && p.y < FIELD.GH + 0.3;   // the whole ball past the line
+  }
+
+  /** Offline match rules. */
   _rules(dt) {
-    const ball = this.ball, hud = this.hud;
-    if (this.state === 'countdown') {
-      this.stateTimer -= dt;
-      const n = Math.ceil(this.stateTimer);
-      if (n !== this.countShown && n > 0 && n <= MATCH.COUNTDOWN) { this.countShown = n; hud.banner(String(n), this.overtime ? 'SUDDEN DEATH' : '', 'count', 0.85); this.sfx.beep(false); }
-      if (this.stateTimer <= 0) { this.state = 'play'; this.carsLive = true; hud.banner('GO!', '', 'count amber', 0.7); this.sfx.beep(true); }
-      return;
-    }
+    const hud = this.hud;
+    if (this.state === 'countdown') { this.stateTimer -= dt; this._countdown(this.stateTimer); return; }
     if (this.state === 'play' || this.state === 'attract') {
       if (this.state === 'play') {
-        if (this.overtime) { this.overtimeClock += dt; hud.setClock(this.overtimeClock, true); }
-        else {
-          const before = Math.ceil(this.timeLeft);
-          this.timeLeft -= dt;
-          hud.setClock(this.timeLeft, false);
-          const now = Math.ceil(this.timeLeft);
-          if (now !== before && now <= 10 && now > 0) this.sfx.tone(660, 0.08, { type: 'square', gain: 0.06 });
-        }
+        this.replay.record(dt);
+        if (this.free) { /* no clock */ }
+        else if (this.overtime) { this.overtimeClock += dt; hud.setClock(this.overtimeClock, true); }
+        else this._clock(this.timeLeft - dt);
       }
-      // goal: the whole ball is past the line, inside the frame
-      const p = ball.pos;
-      if (ball.enabled && Math.abs(p.z) > FIELD.L + BALLP.R && Math.abs(p.x) < FIELD.GW + 0.3 && p.y < FIELD.GH + 0.3) {
-        this._onGoal(p.z > 0 ? 1 : 0);
-        return;
-      }
-      if (this.state === 'play' && !this.overtime && this.timeLeft <= 0) {
+      if (this._ballInGoal()) { this._onGoal(this.ball.pos.z > 0 ? 1 : 0); return; }
+      if (this.state === 'play' && !this.free && !this.overtime && this.timeLeft <= 0) {
         if (this.score[0] === this.score[1]) {
           this.overtime = true; this.overtimeClock = 0;
           this.sfx.whistle();
@@ -2808,59 +3881,164 @@ class GameManager {
       this.stateTimer -= dt;
       if (this.stateTimer <= 0) {
         if (this.attractGoal) { this.attractGoal = false; this.state = 'attract'; this._placeForKickoff(); this.carsLive = true; }
-        else if (this.overtime || this.timeLeft <= 0) this._endMatch();
-        else this._beginKickoff();
+        else if (this.replay.start(this.goalSign)) {
+          this.state = 'replay'; this._skipHeld = true;
+          this.hud.clearBanner(); this.hud.showReplay(true); this.hud.setArrow(null);
+          this.cameraCtl.snap();
+        } else this._afterGoal();
       }
     }
   }
 
-  _onGoal(scorer) {
-    const ball = this.ball, team = TEAMS[scorer], color = this._c.set(team.glow), p = ball.pos;
-    const attract = this.state === 'attract';
-    const speed = Math.round(ball.vel.length() * 3.6);
-    // explosion: shockwave + sparks + everything nearby gets thrown
+  /** What follows a goal (and its replay). */
+  _afterGoal() {
+    if (this.free) this._freeKickoff();
+    else if (this.overtime || this.timeLeft <= 0) this._endMatch();
+    else this._beginKickoff();
+  }
+
+  /** One frame of replay playback (the physics stays frozen meanwhile). */
+  _replayTick(dt) {
+    const c = this._skipCtl;
+    this.input.read(c);
+    const pressed = c.jump || c.boost;
+    if (pressed && !this._skipHeld) { this.skipReplay(); return; }
+    this._skipHeld = pressed;
+    if (!this.replay.advance(dt)) { this._endReplay(); this._afterGoal(); }
+  }
+
+  skipReplay() {
+    if (this.state !== 'replay' || this.replay.t < 0.25) return;
+    this._endReplay(); this._afterGoal();
+  }
+
+  _endReplay() {
+    if (this.replay.active) this.replay.stop();
+    this.hud.showReplay(false);
+    if (this.state === 'replay') this.state = 'goal';
+  }
+
+  /** The replay reaches the moment the ball went in: the explosion again, without the score changing. */
+  _replayBurst(frame) {
+    const p = this._v.set(frame[0], frame[1], frame[2]), color = this._c.set(TEAMS[this.lastGoalTeam].glow);
+    this.shockwave.fire(p, color);
+    this.particles.burst(p, color, this.quality.low ? 120 : 240, 30, 0.9, 1.4, { up: 4, grav: 5, drag: 1.3, white: 0.35 });
+    this.cameraCtl.addShake(0.6);
+    this.sfx.hit(1);
+  }
+
+  /** Who gets the goal and the assist: the last touch if it was the scoring team's, and their team-mate just before. */
+  _goalCredit(team) {
+    const last = this.ball.lastTouch, prev = this.ball.prevTouch;
+    let scorer = -1, assist = -1;
+    if (last && last.team === team) {
+      scorer = last.car.id;
+      if (prev && prev.team === team && prev.car !== last.car && last.time - prev.time < 7) assist = prev.car.id;
+    }
+    return { scorer, assist };
+  }
+
+  /** Offline: a goal for `team`. */
+  _onGoal(team) {
+    const attract = this.state === 'attract', credit = this._goalCredit(team), speed = Math.round(this.ball.vel.length() * 3.6);
+    if (!attract) {
+      this.score[team]++;
+      if (credit.scorer >= 0) this.award(this.cars[credit.scorer], 'goal');
+      if (credit.assist >= 0) this.award(this.cars[credit.assist], 'assist');
+    }
+    this.goalSign = this.ball.pos.z > 0 ? 1 : -1; this.lastGoalTeam = team;
+    this._goalFx(team, this.ball.pos, speed, credit.scorer, attract);
+    this.attractGoal = attract;
+    if (attract) this.stateTimer = 2;
+  }
+
+  /** The goal explosion: shockwave, sparks, nearby cars thrown, banner — and the ball leaves play until the next kickoff. */
+  _goalFx(team, p, speed, scorerId, quiet = false) {
+    const color = this._c.set(TEAMS[team].glow);
     this.shockwave.fire(p, color);
     this.particles.burst(p, color, this.quality.low ? 160 : 320, 32, 0.9, 1.6, { up: 4, grav: 5, drag: 1.3, white: 0.35 });
     this.particles.burst(p, color, 90, 12, 1.6, 0.9, { drag: 2.5, white: 0.6 });
-    this.arena.flashGoal(1 - scorer);
+    this.arena.flashGoal(1 - team);
     for (const car of this.cars) {
       const d = this._v.subVectors(car.pos, p), dist = d.length();
       if (dist > 34) continue;
       d.y = Math.max(d.y, 0.35 * Math.max(dist, 1)); d.normalize();
       car.blast(d, 5 + 24 * Math.pow(1 - dist / 34, 0.8));
     }
-    ball.disable();
-    this.state = 'goal'; this.stateTimer = attract ? 2 : MATCH.GOAL_PAUSE; this.attractGoal = attract;
-    if (attract) return;
-    this.score[scorer]++;
-    const last = ball.lastTouch;
-    let credit = 'OWN GOAL';
-    if (last && last.team === scorer) { last.car.stats.goals++; credit = last.car.human ? 'YOU SCORED' : `${last.car.name.toUpperCase()} SCORED`; }
+    this.ball.disable();
+    this.verdict = null;
+    this.state = 'goal'; this.stateTimer = MATCH.GOAL_PAUSE;
+    if (quiet) return;
+    const scorer = this.cars[scorerId];
+    const credit = !scorer ? 'OWN GOAL' : scorer.human ? 'YOU SCORED' : `${scorer.name.toUpperCase()} SCORED`;
     this.cameraCtl.addShake(1);
     this.sfx.goal();
-    this.hud.setScore(this.score, scorer);
-    this.hud.banner('GOAL!', `${credit} · ${speed} KM/H`, team.id === 0 ? 'blue' : 'orange', MATCH.GOAL_PAUSE - 0.3);
+    this.hud.setScore(this.score, team);
+    this.hud.banner('GOAL!', `${credit} · ${speed} KM/H`, team === 0 ? 'blue' : 'orange', MATCH.GOAL_PAUSE - 0.3);
   }
 
   _endMatch() {
     const winner = this.score[0] > this.score[1] ? 0 : 1;
-    this.state = 'ended'; this.carsLive = false;
+    this.state = 'ended'; this.carsLive = false; this.menuOpen = false;
     if (this.ball.enabled) this.ball.disable();
     this.sfx.whistle();
     this.hud.clearBanner();
-    this.hud.fillEnd({ score: this.score, winner, playerTeam: this.player ? this.player.team : -1, cars: this.cars, overtime: this.overtime });
-    this.hud.showMatch(false); this.hud.showEnd(true);
+    this.hud.fillEnd({ score: this.score, winner, playerTeam: this.player ? this.player.team : -1, cars: this.cars, overtime: this.overtime, online: this.online ? { host: this.net.isHost } : null });
+    this.hud.showMatch(false); this.hud.showPause(false); this.hud.showEnd(true);
     this.cameraCtl.snap();
+  }
+
+  // ---- Points ---------------------------------------------------------------
+  /** Give a car points for something it did (see POINTS). Only the machine that owns the car calls this. */
+  award(car, kind) {
+    const st = car.stats, points = POINTS[kind];
+    st.points += points;
+    if (kind === 'goal') {
+      st.goals++;
+      // every goal is also a shot in the table, even a tap-in that was never judged as one
+      const lt = this.ball.lastTouch;
+      if (!lt || lt.car !== car || car.shotAt < lt.time) st.shots++;
+    } else if (kind === 'assist') st.assists++; else if (kind === 'shot') st.shots++; else st.saves++;
+    if (!car.human || this.state === 'attract') return;
+    this.hud.feed(AWARDS[kind], points);
+    this.hud.setPoints(st.points);
+    this.sfx.points(points);
+  }
+
+  /** A moment after a touch, look at where the ball is now heading and decide whether it was a save or a shot on target. */
+  _judgeTouch(early = false) {
+    const v = this.verdict, ball = this.ball;
+    if (!v || (!early && this.simTime < v.at)) return;
+    this.verdict = null;
+    if (!ball.enabled || this.state === 'attract') return;
+    // early = another car has just got to the ball: judge on the last forecast made before that second touch,
+    // unless the two touches were so close together that no forecast separates them
+    if (!early) ball.predict();
+    else if (this.simTime - (v.at - 0.12) < 0.03) return;
+    const g = ball.predictedGoal, car = v.car, t = this.simTime;
+    const stillGoingIn = g && g.defending === car.team;
+    if (v.threat && !stillGoingIn && t - car.saveAt > 1.5) { car.saveAt = t; this.award(car, v.epic ? 'epicSave' : 'save'); }
+    // on target now, and it wasn't already on its way in before this touch
+    if (g && g.defending !== car.team && !v.wasOnTarget && t - car.shotAt > 2.5) { car.shotAt = t; this.award(car, 'shot'); }
   }
 
   // ---- Events from the simulation -------------------------------------------
   _onBallTouch(car) {
-    const ball = this.ball, now = this.simTime, last = ball.lastTouch;
+    const ball = this.ball, now = this.simTime, last = ball.lastTouch, mine = !car.remote;
     if (!last || last.car !== car || now - last.time > 0.3) {
-      car.stats.touches++;
-      // a touch on a ball that was heading into our own net is a save
-      const g = ball.predictedGoal;
-      if (g && g.defending === car.team && g.t < 2.5) car.stats.saves++;
+      const g = ball.predictedGoal;                         // where the ball was heading before this touch
+      if (this.verdict && this.verdict.car !== car) this._judgeTouch(true);   // a challenge: settle the first touch now
+      if (mine) {
+        car.stats.touches++;
+        const sign = TEAMS[car.team].sign, nearLine = (sign * FIELD.L - ball.pos.z) * sign < 5 && Math.abs(ball.pos.x) < FIELD.GW + 1;
+        this.verdict = {
+          car, at: now + 0.12,
+          // heading into our own net off an opponent (or the kickoff): stopping it is a save
+          threat: !!g && g.defending === car.team && g.t < 2.5 && (!last || last.team !== car.team),
+          epic: nearLine,
+          wasOnTarget: !!g && g.defending !== car.team,
+        };
+      }
       const rel = this._v.subVectors(car.vel, ball.vel).length();
       // arcade punch: push the ball away from the car in proportion to the closing speed
       const push = this._w.subVectors(ball.pos, car.pos); push.y *= 0.35; push.normalize();
@@ -2873,7 +4051,11 @@ class GameManager {
     }
     ball.touchedBy(car, now);
     this.kickoff = false;
+    if (this.online && mine) this.net.claimBall(car.id);      // our touch: our copy of the ball is now the one everyone follows
   }
+
+  /** Online: another machine reports that one of its cars touched the ball. */
+  onRemoteTouch(car) { this.ball.touchedBy(car, this.simTime); this.kickoff = false; }
 
   _onBallBounce() {
     const sp = Math.abs(this.ball.vel.y) + this.ball.vel.length() * 0.2;
@@ -2893,7 +4075,10 @@ class GameManager {
   onPadPickup(pad, car) {
     if (car.human) this.sfx.pad(pad.big);
     this.particles.burst(this._v.set(pad.x, 0.6, pad.z), this._c.set(0xffb21a), pad.big ? 34 : 12, pad.big ? 9 : 5, 0.35, 0.6, { up: 3, white: 0.2 });
+    if (this.online) this.net.padTaken(pad.index);
   }
+  /** Online: someone took a pad (`stamp` = server time). */
+  onPadTaken(index, stamp) { if (this.online && Number.isFinite(stamp)) this.pads.netTaken(index, (this.net.now() - stamp) / 1000); }
 
   /** Last line of defence: anything that escapes the arena is put back inside. */
   _failsafe() {
@@ -2907,7 +4092,130 @@ class GameManager {
       pos.copy(p); sync();
     };
     if (this.ball.enabled) fix(this.ball.body, this.ball.pos, () => this.ball.prevPos.copy(this.ball.pos));
-    for (const car of this.cars) fix(car.body, car.pos, () => car.prevPos.copy(car.pos));
+    for (const car of this.cars) if (!car.remote) fix(car.body, car.pos, () => car.prevPos.copy(car.pos));
+  }
+
+  // ---- Online match flow ------------------------------------------------------
+  /** The host's latest word on the match. Each machine (the host's too) runs its match from these records,
+   *  so the handlers below are written to be safe to call twice with the same record. */
+  onMatch(m) {
+    const net = this.net, me = net.uid;
+    if (m.id !== this.matchId) {                             // a new match
+      this.matchId = m.id; this.kickN = 0; this.goalN = 0; this.rosterV = m.rv;
+      this.online = true; this.paused = false; this.menuOpen = false; this.verdict = null;
+      this._buildCars(m.roster.map(r => {
+        const mine = r.uid === me, human = mine && !r.bot;
+        return { team: r.team, k: r.k, name: human ? 'You' : r.name, human, remote: !mine, uid: r.uid, bot: r.bot };
+      }), m.skill);
+      this.score = [0, 0]; this.timeLeft = m.left; this.overtime = false; this.overtimeClock = 0;
+      net.matchStart = Date.now(); net.lastSeen = {};
+      this._showMatchHud();
+      this.canvas.focus();
+    }
+    if (m.rv !== this.rosterV) { this.rosterV = m.rv; this._applyRoster(m.roster); }
+    if (m.phase === 'countdown' && m.n !== this.kickN) this._netKickoff(m);
+    else if (m.phase === 'goal' && m.n !== this.goalN) this._netGoal(m);
+    else if (m.phase === 'ended' && this.state !== 'ended') { this.score = m.score.slice(); this.hud.setScore(this.score); this._endMatch(); }
+  }
+
+  _netKickoff(m) {
+    const net = this.net, firstOvertime = !!m.ot && !this.overtime;
+    this.kickN = m.n;
+    this.score = m.score.slice(); this.timeLeft = m.left; this.overtime = !!m.ot; this.overtimeClock = m.otT || 0;
+    this._placeForKickoff(m.spots);
+    const b = this.ball.net; b.owner = net.meta ? net.meta.host : null; b.seq = m.n * 1000; b.car = -1;   // the host holds the ball until someone touches it
+    this.state = 'countdown'; this.carsLive = false; this.countShown = 0;
+    this.hud.showEnd(false); this.hud.showMatch(true);
+    this.hud.setScore(this.score); this.hud.setClock(this.overtime ? this.overtimeClock : this.timeLeft, this.overtime);
+    if (firstOvertime) { this.sfx.whistle(); this.hud.banner('OVERTIME', 'NEXT GOAL WINS', 'amber', 2.2); }
+    this.cameraCtl.snap();
+  }
+
+  _netGoal(m) {
+    const g = m.goal || { team: 0, scorer: -1, assist: -1, speed: 0 };
+    this.goalN = m.n;
+    this.score = m.score.slice();
+    // our own cars collect their credit here; other machines do the same for theirs
+    for (const [id, kind] of [[g.scorer, 'goal'], [g.assist, 'assist']]) { const car = this.cars[id]; if (car && !car.remote) this.award(car, kind); }
+    const p = this.ball.enabled && Math.abs(this.ball.pos.z) > FIELD.L - 2 ? this.ball.pos : this._w.set(g.x || 0, g.y || 1, g.z || 0);
+    this._goalFx(g.team, p, g.speed, g.scorer);
+  }
+
+  /** Online clock and countdown, driven by the shared server time so every screen agrees. */
+  _rulesOnline(dt) {
+    const net = this.net, m = net.match;
+    if (!m) return;
+    const now = net.now();
+    if (this.state === 'countdown') { this._countdown((m.at - now) / 1000); return; }
+    if (this.state === 'play') {
+      const played = Math.max(0, (now - m.at) / 1000);        // since this kickoff went live
+      if (this.overtime) { this.overtimeClock = (m.otT || 0) + played; this.hud.setClock(this.overtimeClock, true); }
+      else this._clock(m.left - played);
+      if (net.isHost) this._referee(m);
+      return;
+    }
+    if (this.state === 'goal' && net.isHost) {
+      this.stateTimer -= dt;
+      if (this.stateTimer > 0) return;
+      this.stateTimer = Infinity;                              // (until the next record changes the state)
+      if (m.ot || m.left <= 0) net.post({ phase: 'ended', at: now });
+      else net.post({ n: m.n + 1, phase: 'countdown', at: now + 3400, spots: Net.spots(), goal: null }, true);
+    }
+  }
+
+  /** Host only: watch for goals and the final whistle, and announce them. */
+  _referee(m) {
+    const net = this.net, ball = this.ball, now = net.now(), r = x => Math.round(x * 100) / 100;
+    if (this._ballInGoal()) {
+      const team = ball.pos.z > 0 ? 1 : 0, score = this.score.slice(), credit = this._goalCredit(team);
+      score[team]++;
+      net.post({ phase: 'goal', at: now, score, left: Math.max(0, this.timeLeft), otT: this.overtimeClock,
+        goal: { team, scorer: credit.scorer, assist: credit.assist, speed: Math.round(ball.vel.length() * 3.6), x: r(ball.pos.x), y: r(ball.pos.y), z: r(ball.pos.z) } });
+    } else if (!this.overtime && this.timeLeft <= 0) {
+      if (this.score[0] === this.score[1]) net.post({ n: m.n + 1, phase: 'countdown', at: now + 2200 + 3400, ot: 1, otT: 0, left: 0, spots: Net.spots(), goal: null }, true);
+      else net.post({ phase: 'ended', at: now, left: 0 });
+    }
+  }
+
+  /** Host: someone left mid-match — a bot (driven here) takes their car over. */
+  onPlayersChanged(players) {
+    const net = this.net, m = net.match;
+    if (!this.online || !m || this.state === 'ended') return;
+    let changed = false;
+    const roster = m.roster.map(r => {
+      if (r.bot || r.uid === net.uid || players[r.uid]) return r;
+      changed = true;
+      return { ...r, uid: net.uid, bot: 1, left: 1 };
+    });
+    if (changed) net.post({ roster, rv: m.rv + 1 });
+  }
+
+  /** Car ownership changed (a player left): switch the affected cars over. */
+  _applyRoster(roster) {
+    const me = this.net.uid;
+    roster.forEach((r, id) => {
+      const car = this.cars[id];
+      if (!car) return;
+      if (r.bot && !car.isBot) this.hud.feed(`${car.name} left — a bot has taken over`);
+      car.ownerUid = r.uid; car.isBot = !!r.bot;
+      if (r.uid === me && car.remote) {
+        car.setRemote(false);
+        if (r.bot) this.bots.push(new BotAI(this, car, this.net.match.skill));
+      }
+    });
+  }
+
+  /** The room is gone (host left, connection lost…). */
+  onRoomClosed(message) {
+    this._attract();
+    this.ui.show('online');
+    this.ui.status(message, true);
+  }
+
+  /** The host sent everyone back to the lobby. */
+  onBackToLobby() {
+    this._attract();
+    this.ui.show('lobby');
   }
 
   // ---- Per-frame effects ----------------------------------------------------
@@ -2981,7 +4289,8 @@ class GameManager {
     this.last = now;
     this._autoQuality(dt);
     this.input.poll();
-    if (!this.paused) {
+    if (this.state === 'replay') this._replayTick(dt);
+    else if (!this.paused) {
       this.acc += dt;
       let steps = 0;
       while (this.acc >= PHYS.DT && steps < 14) { this._step(PHYS.DT); this.acc -= PHYS.DT; steps++; }
@@ -2995,7 +4304,8 @@ class GameManager {
     const alpha = clamp(this.acc / PHYS.DT, 0, 1), cam = this.cameraCtl, camera = cam.camera, ball = this.ball;
     for (const car of this.cars) car.update(dt, alpha, this.time);
     ball.update(dt, alpha, this.time, camera);
-    if (this.player && this._inMatch()) cam.follow(dt, this.player, ball);
+    if (this.state === 'replay' && this.replay.active) { this.replay.apply(); cam.replay(dt, ball, this.replay.sign, this.replay.side); }
+    else if (this.player && this._inMatch()) cam.follow(dt, this.player, ball);
     else cam.orbit(dt, this.time, ball);
     this.pads.update(dt, this.time);
     this.arena.update(dt, this.time, camera);
@@ -3003,9 +4313,25 @@ class GameManager {
     this.particles.update(dt, camera, this.renderer.domElement.height);
     this.shockwave.update(dt);
     this.hud.update(dt);
+    this._ballArrow();
     if (this.player) { this.hud.setBoost(this.player.boost, this.player.boosting); this.hud.setSupersonic(this.player.supersonic && this._inMatch()); }
-    this.sfx.update(this.player, this._inMatch() && !this.paused);
+    this.sfx.update(this.player, this._inMatch() && !this.paused, dt);
     this.renderer.render(this.scene, camera);
+  }
+
+  /** Arrow at the edge of the screen pointing to the ball whenever it is out of view. */
+  _ballArrow() {
+    const ball = this.ball;
+    if (!this.player || !this._inMatch() || !ball.enabled || this.paused || this.menuOpen) { this.hud.setArrow(null); return; }
+    const v = this._ndc.copy(ball.renderPos).project(this.cameraCtl.camera);
+    let x = v.x, y = v.y;
+    const behind = v.z > 1;
+    if (behind) { x = -x; y = -y; }
+    if (!behind && Math.abs(x) < 0.97 && Math.abs(y) < 0.95) { this.hud.setArrow(null); return; }
+    if (behind && Math.abs(x) < 1e-3 && Math.abs(y) < 1e-3) y = -1;          // dead behind: point down
+    const W = innerWidth, H = innerHeight, sx = x * W / 2, sy = y * H / 2;
+    const k = 1 / Math.max(Math.abs(sx) / (W / 2 - 46), Math.abs(sy) / (H / 2 - 46));
+    this.hud.setArrow(W / 2 + sx * k, H / 2 - sy * k, Math.atan2(-sy, sx));
   }
 
   /** Debug/testing helper: advance the simulation without rendering. */
@@ -3016,7 +4342,7 @@ class GameManager {
 //  START
 // ============================================================================
 try {
-  window.boostball = new GameManager();
+  window.eonLeague = new GameManager();
   document.getElementById('boot').classList.add('done');
 } catch (err) {
   bootStatus('Could not start the 3D renderer — this game needs WebGL 2. Try another browser or enable hardware acceleration.', true);
